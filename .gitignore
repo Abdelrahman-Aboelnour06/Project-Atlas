@@ -33,3 +33,4 @@ yarn-debug.log*
 
 # Logs
 *.log
+backend/.env.example
