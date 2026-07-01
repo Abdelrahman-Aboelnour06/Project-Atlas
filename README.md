@@ -1,9 +1,5 @@
 # 🧭 Atlas — Master Project Documentation
-*Cairo University AI Hackathon — Team Atlas (4 backend / 2 frontend)*
-
-> **Notice:** This is the combined master documentation file containing the Project Overview, System Architecture, Shared Data Contracts, Developer Conventions, and the Master Task Board.
-
----
+*Cairo University AI Hackathon — project Atlas
 
 ## 📖 PART 1: PROJECT OVERVIEW
 
