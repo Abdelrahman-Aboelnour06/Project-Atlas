@@ -1,68 +1,61 @@
-"""
-Task 4 — LLM Client
-Wraps the LLM API with retry logic and error handling.
-Supports Ollama (local) and any OpenAI-compatible provider.
-"""
-import asyncio
 import os
-
 import httpx
+import asyncio
+from dotenv import load_dotenv
 
-# ── Config from .env ──────────────────────────────────────────────────────────
-LLM_BASE_URL     = os.getenv("LLM_BASE_URL", "http://localhost:11434")
-LLM_MODEL        = os.getenv("LLM_MODEL", "llama3")
-LLM_API_KEY      = os.getenv("LLM_API_KEY", "")
-MAX_RETRIES      = 2
-TIMEOUT_SECONDS  = 30
+load_dotenv()
 
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama").lower()
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://localhost:11434")
+LLM_MODEL = os.getenv("LLM_MODEL", "llama3")
+LLM_API_KEY = os.getenv("LLM_API_KEY", "")
 
 class LLMError(Exception):
-    """Raised when the LLM fails after all retries."""
     pass
 
-
 async def call_llm(prompt: str) -> str:
-    """
-    Sends a prompt to the LLM and returns the raw string response.
-    Retries up to 2 times on timeout. Raises LLMError on total failure.
-
-    Uses Ollama's /api/generate endpoint by default.
-    Set LLM_BASE_URL in .env to point to any OpenAI-compatible provider.
-    """
-    headers = {}
-    if LLM_API_KEY:
-        headers["Authorization"] = f"Bearer {LLM_API_KEY}"
-
-    payload = {
-        "model":  LLM_MODEL,
-        "prompt": prompt,
-        "stream": False,
-    }
-
-    last_error: Exception | None = None
-
-    for attempt in range(MAX_RETRIES + 1):
+    max_retries = 2
+    
+    for attempt in range(max_retries + 1):
         try:
-            async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
-                response = await client.post(
-                    f"{LLM_BASE_URL}/api/generate",
-                    json=payload,
-                    headers=headers,
-                )
-                response.raise_for_status()
-                data = response.json()
-                return data.get("response", "").strip()
-
-        except httpx.TimeoutException as e:
-            last_error = e
-            if attempt < MAX_RETRIES:
-                await asyncio.sleep(1)
-                continue
-
+            async with httpx.AsyncClient() as client:
+                
+                # BRANCH 1: Local Ollama
+                if LLM_PROVIDER == "ollama":
+                    response = await client.post(
+                        f"{LLM_BASE_URL}/api/generate",
+                        json={"model": LLM_MODEL, "prompt": prompt, "stream": False},
+                        timeout=30.0
+                    )
+                    response.raise_for_status()
+                    return response.json().get("response", "")
+                
+                # BRANCH 2: NVIDIA NIM (OpenAI-Compatible)
+                else: 
+                    headers = {
+                        "Authorization": f"Bearer {LLM_API_KEY}",
+                        "Accept": "application/json"
+                    }
+                    response = await client.post(
+                        f"{LLM_BASE_URL}/chat/completions",
+                        headers=headers,
+                        json={
+                            "model": LLM_MODEL,
+                            "messages": [{"role": "user", "content": prompt}],
+                            "temperature": 0.0,
+                            "max_tokens": 1024
+                        },
+                        timeout=30.0
+                    )
+                    response.raise_for_status()
+                    return response.json()["choices"][0]["message"]["content"]
+                    
+        except httpx.TimeoutException:
+            if attempt == max_retries:
+                raise LLMError(f"LLM request timed out after {max_retries} retries.")
+            await asyncio.sleep(1)
+            
         except httpx.HTTPStatusError as e:
-            raise LLMError(f"LLM returned HTTP {e.response.status_code}: {e.response.text[:200]}")
-
+            raise LLMError(f"LLM HTTP error: {e.response.status_code} - {e.response.text}")
         except Exception as e:
-            raise LLMError(f"Unexpected LLM error: {e}")
-
-    raise LLMError(f"LLM timed out after {MAX_RETRIES} retries: {last_error}")
+            raise LLMError(f"Unexpected LLM error: {str(e)}")

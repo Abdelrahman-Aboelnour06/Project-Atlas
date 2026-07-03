@@ -1,169 +1,95 @@
-"""
-app/routes/agent.py
-WebSocket endpoint — Task 7: Full AI pipeline wired.
-
-Per-message flow:
-  1. Receive + parse WSMessage
-  2. Authenticate API key against DB
-  3. build_prompt → call_llm → parse_action
-  4. Log result to usage_logs
-  5. Send ActionResponse JSON back to client
-
-Concurrent sessions: each connection is an independent async coroutine —
-FastAPI + asyncio handles ≥ 2 sessions with no extra work needed.
-"""
-import json
-import logging
-from datetime import datetime, timezone
-
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
-from sqlalchemy import insert
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
+import json
 
+# Database connections
 from app.db.connection import get_db, validate_api_key
-from app.db.models import UsageLog           # adjust if your ORM class is named differently
-from app.models.request import WSMessage     # already exists from Task 2
+# Make sure this matches wherever your team defined the usage logger
+from app.db.connection import _log_usage 
 
+# AI Engine connections (Command Pipeline)
 from app.agent.llm_client import call_llm, LLMError
 from app.agent.prompt import build_prompt
-from app.agent.parser import parse_action, ParseError, error_response
+from app.agent.parser import parse_action, ParseError
+
+# AI Engine connections (Simplify Pipeline)
+from app.agent.simplify_prompt import build_simplify_prompt
+from app.agent.simplify_parser import parse_simplify_response
+
+# Data Safety connections (Your Shield)
+from app.agent.sanitize import strip_pii_from_dom, trim_log_payload
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
-
-
-# ── Usage logging ─────────────────────────────────────────────────────────────
-
-async def _log_usage(
-    db: AsyncSession,
-    *,
-    tenant_id: int,
-    session_id: str,
-    url: str,
-    command: str,
-    action: str,
-    element_id: str,
-    status: str,
-) -> None:
-    """
-    Writes one record to usage_logs.
-    Silently swallows DB errors so a logging failure never kills a live session.
-
-    Adjust field names here if your UsageLog ORM model uses different column names.
-    """
-    try:
-        log = UsageLog(
-            tenant_id=tenant_id,
-            session_id=session_id,
-            url=url,
-            command=command,
-            action=action,
-            element_id=element_id,
-            status=status,
-            created_at=datetime.now(timezone.utc),
-        )
-        db.add(log)
-        await db.commit()
-    except Exception as exc:
-        logger.error("usage_log write failed (session=%s): %s", session_id, exc)
-        await db.rollback()
-
-
-# ── WebSocket handler ─────────────────────────────────────────────────────────
 
 @router.websocket("/v1/agent")
-async def agent_ws(
-    websocket: WebSocket,
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Main Atlas WebSocket handler.
-
-    Keeps the connection open and processes one voice command per message.
-    Each call to this function is an independent async coroutine, so
-    FastAPI naturally handles multiple concurrent sessions.
-    """
+async def websocket_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)):
     await websocket.accept()
-    logger.info("WS connection opened")
-
+    
     try:
         while True:
-
-            # ── 1. Receive raw text ───────────────────────────────────────
+            # 1. Wait for the Frontend Connection
+            raw_data = await websocket.receive_text()
+            
             try:
-                raw = await websocket.receive_text()
-            except WebSocketDisconnect:
-                logger.info("Client disconnected cleanly")
-                return
-
-            # ── 2. Parse WSMessage ────────────────────────────────────────
-            try:
-                data    = json.loads(raw)
-                message = WSMessage(**data)
-            except (json.JSONDecodeError, ValueError, TypeError) as exc:
-                await websocket.send_text(
-                    json.dumps(error_response(f"Malformed message: {exc}"))
-                )
+                data = json.loads(raw_data)
+            except json.JSONDecodeError:
+                await websocket.send_json({"status": "error", "message": "Invalid JSON payload."})
                 continue
-
-            logger.info(
-                "session=%s command=%r dom_nodes=%d",
-                message.session_id, message.command, len(message.dom_map),
-            )
-
-            # ── 3. Authenticate API key ───────────────────────────────────
-            tenant = await validate_api_key(db, message.api_key)
-            if tenant is None:
-                await websocket.send_text(
-                    json.dumps(error_response("Invalid or expired API key."))
-                )
-                await websocket.close(code=4401)
-                return
-
-            # ── 4. AI pipeline ────────────────────────────────────────────
-            action_result: dict
-
+            
+            # 2. Database Connection: Validate the API Key
+            api_key = data.get("api_key")
+            tenant_id = await validate_api_key(db, api_key)
+            if not tenant_id:
+                await websocket.close(code=4401, reason="Invalid API Key")
+                break
+                
+            # 3. Sanitization Connection: Shield the data from PII
+            raw_dom = data.get("dom_map", [])
+            safe_dom = strip_pii_from_dom(raw_dom)
+            req_type = data.get("type", "command")
+            
             try:
-                prompt        = build_prompt(message.dom_map, message.command)
-                raw_llm       = await call_llm(prompt)
-                action_result = parse_action(raw_llm)
+                # 4. AI Connections: Route to the correct pipeline
+                if req_type == "simplify":
+                    # Headline Feature: Describe the whole page for the sidebar
+                    prompt = build_simplify_prompt(safe_dom)
+                    raw_llm = await call_llm(prompt)
+                    final_response = parse_simplify_response(raw_llm, safe_dom)
+                    
+                else: 
+                    # Secondary Feature: Execute a specific voice/text command
+                    user_command = data.get("command", "")
+                    prompt = build_prompt(safe_dom, user_command)
+                    raw_llm = await call_llm(prompt)
+                    final_response = parse_action(raw_llm)
+                    
+                    # 5. Log ONLY safe, minimal data to PostgreSQL for commands
+                safe_log_data = {
+                    "command_snippet": user_command[:100] + "..." if len(user_command) > 100 else user_command,
+                    "resolved_action": final_response.get("action"),
+                    "target_element": final_response.get("element_id"),
+                    "status": final_response.get("status")
+                }
 
-            except LLMError as exc:
-                logger.error("LLM failure session=%s: %s", message.session_id, exc)
-                action_result = error_response(
-                    "AI service unavailable — please try again in a moment."
+                await _log_usage(
+                    db=db, 
+                    session_id=data.get("session_id"), 
+                    tenant_id=tenant_id, 
+                    log_details=safe_log_data
                 )
-
-            except ParseError as exc:
-                logger.warning("Parse failure session=%s: %s", message.session_id, exc)
-                action_result = error_response(
-                    "Couldn't understand the AI response — please rephrase your command."
-                )
-
-            # ── 5. Log to usage_logs ──────────────────────────────────────
-            await _log_usage(
-                db=db,
-                tenant_id=tenant.id,
-                session_id=message.session_id,
-                url=message.url,
-                command=message.command,
-                action=action_result["action"],
-                element_id=action_result["element_id"],
-                status=action_result["status"],
-            )
-
-            # ── 6. Send response ──────────────────────────────────────────
-            await websocket.send_text(json.dumps(action_result))
-
+            
+            # Catch LLM connection timeouts or hallucination parsing errors gracefully
+            except LLMError:
+                final_response = {"status": "error", "message": "AI service unavailable. Please try again."}
+            except ParseError:
+                final_response = {"status": "error", "message": "Could not process that command. Please rephrase."}
+            
+            # 6. Send the final JSON payload back to the frontend extension
+            await websocket.send_json(final_response)
+            
     except WebSocketDisconnect:
-        logger.info("WS disconnected mid-session")
-
-    except Exception as exc:
-        logger.exception("Unhandled WS error: %s", exc)
-        try:
-            await websocket.send_text(
-                json.dumps(error_response("Internal server error."))
-            )
-            await websocket.close(code=1011)
-        except Exception:
-            pass  # connection already gone
+        print("Client disconnected gracefully.")
+    except Exception as e:
+        print(f"Unhandled server error: {e}")
+        # Prevent the FastAPI server from crashing during the live demo
+        await websocket.send_json({"status": "error", "message": "Internal Server Error"})
