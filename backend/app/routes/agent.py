@@ -64,13 +64,19 @@ async def websocket_endpoint(websocket: WebSocket, db: AsyncSession = Depends(ge
                     final_response = parse_action(raw_llm)
                     
                     # 5. Log ONLY safe, minimal data to PostgreSQL for commands
-                    safe_log_data = trim_log_payload(user_command, final_response)
-                    await _log_usage(
-                        db=db, 
-                        session_id=data.get("session_id"), 
-                        tenant_id=tenant_id, 
-                        log_details=safe_log_data
-                    )
+                safe_log_data = {
+                    "command_snippet": user_command[:100] + "..." if len(user_command) > 100 else user_command,
+                    "resolved_action": final_response.get("action"),
+                    "target_element": final_response.get("element_id"),
+                    "status": final_response.get("status")
+                }
+
+                await _log_usage(
+                    db=db, 
+                    session_id=data.get("session_id"), 
+                    tenant_id=tenant_id, 
+                    log_details=safe_log_data
+                )
             
             # Catch LLM connection timeouts or hallucination parsing errors gracefully
             except LLMError:
