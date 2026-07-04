@@ -5,6 +5,7 @@ router = APIRouter()
 
 
 class HealthResponse(BaseModel):
+    service: str
     status:  str
     version: str
     db:      str  # "ok" | "unavailable"
@@ -21,6 +22,7 @@ async def health_check():
     Task 4:  replace llm value with a ping to the LLM endpoint.
     """
     return HealthResponse(
+        service="atlas-backend",
         status="ok",
         version="0.1.0",
         db="unavailable",   # TODO (Task 3): real DB check
