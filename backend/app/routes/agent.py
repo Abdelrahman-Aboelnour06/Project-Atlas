@@ -1,95 +1,145 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
+"""
+Task 7 — WebSocket handler: full AI pipeline, both "command" and "simplify".
+
+Request lifecycle per message:
+  receive_text()
+    -> parse JSON                    -> error (connection stays open) on failure
+    -> validate shape (AgentMessage) -> error (connection stays open) on failure
+    -> validate_api_key (every msg)  -> error (connection stays open) on failure
+    -> strip_pii_from_dom
+    -> dispatch by `type`:
+         "simplify" -> build_simplify_prompt -> call_llm -> parse_simplify_response
+         "command"  -> build_prompt          -> call_llm -> parse_action
+    -> log usage (command pipeline only)
+    -> send structured JSON response back to the client
+
+NOTE on error handling vs. the original progress-doc description: the doc
+said an invalid API key should close the socket with code 4401. The shared
+test suite (tests/test_websocket.py) instead expects a `status: "error"`
+JSON reply with the connection kept open, so a frontend can recover from
+one bad message without having to reconnect. This file follows the tests.
+If that's not actually what the team wants, docs/contracts.md's error
+section should be updated to match (flagging for Person 2 / whoever owns
+that doc). Only a truly unhandled exception now closes the socket (1011).
+
+Module-qualified imports (e.g. `from app.agent import llm_client` + calling
+`llm_client.call_llm(...)`) are used deliberately instead of
+`from app.agent.llm_client import call_llm` — the test suite patches
+functions like `app.agent.llm_client.call_llm` at the module level, which
+only takes effect on calls made through the module object, not through a
+name that was already bound at import time via `from x import y`.
+"""
 import json
+import logging
 
-# Database connections
-from app.db.connection import get_db, validate_api_key
-# Make sure this matches wherever your team defined the usage logger
-from app.db.connection import _log_usage 
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
+from pydantic import ValidationError
+from sqlalchemy.ext.asyncio import AsyncSession
 
-# AI Engine connections (Command Pipeline)
-from app.agent.llm_client import call_llm, LLMError
-from app.agent.prompt import build_prompt
-from app.agent.parser import parse_action, ParseError
+from app.db.connection import get_db
+from app.db import connection as db_connection
 
-# AI Engine connections (Simplify Pipeline)
-from app.agent.simplify_prompt import build_simplify_prompt
-from app.agent.simplify_parser import parse_simplify_response
-
-# Data Safety connections (Your Shield)
+from app.agent import llm_client
+from app.agent.llm_client import LLMError
+from app.agent import prompt as command_prompt
+from app.agent import parser as command_parser
+from app.agent import simplify_prompt
+from app.agent import simplify_parser
 from app.agent.sanitize import strip_pii_from_dom, trim_log_payload
 
+from app.models.request import AgentMessage
+from app.models.action import ActionResponse
+
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
-@router.websocket("/v1/agent")
+
+def _simplify_error(message: str) -> dict:
+    """Error shape for the simplify pipeline — Contract 5."""
+    return {"status": "error", "elements": [], "message": message}
+
+
+@router.websocket("/agent")
 async def websocket_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)):
     await websocket.accept()
-    
+
     try:
         while True:
-            # 1. Wait for the Frontend Connection
             raw_data = await websocket.receive_text()
-            
+
+            # 1. Parse JSON
             try:
                 data = json.loads(raw_data)
             except json.JSONDecodeError:
                 await websocket.send_json({"status": "error", "message": "Invalid JSON payload."})
                 continue
-            
-            # 2. Database Connection: Validate the API Key
-            api_key = data.get("api_key")
-            tenant_id = await validate_api_key(db, api_key)
-            if not tenant_id:
-                await websocket.close(code=4401, reason="Invalid API Key")
-                break
-                
-            # 3. Sanitization Connection: Shield the data from PII
-            raw_dom = data.get("dom_map", [])
-            safe_dom = strip_pii_from_dom(raw_dom)
-            req_type = data.get("type", "command")
-            
-            try:
-                # 4. AI Connections: Route to the correct pipeline
-                if req_type == "simplify":
-                    # Headline Feature: Describe the whole page for the sidebar
-                    prompt = build_simplify_prompt(safe_dom)
-                    raw_llm = await call_llm(prompt)
-                    final_response = parse_simplify_response(raw_llm, safe_dom)
-                    
-                else: 
-                    # Secondary Feature: Execute a specific voice/text command
-                    user_command = data.get("command", "")
-                    prompt = build_prompt(safe_dom, user_command)
-                    raw_llm = await call_llm(prompt)
-                    final_response = parse_action(raw_llm)
-                    
-                    # 5. Log ONLY safe, minimal data to PostgreSQL for commands
-                safe_log_data = {
-                    "command_snippet": user_command[:100] + "..." if len(user_command) > 100 else user_command,
-                    "resolved_action": final_response.get("action"),
-                    "target_element": final_response.get("element_id"),
-                    "status": final_response.get("status")
-                }
 
-                await _log_usage(
-                    db=db, 
-                    session_id=data.get("session_id"), 
-                    tenant_id=tenant_id, 
-                    log_details=safe_log_data
-                )
-            
-            # Catch LLM connection timeouts or hallucination parsing errors gracefully
-            except LLMError:
-                final_response = {"status": "error", "message": "AI service unavailable. Please try again."}
-            except ParseError:
-                final_response = {"status": "error", "message": "Could not process that command. Please rephrase."}
-            
-            # 6. Send the final JSON payload back to the frontend extension
+            # 2. Validate message shape against Contract 1 (type, dom_map, command, ...)
+            try:
+                message = AgentMessage(**data)
+            except ValidationError as exc:
+                first = exc.errors()[0]
+                field = ".".join(str(p) for p in first["loc"])
+                await websocket.send_json({
+                    "status": "error",
+                    "message": f"Invalid message ({field}): {first['msg']}",
+                })
+                continue
+
+            # 3. Auth — validated on every message, not just on connect
+            tenant_id = await db_connection.validate_api_key(db, message.api_key)
+            if not tenant_id:
+                await websocket.send_json({"status": "error", "message": "Invalid or inactive API key."})
+                continue
+
+            # 4. Shield the DOM map from PII before it reaches the LLM or gets logged
+            raw_dom = [node.model_dump() for node in message.dom_map]
+            safe_dom = strip_pii_from_dom(raw_dom)
+
+            try:
+                # 5. Route to the correct pipeline
+                if message.type == "simplify":
+                    prompt_text = simplify_prompt.build_simplify_prompt(safe_dom)
+                    raw_llm = await llm_client.call_llm(prompt_text)
+                    elements = simplify_parser.parse_simplify_response(raw_llm, safe_dom)
+                    final_response = {"status": "success", "elements": elements, "message": None}
+
+                else:  # "command"
+                    prompt_text = command_prompt.build_prompt(safe_dom, message.command)
+                    raw_llm = await llm_client.call_llm(prompt_text)
+                    action_response = command_parser.parse_action(raw_llm, safe_dom)
+                    final_response = action_response.model_dump()
+
+                    # 6. Log ONLY safe, minimal data to PostgreSQL for commands
+                    log_details = trim_log_payload(message.command, final_response)
+                    await db_connection._log_usage(
+                        db=db,
+                        session_id=message.session_id,
+                        tenant_id=tenant_id,
+                        log_details=log_details,
+                        url=message.url,
+                    )
+
+            # Catch LLM connection/timeout failures gracefully — parse_action and
+            # parse_simplify_response never raise, so this is the only pipeline
+            # exception left to handle here.
+            except LLMError as exc:
+                logger.warning("LLM call failed: %s", exc)
+                if message.type == "simplify":
+                    final_response = _simplify_error("AI service unavailable. Please try again.")
+                else:
+                    final_response = ActionResponse.error(
+                        "AI service unavailable. Please try again."
+                    ).model_dump()
+
+            # 7. Send the final JSON payload back to the frontend extension
             await websocket.send_json(final_response)
-            
+
     except WebSocketDisconnect:
-        print("Client disconnected gracefully.")
-    except Exception as e:
-        print(f"Unhandled server error: {e}")
-        # Prevent the FastAPI server from crashing during the live demo
-        await websocket.send_json({"status": "error", "message": "Internal Server Error"})
+        logger.info("Client disconnected gracefully.")
+    except Exception:
+        logger.exception("Unhandled server error in /v1/agent")
+        try:
+            await websocket.send_json({"status": "error", "message": "Internal server error."})
+        except Exception:
+            pass
