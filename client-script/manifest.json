@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "Atlas — AI Web Accessibility Agent",
+  "version": "0.1.0",
+  "description": "Atlas simplifies any website for elderly and disabled users via an AI-powered sidebar and voice commands.",
+  "permissions": ["activeTab", "storage", "scripting"],
+  "host_permissions": ["<all_urls>"],
+  "action": {
+    "default_title": "Activate Atlas"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": [
+        "dom-serializer.js",
+        "websocket-client.js",
+        "executor.js",
+        "speech.js",
+        "sidebar.js",
+        "content.js"
+      ],
+      "css": ["sidebar.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}
