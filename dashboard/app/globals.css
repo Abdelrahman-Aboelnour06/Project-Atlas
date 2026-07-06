@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  background: #F5F7FA;
+}
+
+/* Visible focus ring everywhere, matching the product's own accessibility
+   commitments — never rely on the browser default alone, and never
+   suppress it with outline:none. */
+:focus-visible {
+  outline: 3px solid #2F5DE3;
+  outline-offset: 2px;
+  border-radius: 4px;
+}

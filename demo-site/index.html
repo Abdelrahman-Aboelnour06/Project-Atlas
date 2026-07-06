@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Riverbend Market — Demo Site</title>
+<style>
+  /* Deliberately generic/cluttered styling — the point of this page is to
+     be a *realistic messy website*, not a polished one. Atlas should be
+     able to make sense of it regardless. */
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: Arial, Helvetica, sans-serif;
+    color: #222;
+    background: #f2f2f0;
+    font-size: 14px;
+  }
+  header {
+    background: #2c3e50;
+    color: #fff;
+    padding: 10px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  header .logo { font-weight: bold; font-size: 18px; }
+  nav a {
+    color: #fff;
+    text-decoration: none;
+    margin-left: 16px;
+    font-size: 13px;
+  }
+  .banner {
+    background: #e8b923;
+    text-align: center;
+    padding: 6px;
+    font-size: 12px;
+  }
+  main {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 24px 20px;
+  }
+  .product-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 16px;
+    margin-top: 16px;
+  }
+  .product-card {
+    background: #fff;
+    border: 1px solid #ddd;
+    padding: 12px;
+  }
+  .product-card img { width: 100%; height: 100px; object-fit: cover; background: #ccc; }
+  .price { color: #b3413c; font-weight: bold; }
+  .fake-btn {
+    display: inline-block;
+    background: #2c3e50;
+    color: #fff;
+    padding: 6px 10px;
+    margin-top: 8px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  form.newsletter { margin-top: 32px; background: #fff; padding: 16px; border: 1px solid #ddd; }
+  form.newsletter input { padding: 6px; margin-right: 8px; }
+  .checkout-bar {
+    position: sticky;
+    bottom: 0;
+    background: #fff;
+    border-top: 2px solid #2c3e50;
+    padding: 12px 20px;
+    display: flex;
+    justify-content: flex-end;
+  }
+  footer { text-align: center; padding: 20px; font-size: 11px; color: #777; }
+</style>
+</head>
+<body>
+
+  <header>
+    <span class="logo">Riverbend Market</span>
+    <nav>
+      <a href="#products">Products</a>
+      <a href="#newsletter">Newsletter</a>
+      <a href="#" id="cart-link">Cart (0)</a>
+    </nav>
+  </header>
+
+  <div class="banner">Free shipping over $50 — today only</div>
+
+  <main>
+    <h1>Fresh from the valley, straight to your door</h1>
+    <p>
+      Riverbend Market sources produce directly from small farms. Browse
+      today's picks below, or use the search bar to find something
+      specific.
+    </p>
+
+    <!-- Clean: labeled input, good for Atlas's "fill" action -->
+    <label for="search-input">Search products</label>
+    <input id="search-input" name="search" type="text" placeholder="e.g. tomatoes" />
+
+    <!-- BROKEN: icon-only button, no aria-label, no visible text.
+         error_type target: missing_aria -->
+    <button style="margin-left:8px;">🔍</button>
+
+    <section id="products">
+      <h2>Today's picks</h2>
+      <div class="product-grid">
+
+        <div class="product-card">
+          <!-- BROKEN: no alt text at all. error_type target: missing_alt -->
+          <img src="https://placehold.co/200x100" />
+          <div>Heirloom Tomatoes</div>
+          <div class="price">$4.50 / lb</div>
+          <!-- Clean: real button with clear text -->
+          <button data-product="tomatoes">Add to cart</button>
+        </div>
+
+        <div class="product-card">
+          <img src="https://placehold.co/200x100" alt="Bunch of fresh carrots with green tops" />
+          <div>Rainbow Carrots</div>
+          <div class="price">$3.20 / lb</div>
+          <!-- BROKEN: a <div> styled as a button — no role, no keyboard
+               support, no accessible name beyond its own text (which is
+               fine as a label, but it's not a real interactive element).
+               error_type target: missing_aria -->
+          <div class="fake-btn" onclick="addToCart('carrots')">Add to cart</div>
+        </div>
+
+        <div class="product-card">
+          <img src="https://placehold.co/200x100" alt="Basket of fresh strawberries" />
+          <div>Strawberries</div>
+          <div class="price">$5.75 / pint</div>
+          <button data-product="strawberries">Add to cart</button>
+        </div>
+
+        <div class="product-card">
+          <!-- BROKEN: empty alt is fine ONLY if decorative, but this is
+               the product photo, i.e. informative — should have real alt
+               text. Left broken on purpose. -->
+          <img src="https://placehold.co/200x100" alt="" />
+          <div>Sourdough Loaf</div>
+          <div class="price">$6.00</div>
+          <button data-product="sourdough">Add to cart</button>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- BROKEN: form with no <label> elements at all, only placeholders.
+         error_type target: missing_label -->
+    <form class="newsletter" id="newsletter">
+      <h2>Get weekly deals by email</h2>
+      <input type="email" name="newsletter-email" placeholder="Email address" />
+      <input type="text" name="newsletter-zip" placeholder="ZIP code" />
+      <button type="submit">Sign up</button>
+    </form>
+
+    <!-- Clean: a real, well-labeled checkout form for Atlas's "fill"
+         action to exercise, including a sensitive field that Atlas's
+         PII-stripping must mask before it reaches the LLM. -->
+    <section id="checkout" style="margin-top: 32px;">
+      <h2>Checkout</h2>
+      <form>
+        <div style="margin-bottom: 8px;">
+          <label for="full-name">Full name</label><br />
+          <input id="full-name" name="full-name" type="text" />
+        </div>
+        <div style="margin-bottom: 8px;">
+          <label for="email">Email</label><br />
+          <input id="email" name="email" type="email" />
+        </div>
+        <div style="margin-bottom: 8px;">
+          <label for="card-number">Card number</label><br />
+          <!-- Sensitive — Atlas's sanitize.py should redact any typed
+               value here before it's sent to the LLM or logged. -->
+          <input id="card-number" name="card-number" type="text" placeholder="•••• •••• •••• ••••" />
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <div class="checkout-bar">
+    <button id="checkout-btn" style="padding: 10px 24px; font-size: 14px;">
+      Proceed to Checkout
+    </button>
+  </div>
+
+  <footer>&copy; 2026 Riverbend Market — demo site for Atlas testing only.</footer>
+
+  <script>
+    function addToCart(product) {
+      const link = document.getElementById('cart-link')
+      const match = link.textContent.match(/\d+/)
+      const count = match ? parseInt(match[0], 10) + 1 : 1
+      link.textContent = `Cart (${count})`
+    }
+
+    document.querySelectorAll('[data-product]').forEach((btn) => {
+      btn.addEventListener('click', () => addToCart(btn.dataset.product))
+    })
+
+    document.getElementById('checkout-btn').addEventListener('click', () => {
+      alert('This is a demo — checkout is not wired to anything real.')
+    })
+  </script>
+</body>
+</html>
