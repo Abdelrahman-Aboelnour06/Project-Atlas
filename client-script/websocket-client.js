@@ -94,22 +94,23 @@ const connect = async ({ baseUrl: base, apiKey: key } = {}) => {
 }
 
 const sendCommand = ({ url, domMap, command }) => {
-  if (!socket || socket.readyState !== WebSocket.OPEN) {
-    return Promise.reject(new Error('Socket is not connected'))
-  }
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+        return Promise.reject(new Error('Socket is not connected'))
+    }
 
-  return new Promise((resolve, reject) => {
-    pendingQueue.push({ resolve, reject })
-    socket.send(
-      JSON.stringify({
-        session_id: sessionId,
-        api_key: apiKey,
-        url,
-        dom_map: domMap,
-        command,
-      })
-    )
-  })
+    return new Promise((resolve, reject) => {
+        pendingQueue.push({ resolve, reject })
+        socket.send(
+            JSON.stringify({
+                session_id: sessionId,
+                api_key: apiKey,
+                url,
+                dom_map: domMap,
+                command,
+                type: 'command',
+            })
+        )
+    })
 }
 
 // Simplify pipeline (Contract 5) — same connection, same one-at-a-time

@@ -5,8 +5,7 @@
 
 const API_KEY_STORAGE_KEY = 'atlasApiKey'
 const BASE_URL_STORAGE_KEY = 'atlasBaseUrl'
-const DEFAULT_BASE_URL = 'http://localhost:8000'
-
+const CONTENT_DEFAULT_BASE_URL = 'http://localhost:8000'
 let active = false
 let stopObserving = null
 
@@ -17,7 +16,8 @@ const getStoredSettings = () =>
       (result) => {
         resolve({
           apiKey: result[API_KEY_STORAGE_KEY] || null,
-          baseUrl: result[BASE_URL_STORAGE_KEY] || DEFAULT_BASE_URL,
+          baseUrl: result[BASE_URL_STORAGE_KEY] || CONTENT_DEFAULT_BASE_URL,
+
         })
       }
     )
@@ -137,6 +137,19 @@ const activate = async () => {
     return
   }
 
+  // Render the local fallback list immediately — this only needs the DOM
+  // serializer, not the backend, so it must not be gated behind a
+  // successful socket connection below.
+  const domMap = window.AtlasSerializer.serialize()
+  window.AtlasSidebar.renderElements(window.AtlasSidebar.deriveDisplayItems(domMap))
+
+  stopObserving = window.AtlasSerializer.observe((updatedMap) => {
+    window.AtlasSidebar.renderElements(window.AtlasSidebar.deriveDisplayItems(updatedMap))
+    renderSimplified(updatedMap)
+  })
+
+  active = true
+
   window.AtlasSidebar.setStatus('Connecting...', 'info')
 
   try {
@@ -145,25 +158,12 @@ const activate = async () => {
       window.AtlasSidebar.setStatus('Disconnected — reconnecting...', 'error')
     })
 
-    const domMap = window.AtlasSerializer.serialize()
-    // Show the raw fallback immediately (instant, no round-trip), then
-    // swap in the simplify pipeline's plain-language labels once they
-    // arrive — avoids a blank sidebar while the LLM call is in flight.
-    window.AtlasSidebar.renderElements(window.AtlasSidebar.deriveDisplayItems(domMap))
     window.AtlasSidebar.setStatus('Ready.', 'ok')
     renderSimplified(domMap)
-
-    stopObserving = window.AtlasSerializer.observe((updatedMap) => {
-      window.AtlasSidebar.renderElements(window.AtlasSidebar.deriveDisplayItems(updatedMap))
-      renderSimplified(updatedMap)
-    })
-
-    active = true
   } catch (err) {
     window.AtlasSidebar.setStatus(`Couldn't connect: ${err.message}`, 'error')
   }
 }
-
 const deactivate = () => {
   if (!active) {
     window.AtlasSidebar.unmount()

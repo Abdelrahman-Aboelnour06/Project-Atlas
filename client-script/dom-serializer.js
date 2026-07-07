@@ -83,8 +83,9 @@ const serializeNode = (el) => {
 
 const serialize = () => {
   const nodes = Array.from(document.querySelectorAll(INTERACTIVE_SELECTOR))
-    .filter(isVisible)
-    .map(serializeNode)
+      .filter((el) => !el.closest('#atlas-sidebar-root'))
+      .filter(isVisible)
+      .map(serializeNode)
 
   return nodes
 }
