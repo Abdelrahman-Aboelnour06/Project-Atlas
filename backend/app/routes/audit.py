@@ -2,7 +2,8 @@
 Task 8 — Error Logging Endpoint
 POST /v1/audit/log
 
-Validates the tenant API key (via the same key_hash used by the WS pipeline),
+Validates the tenant API key (via the shared validate_api_key() in
+app/db/connection.py — same one the WS pipeline and /v1/session/start use),
 inserts one row per flagged accessibility error into `error_logs`, and
 returns how many rows were written.
 
@@ -15,11 +16,11 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.connection import get_db, hash_key
-from app.db.models import ApiKey, ErrorLog
+from app.db.connection import get_db
+from app.db import connection as db_connection
+from app.db.models import ErrorLog
 
 router = APIRouter()
 
@@ -52,17 +53,19 @@ async def log_audit_errors(
     """
     Validate the API key → 401 if invalid, then insert each flagged error
     into `error_logs` with the resolved tenant_id. Returns the row count.
-    """
-    key_hash = hash_key(payload.api_key)
-    result = await db.execute(
-        select(ApiKey).where(
-            ApiKey.key_hash == key_hash,
-            ApiKey.is_active == True,  # noqa: E712
-        )
-    )
-    api_key_row = result.scalar_one_or_none()
 
-    if api_key_row is None:
+    BUGFIX: this used to do its own key_hash + db.execute(select(ApiKey)...)
+    lookup instead of calling validate_api_key(). Harmless against a real
+    DB, but it meant this route was invisible to
+    patch("app.db.connection.validate_api_key", ...) in tests, so an invalid
+    key here was actually being checked against the test's generic mocked
+    db.execute() (which "finds" a row for any query) instead of the
+    properly key-aware mock — always returning 200. Routing through
+    validate_api_key() (which already returns the tenant_id UUID directly)
+    fixes the test and drops the duplicated lookup logic.
+    """
+    tenant_id = await db_connection.validate_api_key(db, payload.api_key)
+    if not tenant_id:
         raise HTTPException(status_code=401, detail="Invalid or inactive API key.")
 
     if not payload.errors:
@@ -71,7 +74,7 @@ async def log_audit_errors(
     for err in payload.errors:
         db.add(
             ErrorLog(
-                tenant_id=api_key_row.tenant_id,
+                tenant_id=tenant_id,
                 url=payload.url,
                 element_id=err.element_id,
                 error_type=err.error_type,

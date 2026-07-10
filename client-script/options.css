@@ -1,0 +1,132 @@
+/* options.css — standalone page (not scoped like sidebar.css, since this
+   never shares a document with a host page). Deliberately larger type and
+   focus rings than a typical settings page: Atlas is an accessibility
+   product, so its own admin surface should model the same principles. */
+
+:root {
+  color-scheme: dark;
+  --atlas-bg: #1b1d22;
+  --atlas-panel: #24262c;
+  --atlas-border: #2f323a;
+  --atlas-text: #f4f4f6;
+  --atlas-muted: #aeb1b8;
+  --atlas-accent: #6ea8fe;
+  --atlas-ok: #6fdc8c;
+  --atlas-error: #ff8a80;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--atlas-bg);
+  color: var(--atlas-text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.atlas-options {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 40px 24px 64px;
+}
+
+.atlas-options-header h1 {
+  font-size: 24px;
+  margin: 0 0 8px;
+}
+
+.atlas-options-header p {
+  color: var(--atlas-muted);
+  margin: 0 0 32px;
+}
+
+label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.atlas-hint {
+  display: block;
+  font-weight: 400;
+  font-size: 13px;
+  color: var(--atlas-muted);
+  margin-top: 2px;
+}
+
+input[type="text"],
+input[type="password"] {
+  width: 100%;
+  background: var(--atlas-panel);
+  border: 1px solid var(--atlas-border);
+  border-radius: 8px;
+  color: var(--atlas-text);
+  padding: 12px 14px;
+  font-size: 16px;
+  margin-bottom: 20px;
+}
+
+.atlas-key-row {
+  display: flex;
+  gap: 8px;
+}
+
+.atlas-key-row input {
+  margin-bottom: 0;
+}
+
+.atlas-key-row + label,
+.atlas-key-row {
+  margin-bottom: 20px;
+}
+
+/* Visible focus ring everywhere — never rely on browser default alone */
+input:focus,
+button:focus {
+  outline: 3px solid var(--atlas-accent);
+  outline-offset: 2px;
+}
+
+button {
+  font-size: 15px;
+  font-family: inherit;
+  border-radius: 8px;
+  padding: 12px 18px;
+  cursor: pointer;
+  border: 1px solid var(--atlas-border);
+}
+
+#toggle-visibility {
+  background: var(--atlas-panel);
+  color: var(--atlas-text);
+  white-space: nowrap;
+}
+
+.atlas-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+#save-btn {
+  background: var(--atlas-accent);
+  color: #10131a;
+  font-weight: 700;
+  border-color: var(--atlas-accent);
+}
+
+.atlas-secondary {
+  background: transparent;
+  color: var(--atlas-text);
+}
+
+#atlas-status {
+  min-height: 20px;
+  margin-top: 16px;
+  font-size: 14px;
+}
+
+#atlas-status[data-kind="ok"] { color: var(--atlas-ok); }
+#atlas-status[data-kind="error"] { color: var(--atlas-error); }

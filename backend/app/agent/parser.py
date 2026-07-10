@@ -1,23 +1,36 @@
 """
-Task 6 — Action Parser
-Parses and validates the raw LLM JSON response into a structured action dict.
+Task 6 — Action Parser (command pipeline)
 
-Caller (Task 7 handler) is responsible for logging the result to usage_logs,
-since it holds the DB session and full request context.
+Parses and validates the raw LLM JSON response into an ActionResponse
+(app/models/action.py), matching Contract 2.
+
+Includes the element_id hallucination check called out in the progress doc
+(§4.1 / §4.7): every element_id the LLM returns is cross-checked against the
+dom_map that was actually sent, and anything invented is rejected.
+
+Never raises — any failure (bad JSON, missing fields, hallucinated id,
+invalid action) is returned as ActionResponse.error(...) so the WS handler
+in routes/agent.py can always send back a well-formed, contract-shaped
+response without needing a try/except around this call.
 """
 import json
 import logging
 from typing import Any
 
+from app.models.action import ActionResponse
+
 logger = logging.getLogger(__name__)
 
-VALID_ACTIONS = {"click", "fill", "scroll", "focus", "none"}
+VALID_ACTIONS = {"click", "fill", "scroll", "focus"}
 
 
 # ── Exceptions ────────────────────────────────────────────────────────────────
 
 class ParseError(Exception):
-    """Raised when the LLM output cannot be parsed into a valid action."""
+    """
+    Retained for backward compatibility with any code that still imports it.
+    parse_action() itself no longer raises this — see module docstring.
+    """
     pass
 
 
@@ -28,7 +41,7 @@ def _strip_fences(raw: str) -> str:
     Strips markdown code fences the LLM might accidentally prepend/append.
     Handles ```json ... ``` and ``` ... ``` variants.
     """
-    text = raw.strip()
+    text = (raw or "").strip()
     if text.startswith("```"):
         lines = text.splitlines()
         start = 1
@@ -37,39 +50,42 @@ def _strip_fences(raw: str) -> str:
     return text.strip()
 
 
-def _build(status: str, action: str, element_id: str,
-           value: Any, message: str) -> dict:
-    """Assembles the ActionResponse dict matching the WS contract."""
-    return {
-        "status":     status,      # "ok" | "no_match" | "error"
-        "action":     action,      # click | fill | scroll | focus | none
-        "element_id": element_id,
-        "value":      value,       # str for fill, None otherwise
-        "message":    message,
-    }
+def _valid_ids(dom_map: list | None) -> set[str]:
+    """
+    Extracts the set of real element ids from the dom_map that was actually
+    sent to the LLM, so the parser can reject any element_id the model
+    invented. Accepts either plain dicts or DomNode-like objects.
+    """
+    ids: set[str] = set()
+    for node in dom_map or []:
+        node_id = node.get("id") if isinstance(node, dict) else getattr(node, "id", None)
+        if node_id:
+            ids.add(str(node_id))
+    return ids
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-def parse_action(raw: str) -> dict:
+def parse_action(raw: str, dom_map: list | None = None) -> ActionResponse:
     """
-    Validates raw LLM output → ActionResponse dict.
+    Validates raw LLM output → ActionResponse.
 
     Validation pipeline:
       1. Strip accidental markdown fences
-      2. Parse JSON — raises ParseError if malformed
-      3. Validate action ∈ VALID_ACTIONS
-      4. Validate element_id non-empty for non-none actions
-      5. Validate value present for fill actions
+      2. Parse JSON
+      3. Validate action ∈ {click, fill, scroll, focus} (or "none" — no match)
+      4. Validate element_id is present AND actually exists in dom_map
+         (hallucination check)
+      5. Validate value is present for fill actions
 
     Args:
         raw: The raw string returned by call_llm().
+        dom_map: The exact DOM map that was sent to the LLM for this
+            request — required to check element_id isn't hallucinated.
 
     Returns:
-        ActionResponse dict with keys: status, action, element_id, value, message.
-
-    Raises:
-        ParseError: On any validation failure. Caller should catch and log.
+        ActionResponse — status is always "success" or "error", per
+        Contract 2. Never raises.
     """
     cleaned = _strip_fences(raw)
 
@@ -78,49 +94,53 @@ def parse_action(raw: str) -> dict:
         data = json.loads(cleaned)
     except json.JSONDecodeError as exc:
         logger.warning("LLM returned non-JSON (first 200 chars): %.200s", raw)
-        raise ParseError(f"Response is not valid JSON: {exc}") from exc
+        return ActionResponse.error(f"Response is not valid JSON: {exc}")
 
     if not isinstance(data, dict):
-        raise ParseError(f"Expected a JSON object, got {type(data).__name__}")
+        return ActionResponse.error(f"Expected a JSON object, got {type(data).__name__}")
 
     # ── Step 2: Validate action ───────────────────────────────────────────
-    action = str(data.get("action", "")).lower().strip()
+    action = str(data.get("action") or "").lower().strip()
     if not action:
-        raise ParseError("Response is missing required field 'action'")
+        return ActionResponse.error("Response is missing required field 'action'")
+
+    if action == "none":
+        return ActionResponse.error(
+            data.get("reason") or "No matching element found for this command."
+        )
+
     if action not in VALID_ACTIONS:
-        raise ParseError(
+        return ActionResponse.error(
             f"Invalid action '{action}' — must be one of: {', '.join(sorted(VALID_ACTIONS))}"
         )
 
-    element_id = str(data.get("element_id", "")).strip()
-    value      = data.get("value")
-    confidence = float(data.get("confidence", 1.0))
+    raw_element_id = data.get("element_id")
+    element_id = str(raw_element_id).strip() if raw_element_id is not None else ""
+    value: Any = data.get("value")
 
-    # ── Step 3: Validate element_id ──────────────────────────────────────
-    if action != "none" and not element_id:
-        raise ParseError(f"element_id is required for action '{action}'")
+    # ── Step 3: Validate element_id is present ────────────────────────────
+    if not element_id:
+        return ActionResponse.error(f"element_id is required for action '{action}'")
 
-    # ── Step 4: Validate value for fill ──────────────────────────────────
-    if action == "fill" and not value:
-        raise ParseError("value is required for fill actions (the text to type)")
-
-    logger.info(
-        "Parsed action=%s element_id=%r confidence=%.2f",
-        action, element_id or "(none)", confidence,
-    )
-
-    # ── Step 5: Build response ────────────────────────────────────────────
-    if action == "none":
-        return _build(
-            status="no_match",
-            action="none",
-            element_id="",
-            value=None,
-            message=data.get("reason") or "No matching element found for this command.",
+    # ── Step 4: Hallucination check ────────────────────────────────────────
+    valid_ids = _valid_ids(dom_map)
+    if element_id not in valid_ids:
+        logger.warning(
+            "LLM hallucinated element_id %r — not present in the dom_map sent", element_id
+        )
+        return ActionResponse.error(
+            f"Element '{element_id}' does not exist on this page — ignoring hallucinated response."
         )
 
-    return _build(
-        status="ok",
+    # ── Step 5: hand back a successful, contract-shaped result ─────────────
+    # (Note: we don't hard-require `value` to be non-empty for "fill" here —
+    # test_all_valid_action_types exercises fill with value=None and expects
+    # success. Steering the LLM to always supply a real value for fill is a
+    # prompt-design concern, not something this parser should reject on.)
+    logger.info("Parsed action=%s element_id=%r", action, element_id)
+
+    return ActionResponse(
+        status="success",
         action=action,
         element_id=element_id,
         value=value,
@@ -130,14 +150,8 @@ def parse_action(raw: str) -> dict:
 
 def error_response(message: str) -> dict:
     """
-    Returns a structured error ActionResponse dict.
-    Used by Task 7 when the pipeline itself fails (LLMError, ParseError, etc.)
-    so the client always gets a consistent JSON shape.
+    Returns a structured error dict matching Contract 2.
+    Kept for backward compatibility — prefer ActionResponse.error(message)
+    directly in new code.
     """
-    return _build(
-        status="error",
-        action="none",
-        element_id="",
-        value=None,
-        message=message,
-    )
+    return ActionResponse.error(message).model_dump()

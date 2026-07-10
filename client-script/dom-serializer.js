@@ -1,0 +1,115 @@
+// dom-serializer.js
+// Task A — owns all DOM READING.
+// Scans the page for interactive/semantic elements, tags each one with a
+// stable synthetic id (data-atlas-id), and produces the flat array defined
+// in docs/contracts.md Contract 3.
+//
+// Public API (attached to window.AtlasSerializer so other content scripts
+// loaded after this one can use it without a bundler):
+//   AtlasSerializer.serialize() -> DomNode[]
+//   AtlasSerializer.getElementByAtlasId(id) -> HTMLElement | null
+//   AtlasSerializer.observe(onChange) -> stops a MutationObserver-driven
+//     re-scan, debounced 300ms per docs/conventions.md DEBOUNCE_MS
+
+const ATLAS_ID_ATTR = 'data-atlas-id'
+const DEBOUNCE_MS = 300
+
+// Elements we care about — matches Contract 3's "only interactive/semantic"
+// rule.
+const INTERACTIVE_SELECTOR = [
+  'button',
+  'a[href]',
+  'input',
+  'select',
+  'textarea',
+  'form',
+  '[role]',
+  '[onclick]',
+  '[tabindex]',
+].join(',')
+
+// Typed-in values must never reach the LLM — only labels/placeholders.
+// input types considered sensitive per README Privacy & Safety section.
+const SENSITIVE_INPUT_TYPES = new Set(['password', 'email', 'tel'])
+
+let idCounter = 0
+
+const nextAtlasId = () => `atlas-${idCounter++}`
+
+const isVisible = (el) => {
+  const style = window.getComputedStyle(el)
+  if (style.display === 'none' || style.visibility === 'hidden') return false
+  if (style.opacity === '0') return false
+  const rect = el.getBoundingClientRect()
+  return rect.width > 0 && rect.height > 0
+}
+
+const truncate = (str, max = 200) => {
+  if (!str) return null
+  const trimmed = str.trim()
+  if (!trimmed) return null
+  return trimmed.length > max ? `${trimmed.slice(0, max)}...` : trimmed
+}
+
+// Strips values for sensitive inputs — only structural info (label,
+// placeholder) should ever be sent, never what the user typed.
+const safeInnerText = (el) => {
+  if (el.tagName === 'INPUT') {
+    const type = (el.getAttribute('type') || 'text').toLowerCase()
+    if (SENSITIVE_INPUT_TYPES.has(type) || type === 'password') return null
+  }
+  return truncate(el.innerText || el.textContent)
+}
+
+const serializeNode = (el) => {
+  let atlasId = el.getAttribute(ATLAS_ID_ATTR)
+  if (!atlasId) {
+    atlasId = nextAtlasId()
+    el.setAttribute(ATLAS_ID_ATTR, atlasId)
+  }
+
+  return {
+    id: atlasId,
+    tag: el.tagName.toLowerCase(),
+    type: el.getAttribute('type') || null,
+    inner_text: safeInnerText(el),
+    placeholder: el.getAttribute('placeholder') || null,
+    aria_label: el.getAttribute('aria-label') || null,
+    href: el.getAttribute('href') || null,
+    name: el.getAttribute('name') || null,
+    role: el.getAttribute('role') || null,
+  }
+}
+
+const serialize = () => {
+  const nodes = Array.from(document.querySelectorAll(INTERACTIVE_SELECTOR))
+      .filter((el) => !el.closest('#atlas-sidebar-root'))
+      .filter(isVisible)
+      .map(serializeNode)
+
+  return nodes
+}
+
+const getElementByAtlasId = (atlasId) =>
+  document.querySelector(`[${ATLAS_ID_ATTR}="${CSS.escape(atlasId)}"]`)
+
+// Debounced MutationObserver so SPA pages (React/Vue re-renders) keep the
+// sidebar in sync without hammering serialize() on every DOM tick.
+const observe = (onChange) => {
+  let timer = null
+  const observer = new MutationObserver(() => {
+    if (timer) clearTimeout(timer)
+    timer = setTimeout(() => onChange(serialize()), DEBOUNCE_MS)
+  })
+
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['style', 'class', 'hidden', 'disabled'],
+  })
+
+  return () => observer.disconnect()
+}
+
+window.AtlasSerializer = { serialize, getElementByAtlasId, observe }
