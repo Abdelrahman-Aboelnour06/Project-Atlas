@@ -5,10 +5,16 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama").lower()
-LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://localhost:11434")
-LLM_MODEL = os.getenv("LLM_MODEL", "llama3")
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "nvidia_nim").lower()
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://integrate.api.nvidia.com/v1")
+LLM_MODEL = os.getenv("LLM_MODEL", "meta/llama-3.1-70b-instruct")
 LLM_API_KEY = os.getenv("LLM_API_KEY", "")
+
+if LLM_PROVIDER != "ollama" and not LLM_API_KEY:
+    raise RuntimeError(
+        f"LLM_PROVIDER is '{LLM_PROVIDER}' but LLM_API_KEY is not set. "
+        "Set LLM_API_KEY in .env, or set LLM_PROVIDER=ollama to use a local model."
+    )
 
 class LLMError(Exception):
     pass
