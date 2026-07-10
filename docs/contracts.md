@@ -34,8 +34,22 @@ Message sent **from the browser snippet → FastAPI backend**.
 | `api_key` | `string` | Tenant API key — used to authenticate the request |
 | `url` | `string` | Current page URL — used for audit logging |
 | `dom_map` | `array` | Serialized DOM nodes — see Contract 3 |
-| `type` | `"command" \| "simplify"` | Which pipeline to run. Defaults to `"command"` if omitted, for backward compatibility. |
-| `command` | `string` | Raw transcribed voice command. Required when `type` is `"command"`; omit or send `""` when `type` is `"simplify"`. |
+| `type` | `"command" \| "simplify"` | Which pipeline to run. **Required — no default.** Omitting it makes the whole message invalid (see error handling below). |
+| `command` | `string` | Raw transcribed voice command. Required field on every message (send `""` when `type` is `"simplify"`). |
+
+### WebSocket error handling
+
+Malformed JSON, a message that fails validation (including a missing/invalid
+`type`), and an invalid or inactive `api_key` **all return a JSON reply on
+the same connection and keep it open** — they never close the socket:
+
+```json
+{ "status": "error", "message": "human-readable reason" }
+```
+
+This lets the extension retry with a corrected message without having to
+reconnect. The socket only closes on a genuinely unhandled server exception
+(WS close code `1011`) or a normal client/browser disconnect.
 
 ---
 
@@ -213,3 +227,4 @@ Response:
 |---------|------|--------|
 | v1.0 | Day 1 — Hour 1 | Initial contracts locked |
 | v1.1 | Day 2 — Hour 0 | `id` = synthetic `data-atlas-id`, not native `id`; added `type` field to Contract 1; added Contract 5 (simplify response + audit log) |
+| v1.2 | Day 2 — Hour 4 | `type` corrected to **required, no default** (matches `AgentMessage`); added WS error-handling section — invalid/malformed messages and bad API keys return a JSON error and keep the connection open, they don't close the socket |
