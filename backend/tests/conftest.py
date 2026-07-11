@@ -51,6 +51,24 @@ DEMO_API_KEY  = "atlas_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6"
 WRONG_API_KEY = "atlas_thisiswrongdonotuse000000000000"
 
 
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """
+    Clears app.agent.rate_limiter state before every test.
+
+    The WS test clients (test_websocket.py's `ws_client`) are
+    module-scoped and reused across many test functions that all
+    authenticate as DEMO_API_KEY, so without a reset the rate limiter's
+    in-memory bucket for that tenant would accumulate across the whole
+    module — and eventually across the whole test session — rather than
+    resetting per test the way a real per-tenant limiter should be
+    exercised in isolation.
+    """
+    from app.agent import rate_limiter
+    rate_limiter.reset()
+    yield
+
+
 # ── Shared DOM fixtures ───────────────────────────────────────────────────────
 @pytest.fixture
 def demo_api_key():

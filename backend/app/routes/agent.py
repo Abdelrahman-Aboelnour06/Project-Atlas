@@ -6,6 +6,7 @@ Request lifecycle per message:
     -> parse JSON                    -> error (connection stays open) on failure
     -> validate shape (AgentMessage) -> error (connection stays open) on failure
     -> validate_api_key (every msg)  -> error (connection stays open) on failure
+    -> rate_limiter.check(tenant_id) -> error (connection stays open) if exceeded
     -> strip_pii_from_dom
     -> dispatch by `type`:
          "simplify" -> build_simplify_prompt -> call_llm -> parse_simplify_response
@@ -14,13 +15,12 @@ Request lifecycle per message:
     -> send structured JSON response back to the client
 
 NOTE on error handling vs. the original progress-doc description: the doc
-said an invalid API key should close the socket with code 4401. The shared
-test suite (tests/test_websocket.py) instead expects a `status: "error"`
-JSON reply with the connection kept open, so a frontend can recover from
-one bad message without having to reconnect. This file follows the tests.
-If that's not actually what the team wants, docs/contracts.md's error
-section should be updated to match (flagging for Person 2 / whoever owns
-that doc). Only a truly unhandled exception now closes the socket (1011).
+said an invalid API key should close the socket with code 4401. This file
+instead sends a `status: "error"` JSON reply and keeps the connection open,
+so a frontend can recover from one bad message without having to
+reconnect — docs/contracts.md v1.2 documents this as the settled contract
+(see its "WebSocket error handling" section and versioning table). Only a
+truly unhandled exception now closes the socket (1011).
 
 Module-qualified imports (e.g. `from app.agent import llm_client` + calling
 `llm_client.call_llm(...)`) are used deliberately instead of
@@ -45,6 +45,7 @@ from app.agent import prompt as command_prompt
 from app.agent import parser as command_parser
 from app.agent import simplify_prompt
 from app.agent import simplify_parser
+from app.agent import rate_limiter
 from app.agent.sanitize import strip_pii_from_dom, trim_log_payload
 
 from app.models.request import AgentMessage
@@ -90,6 +91,21 @@ async def websocket_endpoint(websocket: WebSocket, db: AsyncSession = Depends(ge
             tenant_id = await db_connection.validate_api_key(db, message.api_key)
             if not tenant_id:
                 await websocket.send_json({"status": "error", "message": "Invalid or inactive API key."})
+                continue
+
+            # 3.5. Rate limit — coarse per-tenant circuit breaker (status doc §2.6).
+            # Keyed on tenant_id (not the raw api_key) so it's tied to the
+            # resolved account, checked only after auth succeeds.
+            if not rate_limiter.check(tenant_id):
+                logger.warning("Rate limit exceeded for tenant_id=%s", tenant_id)
+                if message.type == "simplify":
+                    await websocket.send_json(_simplify_error(
+                        "Rate limit exceeded — please slow down and try again shortly."
+                    ))
+                else:
+                    await websocket.send_json(ActionResponse.error(
+                        "Rate limit exceeded — please slow down and try again shortly."
+                    ).model_dump())
                 continue
 
             # 4. Shield the DOM map from PII before it reaches the LLM or gets logged

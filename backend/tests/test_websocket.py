@@ -242,3 +242,76 @@ class TestSimplifyFlow:
             })
             r_command = ws.receive_json()
             assert r_command["status"] == "success"
+
+
+# ── Rate limiting ──────────────────────────────────────────────────────────────
+# Wiring only — app.agent.rate_limiter's own sliding-window logic has its
+# own focused unit tests in test_rate_limiter.py. These confirm
+# routes/agent.py actually calls it, in the right order, with the right
+# response shape.
+
+class TestRateLimiting:
+    def _command_payload(self):
+        return {
+            "session_id": "test-004",
+            "api_key":    DEMO_API_KEY,
+            "url":        "https://demo.atlas.com",
+            "dom_map":    SAMPLE_DOM_MAP,
+            "command":    "click checkout",
+            "type":       "command",
+        }
+
+    def _simplify_payload(self):
+        return {
+            "session_id": "test-005",
+            "api_key":    DEMO_API_KEY,
+            "url":        "https://demo.atlas.com",
+            "dom_map":    SAMPLE_DOM_MAP,
+            "command":    "",
+            "type":       "simplify",
+        }
+
+    def test_rate_limited_command_returns_error(self, ws_client):
+        with patch("app.agent.rate_limiter.check", return_value=False):
+            with ws_client.websocket_connect("/v1/agent") as ws:
+                ws.send_json(self._command_payload())
+                response = ws.receive_json()
+        assert response["status"] == "error"
+        assert "rate limit" in response["message"].lower()
+
+    def test_rate_limited_simplify_keeps_contract_5_shape(self, ws_client):
+        """Even a rate-limit rejection must keep Contract 5's shape —
+        `elements` present (empty), not just a bare error dict."""
+        with patch("app.agent.rate_limiter.check", return_value=False):
+            with ws_client.websocket_connect("/v1/agent") as ws:
+                ws.send_json(self._simplify_payload())
+                response = ws.receive_json()
+        assert response["status"] == "error"
+        assert response["elements"] == []
+
+    def test_invalid_key_never_consumes_a_rate_limit_slot(self, ws_client):
+        """Auth runs before the rate limiter — a wrong key must never
+        reach (or spend a slot in) another tenant's bucket."""
+        with patch("app.agent.rate_limiter.check") as mock_check:
+            payload = self._command_payload()
+            payload["api_key"] = WRONG_API_KEY
+            with ws_client.websocket_connect("/v1/agent") as ws:
+                ws.send_json(payload)
+                response = ws.receive_json()
+        assert response["status"] == "error"
+        mock_check.assert_not_called()
+
+    def test_connection_survives_a_rate_limit_rejection(self, ws_client):
+        """Rate-limited requests follow the same rule as every other
+        error on this endpoint: reply and keep the socket open, not
+        close it — the next message on the same connection should still
+        succeed once the limiter allows it again."""
+        with ws_client.websocket_connect("/v1/agent") as ws:
+            with patch("app.agent.rate_limiter.check", return_value=False):
+                ws.send_json(self._command_payload())
+                blocked = ws.receive_json()
+            assert blocked["status"] == "error"
+
+            ws.send_json(self._command_payload())
+            allowed = ws.receive_json()
+            assert allowed["status"] == "success"

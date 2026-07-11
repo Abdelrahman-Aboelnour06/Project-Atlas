@@ -19,6 +19,29 @@ if LLM_PROVIDER != "ollama" and not LLM_API_KEY:
 class LLMError(Exception):
     pass
 
+async def ping_llm(timeout: float = 5.0) -> bool:
+    """
+    Lightweight LLM connectivity check for GET /health (Task 3/4 in the
+    original stub). Lists available models instead of running a real
+    generation, so polling /health doesn't burn LLM tokens or wait on a
+    full completion every time something checks liveness.
+
+    Never raises — any failure (network error, timeout, non-200, bad
+    provider config) just means "unavailable".
+    """
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            if LLM_PROVIDER == "ollama":
+                response = await client.get(f"{LLM_BASE_URL}/api/tags")
+            else:
+                response = await client.get(
+                    f"{LLM_BASE_URL}/models",
+                    headers={"Authorization": f"Bearer {LLM_API_KEY}"},
+                )
+            return response.status_code == 200
+    except Exception:
+        return False
+
 async def call_llm(prompt: str) -> str:
     max_retries = 2
     

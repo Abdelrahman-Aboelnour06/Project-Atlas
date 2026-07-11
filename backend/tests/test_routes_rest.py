@@ -40,7 +40,8 @@ def client():
     app.dependency_overrides[get_db] = override_get_db
 
     with patch("app.db.connection.validate_api_key",
-               new=AsyncMock(side_effect=lambda db, key: key == DEMO_API_KEY)):
+               new=AsyncMock(side_effect=lambda db, key: key == DEMO_API_KEY)), \
+         patch("app.agent.llm_client.ping_llm", new=AsyncMock(return_value=True)):
         with TestClient(app) as c:
             yield c
 
@@ -67,6 +68,27 @@ class TestHealth:
         r = client.get("/health")
         assert r.status_code != 401
         assert r.status_code != 403
+
+    def test_db_ok_when_reachable(self, client):
+        """`db` is a real SELECT 1 check now, not the old hardcoded stub."""
+        r = client.get("/health")
+        assert r.json()["db"] == "ok"
+
+    def test_llm_ok_when_reachable(self, client):
+        """`llm` is a real ping_llm() check now, not the old hardcoded stub."""
+        r = client.get("/health")
+        assert r.json()["llm"] == "ok"
+
+    def test_llm_unavailable_when_ping_fails(self, client):
+        """
+        Layers a second patch on top of the fixture's default (True) for
+        just this test, to prove the endpoint reports "unavailable"
+        instead of crashing when the provider can't be reached — the
+        actual failure mode ping_llm() exists to catch.
+        """
+        with patch("app.agent.llm_client.ping_llm", new=AsyncMock(return_value=False)):
+            r = client.get("/health")
+        assert r.json()["llm"] == "unavailable"
 
 
 # ── POST /v1/session/start ────────────────────────────────────────────────────
