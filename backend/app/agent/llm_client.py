@@ -5,13 +5,42 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama").lower()
-LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://localhost:11434")
-LLM_MODEL = os.getenv("LLM_MODEL", "llama3")
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "nvidia_nim").lower()
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://integrate.api.nvidia.com/v1")
+LLM_MODEL = os.getenv("LLM_MODEL", "meta/llama-3.1-70b-instruct")
 LLM_API_KEY = os.getenv("LLM_API_KEY", "")
+
+if LLM_PROVIDER != "ollama" and not LLM_API_KEY:
+    raise RuntimeError(
+        f"LLM_PROVIDER is '{LLM_PROVIDER}' but LLM_API_KEY is not set. "
+        "Set LLM_API_KEY in .env, or set LLM_PROVIDER=ollama to use a local model."
+    )
 
 class LLMError(Exception):
     pass
+
+async def ping_llm(timeout: float = 5.0) -> bool:
+    """
+    Lightweight LLM connectivity check for GET /health (Task 3/4 in the
+    original stub). Lists available models instead of running a real
+    generation, so polling /health doesn't burn LLM tokens or wait on a
+    full completion every time something checks liveness.
+
+    Never raises — any failure (network error, timeout, non-200, bad
+    provider config) just means "unavailable".
+    """
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            if LLM_PROVIDER == "ollama":
+                response = await client.get(f"{LLM_BASE_URL}/api/tags")
+            else:
+                response = await client.get(
+                    f"{LLM_BASE_URL}/models",
+                    headers={"Authorization": f"Bearer {LLM_API_KEY}"},
+                )
+            return response.status_code == 200
+    except Exception:
+        return False
 
 async def call_llm(prompt: str) -> str:
     max_retries = 2

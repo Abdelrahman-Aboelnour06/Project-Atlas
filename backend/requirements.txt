@@ -19,7 +19,7 @@ langchain-openai==0.2.10       # also used for Groq-compatible APIs
 ollama==0.4.4                  # Ollama Python client
 
 # ── HTTP client (LLM health checks, Task 4) ────────────────────────────────────
-httpx==0.28.0
+httpx==0.27.2
 
 # ── Utilities ──────────────────────────────────────────────────────────────────
 python-dotenv==1.0.1

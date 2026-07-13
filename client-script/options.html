@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Atlas Settings</title>
+  <link rel="stylesheet" href="options.css" />
+</head>
+<body>
+  <main class="atlas-options">
+    <header class="atlas-options-header">
+      <h1>Atlas Settings</h1>
+      <p>Manage the API key Atlas uses to talk to your backend.</p>
+    </header>
+
+    <form id="atlas-options-form" novalidate>
+      <label for="api-key">
+        API key
+        <span class="atlas-hint">Starts with <code>atlas_</code> — get this from your Atlas dashboard.</span>
+      </label>
+      <div class="atlas-key-row">
+        <input
+          id="api-key"
+          name="api-key"
+          type="password"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="atlas_..."
+        />
+        <button type="button" id="toggle-visibility" aria-label="Show API key">
+          Show
+        </button>
+      </div>
+
+      <label for="base-url">
+        Backend URL
+        <span class="atlas-hint">Only change this if you're not running the default local backend.</span>
+      </label>
+      <input
+        id="base-url"
+        name="base-url"
+        type="text"
+        autocomplete="off"
+        placeholder="http://localhost:8000"
+      />
+
+      <div class="atlas-actions">
+        <button type="submit" id="save-btn">Save settings</button>
+        <button type="button" id="clear-btn" class="atlas-secondary">Clear saved key</button>
+      </div>
+
+      <p id="atlas-status" role="status" aria-live="polite"></p>
+    </form>
+  </main>
+  <script src="options.js"></script>
+</body>
+</html>
