@@ -4,12 +4,13 @@
 > **No team writes code until these are committed.**
 > Any change requires agreement from all 3 teams.
 >
-> **v1.1 update:** `id` in Contract 3 is now the synthetic `data-atlas-id`
+> **v1.2 update:** `id` in Contract 3 is now the synthetic `data-atlas-id`
 > injected by the content script — **never** the element's native HTML
 > `id`. Contract 1 gained a `type` field so one WS connection can carry
 > both the existing "one command → one action" flow and the new
-> "simplify the whole page" flow. Contract 5 is new — it defines the
-> simplify response shape that powers the sidebar (Task J).
+> "simplify the whole page" flow. Contract 5 defines the
+> simplify response shape that powers the sidebar (Task J). 
+> WS Error handling and `type` requirements have been strictly defined.
 
 ---
 
@@ -34,20 +35,20 @@ Message sent **from the browser snippet → FastAPI backend**.
 | `api_key` | `string` | Tenant API key — used to authenticate the request |
 | `url` | `string` | Current page URL — used for audit logging |
 | `dom_map` | `array` | Serialized DOM nodes — see Contract 3 |
-| `type` | `"command" \| "simplify"` | Which pipeline to run. **Required — no default.** Omitting it makes the whole message invalid (see error handling below). |
+| `type` | `"command" \| "simplify"` | Which pipeline to run. **REQUIRED — no default.** Omitting it makes the whole message invalid (see error handling below). |
 | `command` | `string` | Raw transcribed voice command. Required field on every message (send `""` when `type` is `"simplify"`). |
 
-### WebSocket error handling
+### WebSocket Error Handling
 
 Malformed JSON, a message that fails validation (including a missing/invalid
 `type`), and an invalid or inactive `api_key` **all return a JSON reply on
-the same connection and keep it open** — they never close the socket:
+the same connection and keep it open** — they never close the socket with a 4401:
 
 ```json
 { "status": "error", "message": "human-readable reason" }
 ```
 
-This lets the extension retry with a corrected message without having to
+This lets the extension retry with a corrected message (or valid API key) without having to
 reconnect. The socket only closes on a genuinely unhandled server exception
 (WS close code `1011`) or a normal client/browser disconnect.
 
@@ -201,7 +202,7 @@ Request body:
 ```json
 {
   "api_key": "atlas_...",
-  "url":     "https://client-site.com/checkout",
+  "url":     "[https://client-site.com/checkout](https://client-site.com/checkout)",
   "errors": [
     {
       "element_id": "atlas-014",
@@ -227,4 +228,4 @@ Response:
 |---------|------|--------|
 | v1.0 | Day 1 — Hour 1 | Initial contracts locked |
 | v1.1 | Day 2 — Hour 0 | `id` = synthetic `data-atlas-id`, not native `id`; added `type` field to Contract 1; added Contract 5 (simplify response + audit log) |
-| v1.2 | Day 2 — Hour 4 | `type` corrected to **required, no default** (matches `AgentMessage`); added WS error-handling section — invalid/malformed messages and bad API keys return a JSON error and keep the connection open, they don't close the socket |
+| v1.2 | Day 2 — Hour 4 | `type` corrected to **required, no default** (matches `AgentMessage`); WS error-handling defined — invalid/malformed messages and bad API keys return a JSON error and keep the connection open, they don't close the socket. |

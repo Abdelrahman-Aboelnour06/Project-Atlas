@@ -84,3 +84,56 @@ async def log_audit_errors(
 
     await db.commit()
     return AuditLogResponse(logged=len(payload.errors))
+from fastapi import HTTPException
+from sqlalchemy import select
+from app.agent.llm_client import call_llm
+
+@router.get("/fixes")
+async def get_audit_fixes(api_key: str, db: AsyncSession = Depends(get_db)):
+    """
+    Task 9: Fetches logged accessibility errors for the tenant and uses the LLM
+    to generate the corrected HTML code snippets.
+    """
+    # 1. Authenticate using the same module-qualified pattern
+    tenant_id = await db_connection.validate_api_key(db, api_key)
+    if not tenant_id:
+        raise HTTPException(status_code=401, detail="Invalid API Key")
+
+    # 2. Fetch the most recent accessibility errors from the database
+    # (Assuming ErrorLog is imported from app.db.models)
+    query = select(ErrorLog).where(ErrorLog.tenant_id == tenant_id).order_by(ErrorLog.created_at.desc()).limit(10)
+    result = await db.execute(query)
+    errors = result.scalars().all()
+
+    if not errors:
+        return []
+
+    fixes = []
+    
+    # 3. Feed the errors to the LLM to generate remediation code
+    for error in errors:
+        prompt = f"""
+        You are an expert web accessibility engineer.
+        Fix the following accessibility issue for a webpage element.
+        
+        Element ID: {error.element_id}
+        Error Type: {error.error_type}
+        Diagnostic Suggestion: {error.suggestion}
+        
+        Write the corrected HTML code snippet that resolves this issue.
+        Return ONLY the raw HTML code. Do not include markdown fences (```html), explanations, or prose.
+        """
+        try:
+            # We leverage the NVIDIA NIM integration you built
+            fix_code = await call_llm(prompt)
+            fixes.append({
+                "url": error.url,
+                "element_id": error.element_id,
+                "error_type": error.error_type,
+                "fix_code": fix_code.strip("`\n ")
+            })
+        except Exception as e:
+            print(f"LLM Remediation failed for {error.element_id}: {e}")
+            continue
+
+    return fixes
