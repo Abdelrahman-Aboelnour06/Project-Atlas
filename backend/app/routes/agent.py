@@ -88,8 +88,7 @@ async def websocket_endpoint(websocket: WebSocket, db: AsyncSession = Depends(ge
                 continue
 
             # 3. Auth — validated on every message, not just on connect
-            #tenant_id = await db_connection.validate_api_key(db, message.api_key)
-            tenant_id = "temp_hackathon_test_tenant"
+            tenant_id = await db_connection.validate_api_key(db, message.api_key)
             if not tenant_id:
                 await websocket.send_json({"status": "error", "message": "Invalid or inactive API key."})
                 continue
