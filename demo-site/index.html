@@ -1,212 +1,1111 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Riverbend Market — Demo Site</title>
-<style>
-  /* Deliberately generic/cluttered styling — the point of this page is to
-     be a *realistic messy website*, not a polished one. Atlas should be
-     able to make sense of it regardless. */
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    font-family: Arial, Helvetica, sans-serif;
-    color: #222;
-    background: #f2f2f0;
-    font-size: 14px;
-  }
-  header {
-    background: #2c3e50;
-    color: #fff;
-    padding: 10px 20px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  header .logo { font-weight: bold; font-size: 18px; }
-  nav a {
-    color: #fff;
-    text-decoration: none;
-    margin-left: 16px;
-    font-size: 13px;
-  }
-  .banner {
-    background: #e8b923;
-    text-align: center;
-    padding: 6px;
-    font-size: 12px;
-  }
-  main {
-    max-width: 960px;
-    margin: 0 auto;
-    padding: 24px 20px;
-  }
-  .product-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 16px;
-    margin-top: 16px;
-  }
-  .product-card {
-    background: #fff;
-    border: 1px solid #ddd;
-    padding: 12px;
-  }
-  .product-card img { width: 100%; height: 100px; object-fit: cover; background: #ccc; }
-  .price { color: #b3413c; font-weight: bold; }
-  .fake-btn {
-    display: inline-block;
-    background: #2c3e50;
-    color: #fff;
-    padding: 6px 10px;
-    margin-top: 8px;
-    cursor: pointer;
-    font-size: 12px;
-  }
-  form.newsletter { margin-top: 32px; background: #fff; padding: 16px; border: 1px solid #ddd; }
-  form.newsletter input { padding: 6px; margin-right: 8px; }
-  .checkout-bar {
-    position: sticky;
-    bottom: 0;
-    background: #fff;
-    border-top: 2px solid #2c3e50;
-    padding: 12px 20px;
-    display: flex;
-    justify-content: flex-end;
-  }
-  footer { text-align: center; padding: 20px; font-size: 11px; color: #777; }
-</style>
-</head>
-<body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CareLink Pharmacy — Your Health, Simplified</title>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
 
-  <header>
-    <span class="logo">Riverbend Market</span>
-    <nav>
-      <a href="#products">Products</a>
-      <a href="#newsletter">Newsletter</a>
-      <a href="#" id="cart-link">Cart (0)</a>
-    </nav>
-  </header>
+      :root {
+        --blue: #1a56a0;
+        --blue-lt: #e8f0fb;
+        --green: #1a7a4a;
+        --red: #c0392b;
+        --gray-1: #f7f8fa;
+        --gray-2: #e9ecef;
+        --gray-3: #adb5bd;
+        --gray-4: #495057;
+        --text: #1c1e21;
+        --white: #ffffff;
+      }
 
-  <div class="banner">Free shipping over $50 — today only</div>
+      body {
+        font-family: "Segoe UI", Arial, sans-serif;
+        font-size: 15px;
+        color: var(--text);
+        background: var(--gray-1);
+        line-height: 1.5;
+      }
 
-  <main>
-    <h1>Fresh from the valley, straight to your door</h1>
-    <p>
-      Riverbend Market sources produce directly from small farms. Browse
-      today's picks below, or use the search bar to find something
-      specific.
-    </p>
+      /* ── Top bar ── */
+      .topbar {
+        background: var(--blue);
+        color: #fff;
+        font-size: 13px;
+        text-align: center;
+        padding: 6px;
+        letter-spacing: 0.01em;
+      }
 
-    <!-- Clean: labeled input, good for Atlas's "fill" action -->
-    <label for="search-input">Search products</label>
-    <input id="search-input" name="search" type="text" placeholder="e.g. tomatoes" />
+      /* ── Header ── */
+      header {
+        background: var(--white);
+        border-bottom: 2px solid var(--blue);
+        padding: 0 24px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        min-height: 68px;
+        position: sticky;
+        top: 0;
+        z-index: 100;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+      }
 
-    <!-- BROKEN: icon-only button, no aria-label, no visible text.
-         error_type target: missing_aria -->
-    <button style="margin-left:8px;">🔍</button>
+      .logo {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 22px;
+        font-weight: 800;
+        color: var(--blue);
+        white-space: nowrap;
+        text-decoration: none;
+      }
+      .logo-cross {
+        width: 32px;
+        height: 32px;
+        background: var(--blue);
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 20px;
+        font-weight: 900;
+      }
 
-    <section id="products">
-      <h2>Today's picks</h2>
-      <div class="product-grid">
+      .header-search {
+        flex: 1;
+        max-width: 500px;
+        display: flex;
+        gap: 0;
+      }
+      .header-search input {
+        flex: 1;
+        border: 2px solid var(--blue);
+        border-right: none;
+        border-radius: 8px 0 0 8px;
+        padding: 10px 14px;
+        font-size: 15px;
+        outline: none;
+      }
+      .header-search input:focus {
+        border-color: #0e3d7a;
+      }
+      .header-search button {
+        background: var(--blue);
+        color: white;
+        border: none;
+        border-radius: 0 8px 8px 0;
+        padding: 10px 18px;
+        font-size: 15px;
+        cursor: pointer;
+        font-weight: 600;
+      }
+      .header-search button:hover {
+        background: #0e3d7a;
+      }
 
-        <div class="product-card">
-          <!-- BROKEN: no alt text at all. error_type target: missing_alt -->
-          <img src="https://placehold.co/200x100" />
-          <div>Heirloom Tomatoes</div>
-          <div class="price">$4.50 / lb</div>
-          <!-- Clean: real button with clear text -->
-          <button data-product="tomatoes">Add to cart</button>
-        </div>
+      .header-actions {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .header-actions a {
+        color: var(--blue);
+        text-decoration: none;
+        font-size: 13px;
+        font-weight: 600;
+        padding: 8px 12px;
+        border-radius: 6px;
+        white-space: nowrap;
+      }
+      .header-actions a:hover {
+        background: var(--blue-lt);
+      }
+      .cart-btn {
+        background: var(--green);
+        color: white !important;
+        border-radius: 8px !important;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .cart-btn:hover {
+        background: #155c38 !important;
+      }
 
-        <div class="product-card">
-          <img src="https://placehold.co/200x100" alt="Bunch of fresh carrots with green tops" />
-          <div>Rainbow Carrots</div>
-          <div class="price">$3.20 / lb</div>
-          <!-- BROKEN: a <div> styled as a button — no role, no keyboard
-               support, no accessible name beyond its own text (which is
-               fine as a label, but it's not a real interactive element).
-               error_type target: missing_aria -->
-          <div class="fake-btn" onclick="addToCart('carrots')">Add to cart</div>
-        </div>
+      /* ── Nav ── */
+      nav {
+        background: var(--blue);
+        padding: 0 24px;
+        display: flex;
+        gap: 0;
+      }
+      nav a {
+        color: rgba(255, 255, 255, 0.88);
+        text-decoration: none;
+        padding: 12px 16px;
+        font-size: 13px;
+        font-weight: 600;
+        display: block;
+        transition: background 0.15s;
+      }
+      nav a:hover,
+      nav a.active {
+        background: rgba(255, 255, 255, 0.15);
+        color: white;
+      }
 
-        <div class="product-card">
-          <img src="https://placehold.co/200x100" alt="Basket of fresh strawberries" />
-          <div>Strawberries</div>
-          <div class="price">$5.75 / pint</div>
-          <button data-product="strawberries">Add to cart</button>
-        </div>
+      /* ── Alert banner ── */
+      .alert-banner {
+        background: #fff3cd;
+        border-left: 4px solid #f0ad4e;
+        padding: 10px 24px;
+        font-size: 13px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
 
-        <div class="product-card">
-          <!-- BROKEN: empty alt is fine ONLY if decorative, but this is
-               the product photo, i.e. informative — should have real alt
-               text. Left broken on purpose. -->
-          <img src="https://placehold.co/200x100" alt="" />
-          <div>Sourdough Loaf</div>
-          <div class="price">$6.00</div>
-          <button data-product="sourdough">Add to cart</button>
-        </div>
+      /* ── Layout ── */
+      .page-wrap {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 24px 20px;
+        display: grid;
+        grid-template-columns: 220px 1fr;
+        gap: 24px;
+      }
 
+      /* ── Sidebar filters ── */
+      .filters {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .filter-card {
+        background: var(--white);
+        border: 1px solid var(--gray-2);
+        border-radius: 10px;
+        padding: 16px;
+      }
+      .filter-card h3 {
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--gray-4);
+        margin-bottom: 12px;
+        font-weight: 700;
+      }
+      .filter-option {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 0;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      .filter-option input[type="checkbox"] {
+        cursor: pointer;
+      }
+      .filter-apply {
+        width: 100%;
+        background: var(--blue);
+        color: white;
+        border: none;
+        border-radius: 7px;
+        padding: 9px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        margin-top: 10px;
+      }
+      .filter-apply:hover {
+        background: #0e3d7a;
+      }
+      .price-range {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        font-size: 13px;
+      }
+      .price-range input {
+        width: 70px;
+        border: 1px solid var(--gray-2);
+        border-radius: 5px;
+        padding: 5px 8px;
+        font-size: 13px;
+      }
+
+      /* ── Main content ── */
+      .main-col {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+
+      .section-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+      .section-header h2 {
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--text);
+      }
+      .sort-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+      }
+      .sort-row label {
+        color: var(--gray-4);
+      }
+      .sort-row select {
+        border: 1px solid var(--gray-2);
+        border-radius: 6px;
+        padding: 6px 10px;
+        font-size: 13px;
+        background: white;
+        cursor: pointer;
+      }
+
+      /* ── Product grid ── */
+      .product-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+        gap: 16px;
+      }
+
+      .product-card {
+        background: var(--white);
+        border: 1px solid var(--gray-2);
+        border-radius: 12px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        transition: box-shadow 0.2s;
+      }
+      .product-card:hover {
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+      }
+
+      .product-img {
+        width: 100%;
+        height: 120px;
+        background: linear-gradient(135deg, #e8f0fb 0%, #d0e4f7 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 42px;
+        border-bottom: 1px solid var(--gray-2);
+      }
+
+      .product-body {
+        padding: 14px;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .product-name {
+        font-weight: 700;
+        font-size: 15px;
+        line-height: 1.3;
+      }
+      .product-desc {
+        font-size: 13px;
+        color: var(--gray-4);
+        line-height: 1.4;
+      }
+      .product-meta {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-top: auto;
+        padding-top: 8px;
+      }
+      .product-price {
+        font-size: 18px;
+        font-weight: 800;
+        color: var(--red);
+      }
+      .product-price-old {
+        font-size: 12px;
+        color: var(--gray-3);
+        text-decoration: line-through;
+      }
+      .rx-badge {
+        font-size: 10px;
+        font-weight: 700;
+        background: #fff3cd;
+        color: #856404;
+        border: 1px solid #f0ad4e;
+        border-radius: 4px;
+        padding: 2px 6px;
+        letter-spacing: 0.04em;
+      }
+      .otc-badge {
+        font-size: 10px;
+        font-weight: 700;
+        background: #d1fae5;
+        color: #065f46;
+        border: 1px solid #6ee7b7;
+        border-radius: 4px;
+        padding: 2px 6px;
+      }
+
+      .add-btn {
+        width: 100%;
+        background: var(--blue);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 10px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        margin-top: 4px;
+        transition: background 0.15s;
+      }
+      .add-btn:hover {
+        background: #0e3d7a;
+      }
+      .add-btn.rx-btn {
+        background: #6c757d;
+      }
+      .add-btn.rx-btn:hover {
+        background: #5a6268;
+      }
+
+      /* ── Prescription section ── */
+      .rx-section {
+        background: var(--white);
+        border: 1px solid var(--gray-2);
+        border-radius: 12px;
+        padding: 20px;
+      }
+      .rx-section h2 {
+        font-size: 18px;
+        font-weight: 700;
+        margin-bottom: 6px;
+      }
+      .rx-section p {
+        font-size: 14px;
+        color: var(--gray-4);
+        margin-bottom: 16px;
+      }
+
+      .rx-form {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .form-row {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .form-row label {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--gray-4);
+      }
+      .form-row input,
+      .form-row select,
+      .form-row textarea {
+        border: 1.5px solid var(--gray-2);
+        border-radius: 8px;
+        padding: 10px 12px;
+        font-size: 14px;
+        outline: none;
+        transition: border-color 0.15s;
+        font-family: inherit;
+      }
+      .form-row input:focus,
+      .form-row select:focus,
+      .form-row textarea:focus {
+        border-color: var(--blue);
+      }
+      .form-row textarea {
+        min-height: 80px;
+        resize: vertical;
+      }
+      .form-row-split {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+
+      .submit-rx {
+        background: var(--green);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 13px;
+        font-size: 15px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      .submit-rx:hover {
+        background: #155c38;
+      }
+
+      /* ── Checkout bar ── */
+      .checkout-bar {
+        position: sticky;
+        bottom: 0;
+        background: white;
+        border-top: 2px solid var(--blue);
+        padding: 14px 24px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.08);
+        z-index: 99;
+      }
+      .cart-summary {
+        font-size: 15px;
+      }
+      .cart-summary strong {
+        color: var(--blue);
+      }
+      .checkout-actions {
+        display: flex;
+        gap: 10px;
+      }
+      .view-cart-btn {
+        background: white;
+        color: var(--blue);
+        border: 2px solid var(--blue);
+        border-radius: 8px;
+        padding: 10px 20px;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .proceed-btn {
+        background: var(--green);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 10px 28px;
+        font-size: 15px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .proceed-btn:hover {
+        background: #155c38;
+      }
+
+      /* ── Help widget ── */
+      .help-bubble {
+        position: fixed;
+        bottom: 80px;
+        left: 20px;
+        background: var(--blue);
+        color: white;
+        border: none;
+        border-radius: 50px;
+        padding: 12px 20px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        box-shadow: 0 4px 16px rgba(26, 86, 160, 0.4);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        z-index: 98;
+      }
+      .help-bubble:hover {
+        background: #0e3d7a;
+      }
+
+      footer {
+        text-align: center;
+        padding: 24px 20px;
+        font-size: 12px;
+        color: var(--gray-3);
+        border-top: 1px solid var(--gray-2);
+        margin-top: 32px;
+      }
+      footer a {
+        color: var(--gray-3);
+        text-decoration: underline;
+      }
+
+      /* ── Confirmation modal ── */
+      .modal-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 200;
+        align-items: center;
+        justify-content: center;
+      }
+      .modal-overlay.open {
+        display: flex;
+      }
+      .modal {
+        background: white;
+        border-radius: 16px;
+        padding: 32px;
+        max-width: 440px;
+        width: 90%;
+        text-align: center;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+      }
+      .modal h2 {
+        color: var(--green);
+        margin-bottom: 8px;
+      }
+      .modal p {
+        color: var(--gray-4);
+        font-size: 14px;
+        margin-bottom: 20px;
+      }
+      .modal button {
+        background: var(--blue);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 12px 32px;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="topbar">
+      🔒 Verified Canadian Pharmacy — Licensed &amp; Accredited &nbsp;|&nbsp;
+      Free shipping on orders over $40 &nbsp;|&nbsp; 24/7 Pharmacist Chat
+    </div>
+
+    <header>
+      <a href="#" class="logo">
+        <div class="logo-cross">+</div>
+        CareLink Pharmacy
+      </a>
+
+      <div class="header-search">
+        <input
+          id="site-search"
+          type="text"
+          placeholder="Search medications, vitamins, health products..."
+          aria-label="Search medications and products"
+        />
+        <button aria-label="Submit search">Search</button>
       </div>
-    </section>
 
-    <!-- BROKEN: form with no <label> elements at all, only placeholders.
-         error_type target: missing_label -->
-    <form class="newsletter" id="newsletter">
-      <h2>Get weekly deals by email</h2>
-      <input type="email" name="newsletter-email" placeholder="Email address" />
-      <input type="text" name="newsletter-zip" placeholder="ZIP code" />
-      <button type="submit">Sign up</button>
-    </form>
+      <div class="header-actions">
+        <a href="#rx-section" aria-label="Upload your prescription"
+          >Upload Rx</a
+        >
+        <a href="#" aria-label="Sign in to your account">Sign In</a>
+        <a
+          href="#"
+          class="cart-btn"
+          id="cart-link"
+          aria-label="View cart, 0 items"
+          >🛒 Cart (0)</a
+        >
+      </div>
+    </header>
 
-    <!-- Clean: a real, well-labeled checkout form for Atlas's "fill"
-         action to exercise, including a sensitive field that Atlas's
-         PII-stripping must mask before it reaches the LLM. -->
-    <section id="checkout" style="margin-top: 32px;">
-      <h2>Checkout</h2>
-      <form>
-        <div style="margin-bottom: 8px;">
-          <label for="full-name">Full name</label><br />
-          <input id="full-name" name="full-name" type="text" />
-        </div>
-        <div style="margin-bottom: 8px;">
-          <label for="email">Email</label><br />
-          <input id="email" name="email" type="email" />
-        </div>
-        <div style="margin-bottom: 8px;">
-          <label for="card-number">Card number</label><br />
-          <!-- Sensitive — Atlas's sanitize.py should redact any typed
-               value here before it's sent to the LLM or logged. -->
-          <input id="card-number" name="card-number" type="text" placeholder="•••• •••• •••• ••••" />
-        </div>
-      </form>
-    </section>
-  </main>
+    <nav>
+      <a href="#" class="active">All Products</a>
+      <a href="#rx-section">Prescriptions</a>
+      <a href="#">Vitamins &amp; Supplements</a>
+      <a href="#">Diabetes Care</a>
+      <a href="#">Heart Health</a>
+      <a href="#">Pain Relief</a>
+      <a href="#">Contact a Pharmacist</a>
+    </nav>
 
-  <div class="checkout-bar">
-    <button id="checkout-btn" style="padding: 10px 24px; font-size: 14px;">
-      Proceed to Checkout
+    <div class="alert-banner">
+      ⚠️ <strong>Medication reminder:</strong> Always consult your doctor before
+      changing dosages. Never share prescription medications.
+    </div>
+
+    <div class="page-wrap">
+      <!-- Sidebar filters -->
+      <aside class="filters">
+        <div class="filter-card">
+          <h3>Category</h3>
+          <label class="filter-option"
+            ><input type="checkbox" checked /> Over-the-counter</label
+          >
+          <label class="filter-option"
+            ><input type="checkbox" /> Prescription (Rx)</label
+          >
+          <label class="filter-option"
+            ><input type="checkbox" /> Vitamins</label
+          >
+          <label class="filter-option"><input type="checkbox" /> Devices</label>
+          <label class="filter-option"
+            ><input type="checkbox" /> Diabetic supplies</label
+          >
+        </div>
+
+        <div class="filter-card">
+          <h3>Price Range</h3>
+          <div class="price-range">
+            <input
+              type="number"
+              placeholder="Min"
+              aria-label="Minimum price"
+              min="0"
+            />
+            <span>–</span>
+            <input
+              type="number"
+              placeholder="Max"
+              aria-label="Maximum price"
+              min="0"
+            />
+          </div>
+          <button class="filter-apply" aria-label="Apply price filter">
+            Apply Filter
+          </button>
+        </div>
+
+        <div class="filter-card">
+          <h3>Brand</h3>
+          <label class="filter-option"><input type="checkbox" /> Generic</label>
+          <label class="filter-option"><input type="checkbox" /> Tylenol</label>
+          <label class="filter-option"><input type="checkbox" /> Advil</label>
+          <label class="filter-option"><input type="checkbox" /> Lipitor</label>
+          <label class="filter-option"
+            ><input type="checkbox" /> Metformin</label
+          >
+        </div>
+
+        <div class="filter-card">
+          <h3>Need help?</h3>
+          <p style="font-size: 13px; color: #495057; margin-bottom: 10px">
+            Our pharmacists are standing by to answer questions.
+          </p>
+          <button
+            class="filter-apply"
+            style="background: #1a7a4a"
+            aria-label="Chat with a pharmacist now"
+          >
+            💬 Chat Now
+          </button>
+        </div>
+      </aside>
+
+      <!-- Main content -->
+      <main class="main-col">
+        <div class="section-header">
+          <h2>Common Medications</h2>
+          <div class="sort-row">
+            <label for="sort-select">Sort by:</label>
+            <select id="sort-select" aria-label="Sort products">
+              <option>Most Popular</option>
+              <option>Price: Low to High</option>
+              <option>Price: High to Low</option>
+              <option>Newest</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="product-grid">
+          <div class="product-card">
+            <div class="product-img" role="img" aria-label="Metformin tablets">
+              💊
+            </div>
+            <div class="product-body">
+              <div class="product-name">Metformin 500mg</div>
+              <div class="product-desc">
+                Type 2 diabetes management. Take with meals to reduce stomach
+                upset.
+              </div>
+              <div><span class="rx-badge">Rx Required</span></div>
+              <div class="product-meta">
+                <div>
+                  <div class="product-price">$12.99</div>
+                  <div class="product-price-old">$22.00</div>
+                </div>
+              </div>
+              <button
+                class="add-btn rx-btn"
+                aria-label="Add Metformin 500mg to cart — prescription required"
+                data-product="metformin"
+                data-price="12.99"
+              >
+                Add to Cart (Rx)
+              </button>
+            </div>
+          </div>
+
+          <div class="product-card">
+            <div class="product-img" role="img" aria-label="Lisinopril tablets">
+              🫀
+            </div>
+            <div class="product-body">
+              <div class="product-name">Lisinopril 10mg</div>
+              <div class="product-desc">
+                Blood pressure control. Take once daily, same time each day.
+              </div>
+              <div><span class="rx-badge">Rx Required</span></div>
+              <div class="product-meta">
+                <div>
+                  <div class="product-price">$9.49</div>
+                  <div class="product-price-old">$18.00</div>
+                </div>
+              </div>
+              <button
+                class="add-btn rx-btn"
+                aria-label="Add Lisinopril 10mg to cart — prescription required"
+                data-product="lisinopril"
+                data-price="9.49"
+              >
+                Add to Cart (Rx)
+              </button>
+            </div>
+          </div>
+
+          <div class="product-card">
+            <div
+              class="product-img"
+              role="img"
+              aria-label="Atorvastatin tablets"
+            >
+              💙
+            </div>
+            <div class="product-body">
+              <div class="product-name">Atorvastatin 20mg</div>
+              <div class="product-desc">
+                Cholesterol management. Take at the same time each day.
+              </div>
+              <div><span class="rx-badge">Rx Required</span></div>
+              <div class="product-meta">
+                <div>
+                  <div class="product-price">$15.99</div>
+                  <div class="product-price-old">$28.00</div>
+                </div>
+              </div>
+              <button
+                class="add-btn rx-btn"
+                aria-label="Add Atorvastatin 20mg to cart — prescription required"
+                data-product="atorvastatin"
+                data-price="15.99"
+              >
+                Add to Cart (Rx)
+              </button>
+            </div>
+          </div>
+
+          <div class="product-card">
+            <div
+              class="product-img"
+              role="img"
+              aria-label="Paracetamol tablets"
+            >
+              🟡
+            </div>
+            <div class="product-body">
+              <div class="product-name">Paracetamol 500mg</div>
+              <div class="product-desc">
+                Pain and fever relief. Max 8 tablets per day. Do not exceed
+                stated dose.
+              </div>
+              <div><span class="otc-badge">Over the Counter</span></div>
+              <div class="product-meta">
+                <div>
+                  <div class="product-price">$4.99</div>
+                </div>
+              </div>
+              <button
+                class="add-btn"
+                aria-label="Add Paracetamol 500mg to cart"
+                data-product="paracetamol"
+                data-price="4.99"
+              >
+                Add to Cart
+              </button>
+            </div>
+          </div>
+
+          <div class="product-card">
+            <div
+              class="product-img"
+              role="img"
+              aria-label="Blood pressure monitor"
+            >
+              📟
+            </div>
+            <div class="product-body">
+              <div class="product-name">Omron BP Monitor</div>
+              <div class="product-desc">
+                Accurate home blood pressure monitoring. Large display, easy to
+                read.
+              </div>
+              <div><span class="otc-badge">Over the Counter</span></div>
+              <div class="product-meta">
+                <div>
+                  <div class="product-price">$54.99</div>
+                  <div class="product-price-old">$79.99</div>
+                </div>
+              </div>
+              <button
+                class="add-btn"
+                aria-label="Add Omron Blood Pressure Monitor to cart"
+                data-product="bp-monitor"
+                data-price="54.99"
+              >
+                Add to Cart
+              </button>
+            </div>
+          </div>
+
+          <div class="product-card">
+            <div
+              class="product-img"
+              role="img"
+              aria-label="Vitamin D supplements"
+            >
+              ☀️
+            </div>
+            <div class="product-body">
+              <div class="product-name">Vitamin D3 1000IU</div>
+              <div class="product-desc">
+                Supports bone health and immune function. 90 softgels per
+                bottle.
+              </div>
+              <div><span class="otc-badge">Over the Counter</span></div>
+              <div class="product-meta">
+                <div>
+                  <div class="product-price">$11.49</div>
+                </div>
+              </div>
+              <button
+                class="add-btn"
+                aria-label="Add Vitamin D3 1000IU to cart"
+                data-product="vitamin-d"
+                data-price="11.49"
+              >
+                Add to Cart
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Prescription upload section -->
+        <section class="rx-section" id="rx-section">
+          <h2>📋 Submit a Prescription</h2>
+          <p>
+            Fill in your details below and a pharmacist will review and dispense
+            your medication within 24 hours. All information is encrypted and
+            private.
+          </p>
+
+          <form class="rx-form" id="rx-form">
+            <div class="form-row-split">
+              <div class="form-row">
+                <label for="patient-first">First name</label>
+                <input
+                  id="patient-first"
+                  name="first-name"
+                  type="text"
+                  placeholder="e.g. Hassan"
+                  autocomplete="given-name"
+                />
+              </div>
+              <div class="form-row">
+                <label for="patient-last">Last name</label>
+                <input
+                  id="patient-last"
+                  name="last-name"
+                  type="text"
+                  placeholder="e.g. Al-Rashid"
+                  autocomplete="family-name"
+                />
+              </div>
+            </div>
+
+            <div class="form-row">
+              <label for="patient-dob">Date of birth</label>
+              <input id="patient-dob" name="dob" type="date" />
+            </div>
+
+            <div class="form-row">
+              <label for="patient-email">Email address</label>
+              <input
+                id="patient-email"
+                name="email"
+                type="email"
+                placeholder="your@email.com"
+                autocomplete="email"
+              />
+            </div>
+
+            <div class="form-row">
+              <label for="patient-phone">Phone number</label>
+              <input
+                id="patient-phone"
+                name="phone"
+                type="tel"
+                placeholder="+20 10 0000 0000"
+                autocomplete="tel"
+              />
+            </div>
+
+            <div class="form-row">
+              <label for="medication-name">Medication name &amp; dosage</label>
+              <input
+                id="medication-name"
+                name="medication"
+                type="text"
+                placeholder="e.g. Metformin 500mg, twice daily"
+              />
+            </div>
+
+            <div class="form-row">
+              <label for="doctor-name">Prescribing doctor</label>
+              <input
+                id="doctor-name"
+                name="doctor"
+                type="text"
+                placeholder="Dr. Ahmed Nasser"
+              />
+            </div>
+
+            <div class="form-row">
+              <label for="patient-notes"
+                >Additional notes for the pharmacist</label
+              >
+              <textarea
+                id="patient-notes"
+                name="notes"
+                placeholder="Any allergies, special instructions, or questions..."
+              ></textarea>
+            </div>
+
+            <button
+              type="submit"
+              class="submit-rx"
+              aria-label="Submit prescription to pharmacist"
+            >
+              Submit Prescription
+            </button>
+          </form>
+        </section>
+      </main>
+    </div>
+
+    <div class="checkout-bar">
+      <div class="cart-summary">
+        Cart: <strong id="cart-count-text">0 items</strong> &nbsp;|&nbsp; Total:
+        <strong id="cart-total-text">$0.00</strong>
+      </div>
+      <div class="checkout-actions">
+        <button class="view-cart-btn" aria-label="View all items in cart">
+          View Cart
+        </button>
+        <button
+          class="proceed-btn"
+          id="checkout-btn"
+          aria-label="Proceed to checkout and payment"
+        >
+          Proceed to Checkout
+        </button>
+      </div>
+    </div>
+
+    <button class="help-bubble" aria-label="Get help from a pharmacist">
+      💬 Need help?
     </button>
-  </div>
 
-  <footer>&copy; 2026 Riverbend Market — demo site for Atlas testing only.</footer>
+    <!-- Confirmation modal -->
+    <div
+      class="modal-overlay"
+      id="modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-title"
+    >
+      <div class="modal">
+        <div style="font-size: 48px; margin-bottom: 12px">✅</div>
+        <h2 id="modal-title">Prescription Submitted</h2>
+        <p id="modal-body">
+          Thank you. A licensed pharmacist will review your prescription and
+          contact you within 24 hours.
+        </p>
+        <button id="modal-close" aria-label="Close confirmation">Done</button>
+      </div>
+    </div>
 
-  <script>
-    function addToCart(product) {
-      const link = document.getElementById('cart-link')
-      const match = link.textContent.match(/\d+/)
-      const count = match ? parseInt(match[0], 10) + 1 : 1
-      link.textContent = `Cart (${count})`
-    }
+    <footer>
+      <p>
+        &copy; 2026 CareLink Pharmacy &mdash; Demo site for Atlas accessibility
+        testing.
+      </p>
+      <p style="margin-top: 4px">
+        <a href="#">Privacy Policy</a> &nbsp;·&nbsp;
+        <a href="#">Terms of Service</a> &nbsp;·&nbsp;
+        <a href="#">Accessibility Statement</a>
+      </p>
+    </footer>
 
-    document.querySelectorAll('[data-product]').forEach((btn) => {
-      btn.addEventListener('click', () => addToCart(btn.dataset.product))
-    })
+    <script>
+      let cartItems = 0;
+      let cartTotal = 0;
 
-    document.getElementById('checkout-btn').addEventListener('click', () => {
-      alert('This is a demo — checkout is not wired to anything real.')
-    })
-  </script>
-</body>
+      document.querySelectorAll("[data-product]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const price = parseFloat(btn.dataset.price || "0");
+          cartItems++;
+          cartTotal += price;
+          const cartLink = document.getElementById("cart-link");
+          cartLink.textContent = `🛒 Cart (${cartItems})`;
+          cartLink.setAttribute("aria-label", `View cart, ${cartItems} items`);
+          document.getElementById("cart-count-text").textContent =
+            `${cartItems} item${cartItems !== 1 ? "s" : ""}`;
+          document.getElementById("cart-total-text").textContent =
+            `$${cartTotal.toFixed(2)}`;
+        });
+      });
+
+      document.getElementById("rx-form").addEventListener("submit", (e) => {
+        e.preventDefault();
+        document.getElementById("modal").classList.add("open");
+      });
+
+      document.getElementById("modal-close").addEventListener("click", () => {
+        document.getElementById("modal").classList.remove("open");
+        document.getElementById("rx-form").reset();
+      });
+
+      document.getElementById("checkout-btn").addEventListener("click", () => {
+        if (cartItems === 0) {
+          alert("Your cart is empty. Add some items first.");
+          return;
+        }
+        document.getElementById("modal-body").textContent =
+          `Your order of ${cartItems} item(s) totalling $${cartTotal.toFixed(2)} has been placed. You will receive a confirmation email shortly.`;
+        document.getElementById("modal-title").textContent = "Order Placed!";
+        document.getElementById("modal").classList.add("open");
+      });
+    </script>
+  </body>
 </html>

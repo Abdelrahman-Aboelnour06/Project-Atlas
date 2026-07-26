@@ -9,7 +9,7 @@
   height: 100vh;
   background: #1b1d22;
   color: #f4f4f6;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 14px;
   z-index: 2147483647;
   box-shadow: -4px 0 24px rgba(0, 0, 0, 0.35);
@@ -22,12 +22,14 @@
   font-family: inherit;
 }
 
+/* ── Header ── */
 #atlas-sidebar-root .atlas-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 14px 16px;
   border-bottom: 1px solid #2c2f36;
+  flex-shrink: 0;
 }
 
 #atlas-sidebar-root .atlas-title {
@@ -45,16 +47,17 @@
   line-height: 1;
   padding: 4px 8px;
 }
-
 #atlas-sidebar-root .atlas-close:hover {
   color: #fff;
 }
 
+/* ── Command bar ── */
 #atlas-sidebar-root .atlas-command-bar {
   display: flex;
   gap: 8px;
-  padding: 12px 16px;
+  padding: 10px 16px;
   border-bottom: 1px solid #2c2f36;
+  flex-shrink: 0;
 }
 
 #atlas-sidebar-root .atlas-input {
@@ -63,10 +66,9 @@
   border: 1px solid #3a3d45;
   border-radius: 8px;
   color: #f4f4f6;
-  padding: 10px 12px;
+  padding: 9px 12px;
   font-size: 14px;
 }
-
 #atlas-sidebar-root .atlas-input:focus {
   outline: 2px solid #6ea8fe;
 }
@@ -78,8 +80,8 @@
   width: 42px;
   cursor: pointer;
   font-size: 18px;
+  color: #f4f4f6;
 }
-
 #atlas-sidebar-root .atlas-mic-btn.atlas-mic-active {
   background: #b3413c;
   border-color: #b3413c;
@@ -87,63 +89,219 @@
 }
 
 @keyframes atlas-pulse {
-  0% { box-shadow: 0 0 0 0 rgba(179, 65, 60, 0.6); }
-  70% { box-shadow: 0 0 0 8px rgba(179, 65, 60, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(179, 65, 60, 0); }
+  0% {
+    box-shadow: 0 0 0 0 rgba(179, 65, 60, 0.6);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(179, 65, 60, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(179, 65, 60, 0);
+  }
 }
 
+/* ── Search bar ── */
+#atlas-sidebar-root .atlas-search-bar {
+  padding: 8px 16px;
+  border-bottom: 1px solid #2c2f36;
+  flex-shrink: 0;
+}
+
+#atlas-sidebar-root .atlas-search {
+  width: 100%;
+  background: #2a2d34;
+  border: 1px solid #3a3d45;
+  border-radius: 8px;
+  color: #f4f4f6;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+#atlas-sidebar-root .atlas-search:focus {
+  outline: 2px solid #6ea8fe;
+}
+#atlas-sidebar-root .atlas-search::placeholder {
+  color: #666;
+}
+
+/* ── Status bar ── */
 #atlas-sidebar-root .atlas-status {
   min-height: 20px;
-  padding: 8px 16px;
+  padding: 6px 16px;
   font-size: 13px;
   border-bottom: 1px solid #2c2f36;
+  flex-shrink: 0;
+}
+#atlas-sidebar-root .atlas-status-ok {
+  color: #6fdc8c;
+}
+#atlas-sidebar-root .atlas-status-error {
+  color: #ff8a80;
+}
+#atlas-sidebar-root .atlas-status-info {
+  color: #aeb1b8;
 }
 
-#atlas-sidebar-root .atlas-status-ok { color: #6fdc8c; }
-#atlas-sidebar-root .atlas-status-error { color: #ff8a80; }
-#atlas-sidebar-root .atlas-status-info { color: #aeb1b8; }
-
+/* ── Scrollable list ── */
 #atlas-sidebar-root .atlas-list {
   flex: 1;
   overflow-y: auto;
   padding: 8px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
-#atlas-sidebar-root .atlas-item {
+/* ── Groups ── */
+#atlas-sidebar-root .atlas-group {
+  border: 1px solid #2f323a;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+#atlas-sidebar-root .atlas-group-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #24262c;
+  border: none;
+  color: #f4f4f6;
+  padding: 10px 14px;
+  cursor: pointer;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 600;
+}
+#atlas-sidebar-root .atlas-group-header:hover {
+  background: #2f323a;
+}
+
+#atlas-sidebar-root .atlas-group-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#atlas-sidebar-root .atlas-group-emoji {
+  font-size: 14px;
+}
+
+#atlas-sidebar-root .atlas-group-count {
+  background: #3a3d45;
+  color: #aeb1b8;
+  border-radius: 10px;
+  padding: 1px 7px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+#atlas-sidebar-root .atlas-group-chevron {
+  font-size: 10px;
+  color: #aeb1b8;
+}
+
+#atlas-sidebar-root .atlas-group-body {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
   gap: 2px;
+  padding: 4px;
+  background: #1e2026;
+}
+
+#atlas-sidebar-root .atlas-group-body.atlas-group-collapsed {
+  display: none;
+}
+
+/* ── Items ── */
+#atlas-sidebar-root .atlas-item {
+  display: flex;
+  align-items: center;
   background: #24262c;
-  border: 1px solid #2f323a;
-  border-radius: 8px;
-  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  padding: 9px 12px;
   color: #f4f4f6;
   cursor: pointer;
   text-align: left;
+  width: 100%;
+  font-size: 13px;
 }
-
 #atlas-sidebar-root .atlas-item:hover {
   background: #2f323a;
   border-color: #6ea8fe;
 }
 
-#atlas-sidebar-root .atlas-item-category {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #8a8d94;
-}
-
 #atlas-sidebar-root .atlas-item-label {
-  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
+/* ── Search highlight ── */
+#atlas-sidebar-root .atlas-highlight {
+  background: #ffd666;
+  color: #1b1d22;
+  border-radius: 3px;
+  padding: 0 2px;
+  font-weight: 700;
+}
+
+/* ── Empty state ── */
 #atlas-sidebar-root .atlas-empty {
   padding: 24px 12px;
   color: #8a8d94;
   text-align: center;
+  font-size: 13px;
+}
+
+/* ── Skeleton loader ── */
+#atlas-sidebar-root .atlas-skeleton-label {
+  font-size: 12px;
+  color: #666;
+  text-align: center;
+  padding: 8px 0 4px;
+  letter-spacing: 0.03em;
+}
+
+#atlas-sidebar-root .atlas-skeleton-group {
+  border: 1px solid #2f323a;
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+#atlas-sidebar-root .atlas-skeleton-header {
+  height: 40px;
+  background: linear-gradient(90deg, #24262c 25%, #2f323a 50%, #24262c 75%);
+  background-size: 200% 100%;
+  animation: atlas-shimmer 1.4s infinite;
+}
+
+#atlas-sidebar-root .atlas-skeleton-body {
+  padding: 6px;
+  background: #1e2026;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+#atlas-sidebar-root .atlas-skeleton-item {
+  height: 34px;
+  border-radius: 7px;
+  background: linear-gradient(90deg, #24262c 25%, #2f323a 50%, #24262c 75%);
+  background-size: 200% 100%;
+  animation: atlas-shimmer 1.4s infinite;
+}
+
+#atlas-sidebar-root .atlas-skeleton-item.short {
+  width: 65%;
+}
+
+@keyframes atlas-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
