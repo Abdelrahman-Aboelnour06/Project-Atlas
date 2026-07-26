@@ -15,16 +15,21 @@ app = FastAPI(
 # extension ID (chrome-extension://<id>) can be added without editing code.
 # Wildcard "*" + allow_credentials=True is rejected by browsers anyway, so
 # this was never actually working permissively — just silently broken.
-_default_origins = "http://localhost:3000,http://127.0.0.1:3000"
+_default_origins = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://127.0.0.1:8000"
 allowed_origins = [
     o.strip()
     for o in os.getenv("ALLOWED_ORIGINS", _default_origins).split(",")
     if o.strip()
 ]
 
+# Chrome extensions use a special origin format. We allow all of them here
+# for dev/hackathon purposes. In production you would pin to a specific ID.
+allow_origin_regex = r"chrome-extension://.*"
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
+    allow_origin_regex=allow_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
