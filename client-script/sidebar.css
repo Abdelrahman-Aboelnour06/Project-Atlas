@@ -1,12 +1,13 @@
-/* sidebar.css — scoped under #atlas-sidebar-root to avoid host-page clashes */
+/* sidebar.css — scoped under #atlas-sidebar-root */
 
 #atlas-sidebar-root {
   all: initial;
   position: fixed;
   top: 0;
   right: 0;
-  width: 340px;
+  width: 320px;
   height: 100vh;
+  height: 100dvh;
   background: #1b1d22;
   color: #f4f4f6;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -20,6 +21,8 @@
 #atlas-sidebar-root * {
   box-sizing: border-box;
   font-family: inherit;
+  margin: 0;
+  padding: 0;
 }
 
 /* ── Header ── */
@@ -31,35 +34,34 @@
   border-bottom: 1px solid #2c2f36;
   flex-shrink: 0;
 }
-
 #atlas-sidebar-root .atlas-title {
   font-size: 17px;
   font-weight: 700;
   letter-spacing: 0.02em;
 }
-
 #atlas-sidebar-root .atlas-close {
   background: none;
   border: none;
   color: #aeb1b8;
-  font-size: 20px;
+  font-size: 22px;
   cursor: pointer;
   line-height: 1;
-  padding: 4px 8px;
+  padding: 2px 8px;
+  border-radius: 6px;
 }
 #atlas-sidebar-root .atlas-close:hover {
   color: #fff;
+  background: #2f323a;
 }
 
 /* ── Command bar ── */
 #atlas-sidebar-root .atlas-command-bar {
   display: flex;
   gap: 8px;
-  padding: 10px 16px;
+  padding: 10px 12px;
   border-bottom: 1px solid #2c2f36;
   flex-shrink: 0;
 }
-
 #atlas-sidebar-root .atlas-input {
   flex: 1;
   background: #2a2d34;
@@ -67,27 +69,37 @@
   border-radius: 8px;
   color: #f4f4f6;
   padding: 9px 12px;
-  font-size: 14px;
+  font-size: 13px;
+  outline: none;
+}
+#atlas-sidebar-root .atlas-input::placeholder {
+  color: #555;
 }
 #atlas-sidebar-root .atlas-input:focus {
-  outline: 2px solid #6ea8fe;
+  border-color: #6ea8fe;
 }
 
 #atlas-sidebar-root .atlas-mic-btn {
   background: #2a2d34;
   border: 1px solid #3a3d45;
   border-radius: 8px;
-  width: 42px;
+  width: 40px;
+  flex-shrink: 0;
   cursor: pointer;
-  font-size: 18px;
+  font-size: 17px;
   color: #f4f4f6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#atlas-sidebar-root .atlas-mic-btn:hover {
+  background: #3a3d45;
 }
 #atlas-sidebar-root .atlas-mic-btn.atlas-mic-active {
   background: #b3413c;
   border-color: #b3413c;
   animation: atlas-pulse 1.2s infinite;
 }
-
 @keyframes atlas-pulse {
   0% {
     box-shadow: 0 0 0 0 rgba(179, 65, 60, 0.6);
@@ -102,11 +114,10 @@
 
 /* ── Search bar ── */
 #atlas-sidebar-root .atlas-search-bar {
-  padding: 8px 16px;
+  padding: 8px 12px;
   border-bottom: 1px solid #2c2f36;
   flex-shrink: 0;
 }
-
 #atlas-sidebar-root .atlas-search {
   width: 100%;
   background: #2a2d34;
@@ -115,21 +126,23 @@
   color: #f4f4f6;
   padding: 8px 12px;
   font-size: 13px;
+  outline: none;
 }
 #atlas-sidebar-root .atlas-search:focus {
-  outline: 2px solid #6ea8fe;
+  border-color: #6ea8fe;
 }
 #atlas-sidebar-root .atlas-search::placeholder {
-  color: #666;
+  color: #555;
 }
 
 /* ── Status bar ── */
 #atlas-sidebar-root .atlas-status {
-  min-height: 20px;
-  padding: 6px 16px;
-  font-size: 13px;
+  min-height: 24px;
+  padding: 5px 14px;
+  font-size: 12px;
   border-bottom: 1px solid #2c2f36;
   flex-shrink: 0;
+  color: #aeb1b8;
 }
 #atlas-sidebar-root .atlas-status-ok {
   color: #6fdc8c;
@@ -145,10 +158,23 @@
 #atlas-sidebar-root .atlas-list {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 8px;
   display: flex;
   flex-direction: column;
   gap: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: #3a3d45 transparent;
+}
+#atlas-sidebar-root .atlas-list::-webkit-scrollbar {
+  width: 6px;
+}
+#atlas-sidebar-root .atlas-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+#atlas-sidebar-root .atlas-list::-webkit-scrollbar-thumb {
+  background: #3a3d45;
+  border-radius: 3px;
 }
 
 /* ── Groups ── */
@@ -156,8 +182,8 @@
   border: 1px solid #2f323a;
   border-radius: 10px;
   overflow: hidden;
+  flex-shrink: 0;
 }
-
 #atlas-sidebar-root .atlas-group-header {
   width: 100%;
   display: flex;
@@ -166,11 +192,12 @@
   background: #24262c;
   border: none;
   color: #f4f4f6;
-  padding: 10px 14px;
+  padding: 11px 14px;
   cursor: pointer;
   text-align: left;
   font-size: 13px;
   font-weight: 600;
+  user-select: none;
 }
 #atlas-sidebar-root .atlas-group-header:hover {
   background: #2f323a;
@@ -181,11 +208,9 @@
   align-items: center;
   gap: 8px;
 }
-
 #atlas-sidebar-root .atlas-group-emoji {
   font-size: 14px;
 }
-
 #atlas-sidebar-root .atlas-group-count {
   background: #3a3d45;
   color: #aeb1b8;
@@ -194,10 +219,10 @@
   font-size: 11px;
   font-weight: 600;
 }
-
 #atlas-sidebar-root .atlas-group-chevron {
   font-size: 10px;
   color: #aeb1b8;
+  flex-shrink: 0;
 }
 
 #atlas-sidebar-root .atlas-group-body {
@@ -207,7 +232,6 @@
   padding: 4px;
   background: #1e2026;
 }
-
 #atlas-sidebar-root .atlas-group-body.atlas-group-collapsed {
   display: none;
 }
@@ -219,18 +243,18 @@
   background: #24262c;
   border: 1px solid transparent;
   border-radius: 7px;
-  padding: 9px 12px;
+  padding: 10px 12px;
   color: #f4f4f6;
   cursor: pointer;
   text-align: left;
   width: 100%;
   font-size: 13px;
+  line-height: 1.3;
 }
 #atlas-sidebar-root .atlas-item:hover {
   background: #2f323a;
   border-color: #6ea8fe;
 }
-
 #atlas-sidebar-root .atlas-item-label {
   white-space: nowrap;
   overflow: hidden;
@@ -252,51 +276,28 @@
   color: #8a8d94;
   text-align: center;
   font-size: 13px;
+  line-height: 1.5;
 }
 
 /* ── Skeleton loader ── */
 #atlas-sidebar-root .atlas-skeleton-label {
   font-size: 12px;
-  color: #666;
+  color: #555;
   text-align: center;
-  padding: 8px 0 4px;
-  letter-spacing: 0.03em;
+  padding: 6px 0;
 }
-
 #atlas-sidebar-root .atlas-skeleton-group {
   border: 1px solid #2f323a;
   border-radius: 10px;
   overflow: hidden;
   margin-bottom: 4px;
 }
-
 #atlas-sidebar-root .atlas-skeleton-header {
-  height: 40px;
+  height: 42px;
   background: linear-gradient(90deg, #24262c 25%, #2f323a 50%, #24262c 75%);
   background-size: 200% 100%;
   animation: atlas-shimmer 1.4s infinite;
 }
-
-#atlas-sidebar-root .atlas-skeleton-body {
-  padding: 6px;
-  background: #1e2026;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-#atlas-sidebar-root .atlas-skeleton-item {
-  height: 34px;
-  border-radius: 7px;
-  background: linear-gradient(90deg, #24262c 25%, #2f323a 50%, #24262c 75%);
-  background-size: 200% 100%;
-  animation: atlas-shimmer 1.4s infinite;
-}
-
-#atlas-sidebar-root .atlas-skeleton-item.short {
-  width: 65%;
-}
-
 @keyframes atlas-shimmer {
   0% {
     background-position: 200% 0;
@@ -304,4 +305,159 @@
   100% {
     background-position: -200% 0;
   }
+}
+
+/* ── Tab bar ── */
+#atlas-sidebar-root .atlas-tab-bar {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  justify-content: center;
+}
+#atlas-sidebar-root .atlas-tab {
+  background: none;
+  border: 1px solid #3a3d45;
+  border-radius: 6px;
+  color: #aeb1b8;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+#atlas-sidebar-root .atlas-tab:hover {
+  background: #2f323a;
+  color: #fff;
+}
+#atlas-sidebar-root .atlas-tab.atlas-tab-active {
+  background: #6ea8fe;
+  border-color: #6ea8fe;
+  color: #1b1d22;
+}
+
+/* ── Panes ── */
+#atlas-sidebar-root .atlas-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+#atlas-sidebar-root .atlas-pane-hidden {
+  display: none;
+}
+
+/* ── Chat log ── */
+#atlas-sidebar-root .atlas-chat-log {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  scrollbar-width: thin;
+  scrollbar-color: #3a3d45 transparent;
+}
+#atlas-sidebar-root .atlas-chat-log::-webkit-scrollbar {
+  width: 5px;
+}
+#atlas-sidebar-root .atlas-chat-log::-webkit-scrollbar-thumb {
+  background: #3a3d45;
+  border-radius: 3px;
+}
+
+#atlas-sidebar-root .atlas-msg {
+  display: flex;
+}
+#atlas-sidebar-root .atlas-msg-user {
+  justify-content: flex-end;
+}
+#atlas-sidebar-root .atlas-msg-agent {
+  justify-content: flex-start;
+}
+
+#atlas-sidebar-root .atlas-msg-bubble {
+  max-width: 85%;
+  padding: 9px 13px;
+  border-radius: 14px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+#atlas-sidebar-root .atlas-msg-user .atlas-msg-bubble {
+  background: #6ea8fe;
+  color: #1b1d22;
+  border-bottom-right-radius: 4px;
+}
+#atlas-sidebar-root .atlas-msg-agent .atlas-msg-bubble {
+  background: #24262c;
+  color: #f4f4f6;
+  border-bottom-left-radius: 4px;
+  border: 1px solid #2f323a;
+}
+
+/* Thinking dots animation */
+#atlas-sidebar-root .atlas-dots span {
+  display: inline-block;
+  animation: atlas-dot-bounce 1.2s infinite;
+  font-size: 18px;
+  line-height: 1;
+}
+#atlas-sidebar-root .atlas-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+#atlas-sidebar-root .atlas-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+@keyframes atlas-dot-bounce {
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  40% {
+    transform: translateY(-5px);
+    opacity: 1;
+  }
+}
+
+/* ── Chat input bar ── */
+#atlas-sidebar-root .atlas-chat-input-bar {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid #2c2f36;
+  flex-shrink: 0;
+}
+#atlas-sidebar-root .atlas-chat-input {
+  flex: 1;
+  background: #2a2d34;
+  border: 1px solid #3a3d45;
+  border-radius: 20px;
+  color: #f4f4f6;
+  padding: 9px 14px;
+  font-size: 13px;
+  outline: none;
+}
+#atlas-sidebar-root .atlas-chat-input::placeholder {
+  color: #555;
+}
+#atlas-sidebar-root .atlas-chat-input:focus {
+  border-color: #6ea8fe;
+}
+
+/* ── Subgroups ── */
+#atlas-sidebar-root .atlas-subgroup {
+  border: 1px solid #2f323a;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+#atlas-sidebar-root .atlas-subgroup-header {
+  background: #1e2026;
+  color: #aeb1b8;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 6px 12px;
+  border-bottom: 1px solid #2f323a;
 }
