@@ -22,9 +22,9 @@ allowed_origins = [
     if o.strip()
 ]
 
-# Chrome extensions use a special origin format. We allow all of them here
-# for dev/hackathon purposes. In production you would pin to a specific ID.
-allow_origin_regex = r"chrome-extension://.*"
+# Chrome extension origin lock – only the specific unpacked/published ID is allowed
+extension_id = os.getenv("EXTENSION_ID", "pknbdfjklmabcdefghijklmnopqrstuv")
+allow_origin_regex = rf"^chrome-extension://{extension_id}$"
 
 app.add_middleware(
     CORSMiddleware,

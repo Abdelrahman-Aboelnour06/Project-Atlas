@@ -85,6 +85,19 @@ const NOISE_TEXT_PATTERNS = [
   /^returns & orders/i,
 ];
 
+// ── Hidden element detection (defends against prompt injection) ─────────────
+function isTrulyHidden(el) {
+  if (el.hidden) return true;
+  if (el.closest('[aria-hidden="true"]')) return true;
+  const style = window.getComputedStyle(el);
+  if (style.display === 'none' || style.visibility === 'hidden') return true;
+  if (parseFloat(style.opacity) < 0.1) return true;
+  if (parseFloat(style.fontSize) === 0) return true;
+  if (el.offsetParent === null && el.tagName !== 'BODY') return true;
+  return false;
+}
+
+
 const isNoise = (el) => {
   // Check structural noise selectors
   for (const sel of NOISE_SELECTORS) {
@@ -151,6 +164,7 @@ const serialize = () => {
   const nodes = Array.from(document.querySelectorAll(INTERACTIVE_SELECTOR))
     .filter((el) => !el.closest("#atlas-sidebar-root"))
     .filter(isVisible)
+    .filter((el) => !isTrulyHidden(el))
     .filter(isEnabled)
     .filter((el) => !isNoise(el))
     .map(serializeNode);

@@ -92,34 +92,73 @@ const doFocus = (el) => {
     el.focus()
 }
 
-const execute = (actionResponse) => {
+const READ_ONLY_ACTIONS = new Set(['scroll', 'focus'])
+const MUTATE_ACTIONS   = new Set(['click', 'fill'])
+
+function requestConfirmation(el, action, value) {
+    return new Promise((resolve) => {
+        const originalOutline = el.style.outline
+        el.style.outline = '4px solid rgba(255, 200, 0, 0.9)'
+
+        const banner = document.createElement('div')
+        banner.id = 'atlas-confirm-banner'
+        banner.style.cssText = `
+            position: fixed; bottom: 20px; right: 20px; z-index: 2147483647;
+            background: #1b1d22; color: #f4f4f6; padding: 14px 20px;
+            border-radius: 8px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5); display: flex; align-items: center; gap: 12px; font-size: 14px;
+        `
+        const label = action === 'fill'
+            ? `Atlas wants to type “${value}” into this field.`
+            : `Atlas wants to click this element.`
+
+        banner.innerHTML = `
+            <span><strong>Confirm action:</strong> ${label}</span>
+            <button id="atlas-confirm-yes" style="background:#22c55e;color:#fff;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;">Confirm</button>
+            <button id="atlas-confirm-no" style="background:#ef4444;color:#fff;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;">Cancel</button>
+        `
+        document.body.appendChild(banner)
+
+        const cleanup = (result) => {
+            el.style.outline = originalOutline
+            banner.remove()
+            resolve(result)
+        }
+
+        document.getElementById('atlas-confirm-yes').onclick = () => cleanup(true)
+        document.getElementById('atlas-confirm-no').onclick = () => cleanup(false)
+    })
+}
+
+const execute = async (actionResponse) => {
     const { status, action, element_id: elementId, value } = actionResponse
     if (status === 'error' || status === 'no_match' || action === 'none') {
         return { ok: false, message: actionResponse.message }
     }
     const el = window.AtlasSerializer?.getElementByAtlasId(elementId)
     if (!el) {
-        return {
-            ok: false,
-            message: `Couldn't find that element on the page anymore — try again.`,
+        return { ok: false, message: `Couldn't find that element on the page anymore — try again.` }
+    }
+    
+    // Scroll element into view before asking for confirmation
+    if (action === 'click') scrollToElement(el)
+    if (action === 'fill') scrollToElement(el)
+
+    // Require user confirmation for any destructive action
+    if (MUTATE_ACTIONS.has(action)) {
+        const confirmed = await requestConfirmation(el, action, value)
+        if (!confirmed) {
+            return { ok: false, message: 'Action cancelled by user.' }
         }
     }
+
     try {
         switch (action) {
-            case 'click':
-                doClick(el)
-                break
-            case 'fill':
-                doFill(el, value)
-                break
-            case 'scroll':
-                doScroll(el)
-                break
-            case 'focus':
-                doFocus(el)
-                break
-            default:
-                return { ok: false, message: `Unknown action '${action}'` }
+            case 'click':   doClick(el); break
+            case 'fill':    doFill(el, value); break
+            case 'scroll':  doScroll(el); break
+            case 'focus':   doFocus(el); break
+            default:        return { ok: false, message: `Unknown action '${action}'` }
         }
     } catch (err) {
         return { ok: false, message: `Failed to perform action: ${err.message}` }

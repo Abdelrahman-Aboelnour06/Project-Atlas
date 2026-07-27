@@ -28,6 +28,8 @@ let disconnectHandlers = []
 // promise in send order — the backend handles one message at a time per
 // connection (see agent.py "one voice command per message").
 let pendingQueue = []
+// True once the backend has accepted our api_key on this connection
+let authenticated = false
 
 const wsUrl = () => `${baseUrl.replace(/^http/, 'ws')}/v1/agent`
 
@@ -84,6 +86,23 @@ const maybeReconnect = () => {
   }, RECONNECT_DELAY_MS)
 }
 
+const authenticate = () =>
+  new Promise((resolve, reject) => {
+    pendingQueue.push({
+      resolve: (data) => {
+        if (data.status === 'ok') {
+          authenticated = true
+          resolve()
+        } else {
+          reject(new Error(data.message || 'Authentication failed'))
+        }
+      },
+      reject,
+    })
+    socket.send(JSON.stringify({ type: 'auth', api_key: apiKey }))
+  })
+
+
 const connect = async ({ baseUrl: base, apiKey: key } = {}) => {
   if (base) baseUrl = base
   if (key) apiKey = key
@@ -91,11 +110,15 @@ const connect = async ({ baseUrl: base, apiKey: key } = {}) => {
 
   sessionId = await startSession()
   await openSocket()
+  await authenticate()
 }
 
 const sendCommand = ({ url, domMap, command }) => {
     if (!socket || socket.readyState !== WebSocket.OPEN) {
         return Promise.reject(new Error('Socket is not connected'))
+    }
+    if (!authenticated) {
+        return Promise.reject(new Error('Not authenticated'))
     }
 
     return new Promise((resolve, reject) => {
@@ -103,7 +126,6 @@ const sendCommand = ({ url, domMap, command }) => {
         socket.send(
             JSON.stringify({
                 session_id: sessionId,
-                api_key: apiKey,
                 url,
                 dom_map: domMap,
                 command,
@@ -120,13 +142,15 @@ const sendSimplify = ({ url, domMap }) => {
   if (!socket || socket.readyState !== WebSocket.OPEN) {
     return Promise.reject(new Error('Socket is not connected'))
   }
+  if (!authenticated) {
+        return Promise.reject(new Error('Not authenticated'))
+    }
 
   return new Promise((resolve, reject) => {
     pendingQueue.push({ resolve, reject })
     socket.send(
       JSON.stringify({
         session_id: sessionId,
-        api_key: apiKey,
         url,
         dom_map: domMap,
         command: '',
@@ -142,6 +166,7 @@ const onDisconnect = (fn) => {
 
 const close = () => {
   disconnectHandlers = []
+  authenticated = false
   if (socket) socket.close()
   socket = null
 }

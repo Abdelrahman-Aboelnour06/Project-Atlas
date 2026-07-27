@@ -80,15 +80,15 @@ const runCommand = async (command) => {
       domMap,
       command,
     });
-    const result = window.AtlasExecutor.execute(response);
+    const result = await window.AtlasExecutor.execute(response);
     window.AtlasSidebar.setStatus(result.message, result.ok ? "ok" : "error");
   } catch (err) {
     window.AtlasSidebar.setStatus(`Connection issue: ${err.message}`, "error");
   }
 };
 
-const handleElementClick = (atlasId) => {
-  const result = window.AtlasExecutor.execute({
+const handleElementClick = async (atlasId) => {
+  const result = await window.AtlasExecutor.execute({
     status: "ok",
     action: "click",
     element_id: atlasId,

@@ -5,7 +5,8 @@ Request lifecycle per message:
   receive_text()
     -> parse JSON                    -> error (connection stays open) on failure
     -> validate shape (AgentMessage) -> error (connection stays open) on failure
-    -> validate_api_key (every msg)  -> error (connection stays open) on failure
+    -> handle auth (once per connection)
+    -> require authenticated for command/simplify
     -> rate_limiter.check(tenant_id) -> error (connection stays open) if exceeded
     -> strip_pii_from_dom
     -> dispatch by `type`:
@@ -64,6 +65,9 @@ def _simplify_error(message: str) -> dict:
 async def websocket_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)):
     await websocket.accept()
 
+    authenticated = False
+    tenant_id = None  # set after auth handshake
+
     try:
         while True:
             raw_data = await websocket.receive_text()
@@ -75,7 +79,30 @@ async def websocket_endpoint(websocket: WebSocket, db: AsyncSession = Depends(ge
                 await websocket.send_json({"status": "error", "message": "Invalid JSON payload."})
                 continue
 
-            # 2. Validate message shape against Contract 1 (type, dom_map, command, ...)
+            # 2. Handle authentication message (once per connection)
+            if data.get("type") == "auth":
+                if authenticated:
+                    await websocket.send_json({"status": "error", "message": "Already authenticated."})
+                    continue
+                api_key = data.get("api_key")
+                if not api_key:
+                    await websocket.send_json({"status": "error", "message": "Missing api_key in auth message."})
+                    continue
+                tid = await db_connection.validate_api_key(db, api_key)
+                if not tid:
+                    await websocket.send_json({"status": "error", "message": "Invalid or inactive API key."})
+                    continue
+                authenticated = True
+                tenant_id = tid
+                await websocket.send_json({"status": "ok"})
+                continue
+
+            # 3. For any other message type, authentication is required
+            if not authenticated:
+                await websocket.send_json({"status": "error", "message": "Not authenticated. Send auth message first."})
+                continue
+
+            # 4. Validate message shape against Contract 1 (type, dom_map, command, ...)
             try:
                 message = AgentMessage(**data)
             except ValidationError as exc:
@@ -87,15 +114,7 @@ async def websocket_endpoint(websocket: WebSocket, db: AsyncSession = Depends(ge
                 })
                 continue
 
-            # 3. Auth — validated on every message, not just on connect
-            tenant_id = await db_connection.validate_api_key(db, message.api_key)
-            if not tenant_id:
-                await websocket.send_json({"status": "error", "message": "Invalid or inactive API key."})
-                continue
-
-            # 3.5. Rate limit — coarse per-tenant circuit breaker (status doc §2.6).
-            # Keyed on tenant_id (not the raw api_key) so it's tied to the
-            # resolved account, checked only after auth succeeds.
+            # 5. Rate limit — coarse per-tenant circuit breaker (status doc §2.6).
             if not rate_limiter.check(tenant_id):
                 logger.warning("Rate limit exceeded for tenant_id=%s", tenant_id)
                 if message.type == "simplify":
@@ -108,12 +127,12 @@ async def websocket_endpoint(websocket: WebSocket, db: AsyncSession = Depends(ge
                     ).model_dump())
                 continue
 
-            # 4. Shield the DOM map from PII before it reaches the LLM or gets logged
+            # 6. Shield the DOM map from PII before it reaches the LLM or gets logged
             raw_dom = [node.model_dump() for node in message.dom_map]
             safe_dom = strip_pii_from_dom(raw_dom)
 
             try:
-                # 5. Route to the correct pipeline
+                # 7. Route to the correct pipeline
                 if message.type == "simplify":
                     prompt_text = simplify_prompt.build_simplify_prompt(safe_dom)
                     raw_llm = await llm_client.call_llm(prompt_text)
@@ -126,7 +145,7 @@ async def websocket_endpoint(websocket: WebSocket, db: AsyncSession = Depends(ge
                     action_response = command_parser.parse_action(raw_llm, safe_dom)
                     final_response = action_response.model_dump()
 
-                    # 6. Log ONLY safe, minimal data to PostgreSQL for commands
+                    # 8. Log ONLY safe, minimal data to PostgreSQL for commands
                     log_details = trim_log_payload(message.command, final_response)
                     await db_connection._log_usage(
                         db=db,
@@ -148,7 +167,7 @@ async def websocket_endpoint(websocket: WebSocket, db: AsyncSession = Depends(ge
                         "AI service unavailable. Please try again."
                     ).model_dump()
 
-            # 7. Send the final JSON payload back to the frontend extension
+            # 9. Send the final JSON payload back to the frontend extension
             await websocket.send_json(final_response)
 
     except WebSocketDisconnect:
