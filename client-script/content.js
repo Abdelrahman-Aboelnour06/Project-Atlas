@@ -123,40 +123,32 @@ Answer:`;
     );
   };
 
-  // ── Command pipeline ──────────────────────────────────────────────────────────
-  const runCommand = async (command) => {
-    window.AtlasSidebar.setStatus("Thinking...", "info");
-    try {
-      const domMap = window.AtlasSerializer.serialize();
-      const response = await window.AtlasSocket.sendCommand({
-        url: window.location.href,
-        domMap,
-        command,
-      });
-      const result = await window.AtlasExecutor.execute(response);
+const refreshPanel = () => {
+  const domMap = window.AtlasSerializer.serialize();
+  window.AtlasSidebar.renderElements(
+    window.AtlasSidebar.deriveDisplayItems(domMap),
+  );
+  renderSimplified(domMap);
+};
 
-      // Show result in chat as an agent message
-      const msg = result.ok
-        ? `✅ ${response.message || "Done."}`
-        : `❌ ${response.message || "I couldn't find that on the page."}`;
-      window.AtlasSidebar.removeThinking();
-      window.AtlasSidebar.addChatMessage("agent", msg);
-      window.AtlasSidebar.setStatus(
-        result.ok ? "Done." : "No match found.",
-        result.ok ? "ok" : "error",
-      );
-    } catch (err) {
-      window.AtlasSidebar.removeThinking();
-      window.AtlasSidebar.addChatMessage(
-        "agent",
-        `❌ Connection issue: ${err.message}`,
-      );
-      window.AtlasSidebar.setStatus("Connection error.", "error");
-    }
-  };
+const runCommand = async (command) => {
+  window.AtlasSidebar.setStatus("Thinking...", "info");
+  try {
+    const domMap = window.AtlasSerializer.serialize();
+    const response = await window.AtlasSocket.sendCommand({
+      url: window.location.href,
+      domMap,
+      command,
+    });
+    const result = await window.AtlasExecutor.execute(response);
+    window.AtlasSidebar.setStatus(result.message, result.ok ? "ok" : "error");
+  } catch (err) {
+    window.AtlasSidebar.setStatus(`Connection issue: ${err.message}`, "error");
+  }
+};
 
-const handleElementClick = (atlasId) => {
-  const result = window.AtlasExecutor.execute({
+const handleElementClick = async (atlasId) => {
+  const result = await window.AtlasExecutor.execute({
     status: "ok",
     action: "click",
     element_id: atlasId,
