@@ -1,5 +1,5 @@
 (function () {
-  // sidebar.js — grouped panel + chat interface
+  // sidebar.js — two-tier panel + chat interface
 
   const ROOT_ID = "atlas-sidebar-root";
 
@@ -13,6 +13,7 @@
   let handlers = {};
   let currentItems = [];
   let groupOpenState = {};
+  let showMoreState = {}; // tracks which categories have "show more" expanded
 
   const CATEGORY_CONFIG = {
     button: { label: "Buttons", emoji: "🔘" },
@@ -43,6 +44,7 @@
         node.tag,
       category: categoryFor(node),
       group: node.group_label || null,
+      tier: node.tier || "primary",
     }));
 
   // ── DOM construction ──────────────────────────────────────────────────────────
@@ -89,19 +91,17 @@
     micBtn = rootEl.querySelector(".atlas-mic-btn");
     chatLogEl = rootEl.querySelector("#atlas-chat-log");
 
-    // Tab switching
     rootEl.querySelectorAll(".atlas-tab").forEach((tab) => {
       tab.addEventListener("click", () => {
         rootEl
           .querySelectorAll(".atlas-tab")
           .forEach((t) => t.classList.remove("atlas-tab-active"));
         tab.classList.add("atlas-tab-active");
-        const target = tab.dataset.tab;
         rootEl
           .querySelectorAll(".atlas-pane")
           .forEach((p) => p.classList.add("atlas-pane-hidden"));
         rootEl
-          .querySelector(`#atlas-pane-${target}`)
+          .querySelector(`#atlas-pane-${tab.dataset.tab}`)
           .classList.remove("atlas-pane-hidden");
       });
     });
@@ -123,14 +123,12 @@
     searchEl.addEventListener("input", () => renderElements(currentItems));
   };
 
-  // ── Chat messages ─────────────────────────────────────────────────────────────
+  // ── Chat ──────────────────────────────────────────────────────────────────────
   const addChatMessage = (role, text) => {
     if (!chatLogEl) return;
     const msg = document.createElement("div");
     msg.className = `atlas-msg atlas-msg-${role}`;
-    msg.innerHTML = `
-    <div class="atlas-msg-bubble">${text}</div>
-  `;
+    msg.innerHTML = `<div class="atlas-msg-bubble">${text}</div>`;
     chatLogEl.appendChild(msg);
     chatLogEl.scrollTop = chatLogEl.scrollHeight;
   };
@@ -149,7 +147,7 @@
     document.getElementById("atlas-thinking-indicator")?.remove();
   };
 
-  // ── Skeleton loader ───────────────────────────────────────────────────────────
+  // ── Skeleton ──────────────────────────────────────────────────────────────────
   const setLoading = (isLoading) => {
     if (!listEl || !isLoading) return;
     listEl.innerHTML = `
@@ -166,60 +164,89 @@
   `;
   };
 
-  // ── Elements rendering ────────────────────────────────────────────────────────
+  // ── Item element builder ──────────────────────────────────────────────────────
+  const makeItemEl = (item, query) => {
+    const el = document.createElement("button");
+    el.className = "atlas-item";
+    if (item.tier === "secondary") el.classList.add("atlas-item-secondary");
+    el.setAttribute("role", "listitem");
+    const labelHtml = query
+      ? item.label.replace(
+          new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi"),
+          '<mark class="atlas-highlight">$1</mark>',
+        )
+      : item.label;
+    el.innerHTML = `<span class="atlas-item-label">${labelHtml}</span>`;
+    el.addEventListener("click", () => handlers.onElementClick?.(item.id));
+    return el;
+  };
+
+  // ── Render ────────────────────────────────────────────────────────────────────
   const renderElements = (items) => {
     if (!listEl) return;
     currentItems = items;
     const query = (searchEl?.value || "").trim().toLowerCase();
     listEl.innerHTML = "";
 
-    // Sub-group items that share a group_label first
-    // e.g. "Price range" contains "Minimum price" and "Maximum price"
+    // Bucket items into categories, then into primary/secondary within each
     const groups = {};
-    for (const cat of CATEGORY_ORDER)
-      groups[cat] = { ungrouped: [], subgroups: {} };
+    for (const cat of CATEGORY_ORDER) {
+      groups[cat] = {
+        primary: { ungrouped: [], subgroups: {} },
+        secondary: { ungrouped: [], subgroups: {} },
+      };
+    }
 
     for (const item of items) {
       const cat = CATEGORY_ORDER.includes(item.category)
         ? item.category
         : "other";
+      const tier = item.tier === "secondary" ? "secondary" : "primary";
       if (item.group) {
-        if (!groups[cat].subgroups[item.group])
-          groups[cat].subgroups[item.group] = [];
-        groups[cat].subgroups[item.group].push(item);
+        if (!groups[cat][tier].subgroups[item.group])
+          groups[cat][tier].subgroups[item.group] = [];
+        groups[cat][tier].subgroups[item.group].push(item);
       } else {
-        groups[cat].ungrouped.push(item);
+        groups[cat][tier].ungrouped.push(item);
       }
     }
 
     let totalVisible = 0;
 
     for (const cat of CATEGORY_ORDER) {
-      const { ungrouped, subgroups } = groups[cat];
-      const allInCat = [...ungrouped, ...Object.values(subgroups).flat()];
-      if (allInCat.length === 0) continue;
+      const { primary, secondary } = groups[cat];
 
-      // Filter by search
-      const filteredUngrouped = query
-        ? ungrouped.filter((i) => i.label.toLowerCase().includes(query))
-        : ungrouped;
+      const filterItems = (list) =>
+        query
+          ? list.filter((i) => i.label.toLowerCase().includes(query))
+          : list;
 
-      const filteredSubgroups = {};
-      for (const [grpLabel, grpItems] of Object.entries(subgroups)) {
-        const f = query
-          ? grpItems.filter((i) => i.label.toLowerCase().includes(query))
-          : grpItems;
-        if (f.length) filteredSubgroups[grpLabel] = f;
+      const filtPrimaryUngrouped = filterItems(primary.ungrouped);
+      const filtPrimarySubgroups = {};
+      for (const [k, v] of Object.entries(primary.subgroups)) {
+        const f = filterItems(v);
+        if (f.length) filtPrimarySubgroups[k] = f;
+      }
+      const filtSecondaryUngrouped = filterItems(secondary.ungrouped);
+      const filtSecondarySubgroups = {};
+      for (const [k, v] of Object.entries(secondary.subgroups)) {
+        const f = filterItems(v);
+        if (f.length) filtSecondarySubgroups[k] = f;
       }
 
-      const totalFiltered =
-        filteredUngrouped.length +
-        Object.values(filteredSubgroups).flat().length;
-      if (query && totalFiltered === 0) continue;
-      totalVisible += totalFiltered;
+      const primaryCount =
+        filtPrimaryUngrouped.length +
+        Object.values(filtPrimarySubgroups).flat().length;
+      const secondaryCount =
+        filtSecondaryUngrouped.length +
+        Object.values(filtSecondarySubgroups).flat().length;
+      const total = primaryCount + secondaryCount;
+
+      if (total === 0) continue;
+      totalVisible += total;
 
       const config = CATEGORY_CONFIG[cat] || { label: cat, emoji: "⚙️" };
-      let isOpen = query ? true : (groupOpenState[cat] ?? false);
+      const isOpen = query ? true : (groupOpenState[cat] ?? false);
 
       const section = document.createElement("div");
       section.className = "atlas-group";
@@ -231,7 +258,7 @@
       <span class="atlas-group-title">
         <span class="atlas-group-emoji">${config.emoji}</span>
         ${config.label}
-        <span class="atlas-group-count">${totalFiltered}</span>
+        <span class="atlas-group-count">${primaryCount}${secondaryCount > 0 ? `<span class="atlas-secondary-badge">+${secondaryCount}</span>` : ""}</span>
       </span>
       <span class="atlas-group-chevron">${isOpen ? "▲" : "▼"}</span>
     `;
@@ -251,25 +278,59 @@
         body.classList.toggle("atlas-group-collapsed", !next);
       });
 
-      // Render subgroups first (e.g. "Price Range" containing min/max)
-      for (const [grpLabel, grpItems] of Object.entries(filteredSubgroups)) {
-        const subSection = document.createElement("div");
-        subSection.className = "atlas-subgroup";
-
-        const subHeader = document.createElement("div");
-        subHeader.className = "atlas-subgroup-header";
-        subHeader.textContent = grpLabel;
-
-        subSection.appendChild(subHeader);
-        for (const item of grpItems) {
-          subSection.appendChild(makeItemEl(item, query));
-        }
-        body.appendChild(subSection);
+      // Render primary subgroups
+      for (const [grpLabel, grpItems] of Object.entries(filtPrimarySubgroups)) {
+        const sub = document.createElement("div");
+        sub.className = "atlas-subgroup";
+        sub.innerHTML = `<div class="atlas-subgroup-header">${grpLabel}</div>`;
+        grpItems.forEach((item) => sub.appendChild(makeItemEl(item, query)));
+        body.appendChild(sub);
       }
 
-      // Then ungrouped items
-      for (const item of filteredUngrouped) {
-        body.appendChild(makeItemEl(item, query));
+      // Render primary ungrouped
+      filtPrimaryUngrouped.forEach((item) =>
+        body.appendChild(makeItemEl(item, query)),
+      );
+
+      // Render secondary section if there are any
+      if (secondaryCount > 0) {
+        const showMore = showMoreState[cat] || false;
+
+        const moreToggle = document.createElement("button");
+        moreToggle.className = "atlas-show-more";
+        moreToggle.textContent = showMore
+          ? `▲ Hide ${secondaryCount} extra item${secondaryCount !== 1 ? "s" : ""}`
+          : `▼ Show ${secondaryCount} more item${secondaryCount !== 1 ? "s" : ""}`;
+
+        const moreBody = document.createElement("div");
+        moreBody.className = "atlas-more-body";
+        if (!showMore) moreBody.classList.add("atlas-group-collapsed");
+
+        // Render secondary subgroups
+        for (const [grpLabel, grpItems] of Object.entries(
+          filtSecondarySubgroups,
+        )) {
+          const sub = document.createElement("div");
+          sub.className = "atlas-subgroup";
+          sub.innerHTML = `<div class="atlas-subgroup-header">${grpLabel}</div>`;
+          grpItems.forEach((item) => sub.appendChild(makeItemEl(item, query)));
+          moreBody.appendChild(sub);
+        }
+        filtSecondaryUngrouped.forEach((item) =>
+          moreBody.appendChild(makeItemEl(item, query)),
+        );
+
+        moreToggle.addEventListener("click", () => {
+          const next = !showMoreState[cat];
+          showMoreState[cat] = next;
+          moreBody.classList.toggle("atlas-group-collapsed", !next);
+          moreToggle.textContent = next
+            ? `▲ Hide ${secondaryCount} extra item${secondaryCount !== 1 ? "s" : ""}`
+            : `▼ Show ${secondaryCount} more item${secondaryCount !== 1 ? "s" : ""}`;
+        });
+
+        body.appendChild(moreToggle);
+        body.appendChild(moreBody);
       }
 
       section.appendChild(header);
@@ -284,25 +345,11 @@
     }
   };
 
-  const makeItemEl = (item, query) => {
-    const el = document.createElement("button");
-    el.className = "atlas-item";
-    el.setAttribute("role", "listitem");
-    const labelHtml = query
-      ? item.label.replace(
-          new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi"),
-          '<mark class="atlas-highlight">$1</mark>',
-        )
-      : item.label;
-    el.innerHTML = `<span class="atlas-item-label">${labelHtml}</span>`;
-    el.addEventListener("click", () => handlers.onElementClick?.(item.id));
-    return el;
-  };
-
   // ── Public API ────────────────────────────────────────────────────────────────
   const mount = (cbs = {}) => {
     handlers = cbs;
     groupOpenState = {};
+    showMoreState = {};
     if (document.getElementById(ROOT_ID)) return;
     buildDom();
   };
@@ -312,6 +359,7 @@
     rootEl = null;
     currentItems = [];
     groupOpenState = {};
+    showMoreState = {};
   };
 
   const setStatus = (text, kind = "info") => {

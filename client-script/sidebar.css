@@ -461,3 +461,49 @@
   padding: 6px 12px;
   border-bottom: 1px solid #2f323a;
 }
+
+/* ── Show more button ── */
+#atlas-sidebar-root .atlas-show-more {
+  width: 100%;
+  background: none;
+  border: none;
+  border-top: 1px dashed #2f323a;
+  color: #6ea8fe;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 12px;
+  cursor: pointer;
+  text-align: left;
+}
+#atlas-sidebar-root .atlas-show-more:hover {
+  color: #a8c8ff;
+}
+
+#atlas-sidebar-root .atlas-more-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  background: #1a1c21;
+}
+#atlas-sidebar-root .atlas-more-body.atlas-group-collapsed {
+  display: none;
+}
+
+/* Secondary items look slightly muted */
+#atlas-sidebar-root .atlas-item-secondary {
+  opacity: 0.75;
+}
+#atlas-sidebar-root .atlas-item-secondary:hover {
+  opacity: 1;
+}
+
+/* Secondary count badge */
+#atlas-sidebar-root .atlas-secondary-badge {
+  background: #2f323a;
+  color: #6ea8fe;
+  border-radius: 8px;
+  padding: 1px 5px;
+  font-size: 10px;
+  margin-left: 3px;
+}

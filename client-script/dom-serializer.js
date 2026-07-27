@@ -1,10 +1,13 @@
 (function () {
   // dom-serializer.js
+  // Elements are scored into two tiers:
+  //   tier: 'primary'   — clean label, clearly useful, shown by default
+  //   tier: 'secondary' — ambiguous or noisy, hidden under "Show more"
+  // Nothing is ever fully discarded.
 
   const ATLAS_ID_ATTR = "data-atlas-id";
   const DEBOUNCE_MS = 800;
 
-  // ── Selectors ─────────────────────────────────────────────────────────────────
   const INTERACTIVE_SELECTOR = [
     "button",
     "a[href]",
@@ -20,123 +23,64 @@
     '[role="switch"]',
   ].join(",");
 
-  // ── Hard noise: always skip these regardless of content ───────────────────────
-  const NOISE_SELECTORS = [
-    "#atlas-sidebar-root", // never scan ourselves
-    // cookie / GDPR banners
-    '[id*="cookie"]',
-    '[class*="cookie"]',
-    '[id*="gdpr"]',
-    '[class*="gdpr"]',
-    // language / region pickers
-    '[aria-label*="language" i]',
-    '[aria-label*="country" i]',
-    '[aria-label*="currency" i]',
-    '[aria-label*="region" i]',
-    // breadcrumbs, pagination, footer links
-    '[aria-label*="breadcrumb" i]',
-    "footer a",
-    "footer button",
-    // skip elements inside known chrome/nav containers
-    "nav a", // pure nav links handled separately
-    '[role="navigation"] a',
-    '[role="navigation"] button',
-    '[role="banner"] a', // header links (logo, home)
-    // Google / internal widget chrome
-    "[data-ogsr-up]",
-    '[jsaction*="dismiss"]',
+  // ── Always skip (truly invisible infrastructure) ──────────────────────────────
+  const ALWAYS_SKIP_SELECTORS = [
+    "#atlas-sidebar-root",
+    '[aria-hidden="true"]',
+    '[style*="display: none"]',
+    '[style*="display:none"]',
   ];
 
-  // ── Text patterns that are always noise ───────────────────────────────────────
   const NOISE_TEXT_PATTERNS = [
     /^change (language|country|region|currency)/i,
-    /^\$[\d,]+(\.\d+)?\s*[-–]\s*\$[\d,]+/, // price ranges
+    /^\$[\d,]+(\.\d+)?\s*[-–]\s*\$[\d,]+/,
     /^filter by/i,
     /^sort by/i,
-    /^sign in$/i,
-    /^log in$/i,
-    /^returns & orders/i,
     /^back to top/i,
     /^skip to (main|content|nav)/i,
   ];
 
-  // ── Universal quality filters ─────────────────────────────────────────────────
-  // These run on EVERY site, not just Amazon.
+  // ── Scoring — determines primary vs secondary tier ────────────────────────────
+  // Returns a score 0-100. >= 50 = primary, < 50 = secondary (shown under "more")
 
-  // 1. No meaningful label at all — not useful to show
-  const hasMeaningfulLabel = (el) => {
-    const candidates = [
-      el.getAttribute("aria-label"),
-      el.getAttribute("aria-labelledby") ? "has-ref" : null,
-      el.getAttribute("title"),
-      el.getAttribute("placeholder"),
-      el.getAttribute("alt"),
-      el.innerText || el.textContent,
-      el.getAttribute("name"),
-      el.getAttribute("value"),
-    ];
-    const text = candidates
-      .filter(Boolean)
-      .map((s) => s.trim())
-      .find((s) => s.length > 0);
+  const MACHINE_LABEL_RE =
+    /^[a-z]{4,12}\d{3,}$|^[A-Z][a-z]{2,5}[A-Z][a-z]{2,5}[A-Z]/;
 
-    if (!text) return false;
+  const scoreElement = (el, label) => {
+    let score = 50; // start neutral
 
-    // Label must be more than 1 character and not purely punctuation/numbers
-    if (text.length < 2) return false;
-    if (/^[\d\s\W]+$/.test(text)) return false;
+    // Has a clean human-readable label
+    if (label && label.length >= 3) score += 20;
+    if (label && label.length >= 6) score += 10;
 
-    return true;
-  };
+    // Label looks machine-generated
+    if (label && MACHINE_LABEL_RE.test(label)) score -= 40;
 
-  // 2. Looks like an internal/machine-generated label (React keys, hash IDs etc.)
-  const MACHINE_LABEL_PATTERN =
-    /^[a-z]{4,12}\d{3,}$|^[A-Z][a-z]{2,5}[A-Z][a-z]{2,5}[A-Z]|^\w{8,}-\w{4}-\w{4}/;
+    // Has explicit accessible label (someone put effort in)
+    if (el.getAttribute("aria-label")) score += 10;
+    if (el.id && document.querySelector(`label[for="${CSS.escape(el.id)}"]`))
+      score += 15;
 
-  const isMachineLabel = (el) => {
-    const ariaLabel = el.getAttribute("aria-label") || "";
-    const id = el.id || "";
-    // If aria-label looks machine-generated AND there's no inner text, skip
-    if (MACHINE_LABEL_PATTERN.test(ariaLabel) && !(el.innerText || "").trim())
-      return true;
-    return false;
-  };
+    // Meaningful tag
+    const tag = el.tagName.toLowerCase();
+    if (tag === "button") score += 15;
+    if (tag === "input" || tag === "textarea") score += 15;
+    if (tag === "select") score += 10;
+    if (tag === "a") score += 5;
 
-  // 3. Tiny icon buttons with no visible text (likely decorative chrome)
-  const isBareIconButton = (el) => {
-    const text = (el.innerText || el.textContent || "").trim();
-    if (text.length > 0) return false; // has text, keep it
+    // Tiny unlabeled icon button
     const rect = el.getBoundingClientRect();
-    // Small square with no text = almost certainly an icon button
-    if (rect.width < 36 && rect.height < 36) return true;
-    return false;
-  };
+    if (rect.width < 36 && rect.height < 36 && (!label || label.length < 3))
+      score -= 30;
 
-  // 4. Duplicate labels — keep only the first occurrence per page
-  const seenLabels = new Set();
-  const isDuplicate = (label) => {
-    const key = label.toLowerCase().trim();
-    if (seenLabels.has(key)) return true;
-    seenLabels.add(key);
-    return false;
-  };
+    // Inside navigation chrome
+    if (el.closest('nav, [role="navigation"], [role="banner"], footer'))
+      score -= 25;
 
-  // ── Noise check (structural) ──────────────────────────────────────────────────
-  const isStructuralNoise = (el) => {
-    if (el.closest("#atlas-sidebar-root")) return true;
-    for (const sel of NOISE_SELECTORS) {
-      try {
-        if (el.matches(sel) || el.closest(sel)) return true;
-      } catch (_) {}
-    }
-    return false;
-  };
+    // Noise text
+    if (label && NOISE_TEXT_PATTERNS.some((p) => p.test(label))) score -= 50;
 
-  const isTextNoise = (text) => {
-    for (const p of NOISE_TEXT_PATTERNS) {
-      if (p.test(text)) return true;
-    }
-    return false;
+    return Math.max(0, Math.min(100, score));
   };
 
   // ── Visibility ────────────────────────────────────────────────────────────────
@@ -148,22 +92,18 @@
     return rect.width > 0 && rect.height > 0;
   };
 
-  // ── Smart label resolution ────────────────────────────────────────────────────
-  // Priority: <label for> > aria-labelledby > title attr > aria-label >
-  //           inner text (buttons/links) > wrapping label > name attr >
-  //           placeholder (last resort)
+  // ── Label resolution ──────────────────────────────────────────────────────────
   const truncate = (str, max = 80) => {
     if (!str) return null;
     const t = str.trim().replace(/\s+/g, " ");
-    if (!t) return null;
+    if (!t || t.length < 1) return null;
     return t.length > max ? t.slice(0, max) + "..." : t;
   };
 
   const resolveLabel = (el) => {
     const tag = el.tagName.toLowerCase();
-    const type = (el.getAttribute("type") || "").toLowerCase();
 
-    // 1. Explicit <label for="id">
+    // 1. <label for="id">
     if (el.id) {
       const lbl = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
       if (lbl) {
@@ -172,7 +112,7 @@
       }
     }
 
-    // 2. aria-labelledby — resolve referenced elements
+    // 2. aria-labelledby
     const labelledBy = el.getAttribute("aria-labelledby");
     if (labelledBy) {
       const parts = labelledBy
@@ -185,28 +125,23 @@
       }
     }
 
-    // 3. title attribute (often descriptive on icon buttons)
+    // 3. title attribute
     const title = el.getAttribute("title");
-    if (title?.trim() && !MACHINE_LABEL_PATTERN.test(title)) {
-      return truncate(title);
-    }
+    if (title?.trim()) return truncate(title);
 
-    // 4. aria-label — but only if it doesn't look machine-generated
+    // 4. aria-label
     const ariaLabel = el.getAttribute("aria-label");
-    if (ariaLabel?.trim() && !MACHINE_LABEL_PATTERN.test(ariaLabel)) {
-      return truncate(ariaLabel);
-    }
+    if (ariaLabel?.trim()) return truncate(ariaLabel);
 
-    // 5. Inner text for buttons and links
+    // 5. inner text (buttons / links)
     if (tag === "button" || tag === "a") {
-      // Strip out icon-only content (single chars, emoji, etc.)
       const text = (el.innerText || el.textContent || "")
         .trim()
         .replace(/\s+/g, " ");
-      if (text.length > 1 && !/^[\W\d]$/.test(text)) return truncate(text);
+      if (text.length >= 1) return truncate(text);
     }
 
-    // 6. Wrapping <label>
+    // 6. Wrapping label
     const wrapping = el.closest("label");
     if (wrapping) {
       const clone = wrapping.cloneNode(true);
@@ -217,17 +152,23 @@
       if (t) return t;
     }
 
-    // 7. name attribute (human-readable ones only)
+    // 7. name attribute
     const name = el.getAttribute("name");
-    if (name && !/^[a-z_-]{0,3}$/.test(name)) {
-      return truncate(name.replace(/[-_]/g, " "));
-    }
+    if (name && name.length > 2) return truncate(name.replace(/[-_]/g, " "));
 
-    // 8. Placeholder — last resort for inputs
-    const placeholder = el.getAttribute("placeholder");
-    if (placeholder?.trim()) return truncate(placeholder);
+    // 8. placeholder
+    const ph = el.getAttribute("placeholder");
+    if (ph?.trim()) return truncate(ph);
 
-    return null; // signal: no usable label
+    // 9. value (for submit inputs)
+    const val = el.getAttribute("value");
+    if (val?.trim() && el.getAttribute("type") === "submit")
+      return truncate(val);
+
+    // Give it something rather than nothing so it lands in secondary
+    return el.getAttribute("type")
+      ? `${tag} (${el.getAttribute("type")})`
+      : tag;
   };
 
   // ── Group detection ───────────────────────────────────────────────────────────
@@ -255,11 +196,11 @@
     return null;
   };
 
-  // ── Atlas ID management ───────────────────────────────────────────────────────
+  // ── Atlas ID ──────────────────────────────────────────────────────────────────
   let idCounter = 0;
   const nextAtlasId = () => `atlas-${Date.now()}-${idCounter++}`;
 
-  const serializeNode = (el, label) => {
+  const serializeNode = (el, label, tier) => {
     let atlasId = el.getAttribute(ATLAS_ID_ATTR);
     if (!atlasId) {
       atlasId = nextAtlasId();
@@ -270,7 +211,7 @@
       tag: el.tagName.toLowerCase(),
       type: el.getAttribute("type") || null,
       inner_text:
-        el.tagName === "INPUT" && el.type === "password"
+        el.type === "password"
           ? null
           : truncate(el.innerText || el.textContent),
       placeholder: el.getAttribute("placeholder") || null,
@@ -280,31 +221,48 @@
       role: el.getAttribute("role") || null,
       resolved_label: label,
       group_label: detectGroupLabel(el),
+      tier, // 'primary' | 'secondary'
     };
   };
 
-  // ── Main serialize ────────────────────────────────────────────────────────────
+  // ── Serialize ─────────────────────────────────────────────────────────────────
   const serialize = () => {
-    seenLabels.clear(); // reset duplicate tracker on each scan
+    const seenLabels = new Set();
 
-    return Array.from(document.querySelectorAll(INTERACTIVE_SELECTOR))
-      .filter(isVisible)
-      .filter((el) => !el.disabled)
-      .filter((el) => !isStructuralNoise(el))
-      .filter((el) => !isMachineLabel(el))
-      .filter((el) => !isBareIconButton(el))
-      .filter((el) => hasMeaningfulLabel(el))
-      .map((el) => ({ el, label: resolveLabel(el) }))
-      .filter(({ label }) => label !== null) // must have a resolved label
-      .filter(({ label }) => !isTextNoise(label)) // label must not be noise text
-      .filter(({ label }) => !isDuplicate(label)) // no duplicate labels
-      .map(({ el, label }) => serializeNode(el, label));
+    return (
+      Array.from(document.querySelectorAll(INTERACTIVE_SELECTOR))
+        .filter(isVisible)
+        .filter((el) => !el.disabled)
+        .filter((el) => {
+          // Hard skip only truly invisible infrastructure
+          for (const sel of ALWAYS_SKIP_SELECTORS) {
+            try {
+              if (el.matches(sel) || el.closest(sel)) return false;
+            } catch (_) {}
+          }
+          return true;
+        })
+        .map((el) => {
+          const label = resolveLabel(el);
+          const score = scoreElement(el, label);
+          const tier = score >= 50 ? "primary" : "secondary";
+          return { el, label, tier, score };
+        })
+        // Deduplicate within primary tier only — secondary keeps everything
+        .filter(({ label, tier }) => {
+          if (tier === "secondary") return true;
+          const key = label.toLowerCase().trim();
+          if (seenLabels.has(key)) return false;
+          seenLabels.add(key);
+          return true;
+        })
+        .map(({ el, label, tier }) => serializeNode(el, label, tier))
+    );
   };
 
   const getElementByAtlasId = (atlasId) =>
     document.querySelector(`[${ATLAS_ID_ATTR}="${CSS.escape(atlasId)}"]`);
 
-  // Pause/resume for content.js to suppress re-renders during interactions
   let paused = false;
   const pause = () => {
     paused = true;
