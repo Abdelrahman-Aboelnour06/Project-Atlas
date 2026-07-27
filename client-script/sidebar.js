@@ -1,247 +1,339 @@
-// sidebar.js
-// Renders the Atlas sidebar with grouped categories, collapsible sections,
-// live search, and a skeleton loading state while the LLM is thinking.
+(function () {
+  // sidebar.js — grouped panel + chat interface
 
-const ROOT_ID = "atlas-sidebar-root";
+  const ROOT_ID = "atlas-sidebar-root";
 
-let rootEl = null;
-let listEl = null;
-let statusEl = null;
-let inputEl = null;
-let searchEl = null;
-let micBtn = null;
-let handlers = {};
-let currentItems = [];
+  let rootEl = null;
+  let listEl = null;
+  let statusEl = null;
+  let chatInputEl = null;
+  let searchEl = null;
+  let micBtn = null;
+  let chatLogEl = null;
+  let handlers = {};
+  let currentItems = [];
+  let groupOpenState = {};
 
-const CATEGORY_CONFIG = {
-  button: { label: "Buttons", emoji: "🔘", startOpen: true },
-  link: { label: "Links", emoji: "🔗", startOpen: false },
-  input: { label: "Inputs", emoji: "✏️", startOpen: true },
-  select: { label: "Dropdowns", emoji: "▾", startOpen: false },
-  form: { label: "Forms", emoji: "📋", startOpen: false },
-  other: { label: "Other", emoji: "⚙️", startOpen: false },
-};
-const CATEGORY_ORDER = ["button", "input", "link", "select", "form", "other"];
+  const CATEGORY_CONFIG = {
+    button: { label: "Buttons", emoji: "🔘" },
+    input: { label: "Text fields & forms", emoji: "✏️" },
+    link: { label: "Links", emoji: "🔗" },
+    select: { label: "Dropdowns", emoji: "▾" },
+    other: { label: "Other", emoji: "⚙️" },
+  };
+  const CATEGORY_ORDER = ["button", "input", "link", "select", "other"];
 
-const labelFor = (node) =>
-  node.aria_label ||
-  node.inner_text ||
-  node.placeholder ||
-  node.name ||
-  `${node.tag}${node.type ? ` (${node.type})` : ""}`;
+  const categoryFor = (node) => {
+    if (node.tag === "a") return "link";
+    if (node.tag === "button") return "button";
+    if (node.tag === "input" || node.tag === "textarea") return "input";
+    if (node.tag === "select") return "select";
+    return node.role || "other";
+  };
 
-const categoryFor = (node) => {
-  if (node.tag === "a") return "link";
-  if (node.tag === "button") return "button";
-  if (node.tag === "input" || node.tag === "textarea") return "input";
-  if (node.tag === "select") return "select";
-  if (node.tag === "form") return "form";
-  return node.role || "other";
-};
+  const deriveDisplayItems = (domMap) =>
+    domMap.map((node) => ({
+      id: node.id,
+      label:
+        node.resolved_label ||
+        node.aria_label ||
+        node.inner_text ||
+        node.placeholder ||
+        node.name ||
+        node.tag,
+      category: categoryFor(node),
+      group: node.group_label || null,
+    }));
 
-const deriveDisplayItems = (domMap) =>
-  domMap.map((node) => ({
-    id: node.id,
-    label: labelFor(node),
-    category: categoryFor(node),
-  }));
+  // ── DOM construction ──────────────────────────────────────────────────────────
+  const buildDom = () => {
+    rootEl = document.createElement("div");
+    rootEl.id = ROOT_ID;
 
-const buildDom = () => {
-  rootEl = document.createElement("div");
-  rootEl.id = ROOT_ID;
-
-  rootEl.innerHTML = `
+    rootEl.innerHTML = `
     <div class="atlas-header">
       <span class="atlas-title">⚡ Atlas</span>
+      <div class="atlas-tab-bar">
+        <button class="atlas-tab atlas-tab-active" data-tab="chat">💬 Chat</button>
+        <button class="atlas-tab" data-tab="elements">🗂 Elements</button>
+      </div>
       <button class="atlas-close" aria-label="Close Atlas sidebar">×</button>
     </div>
-    <div class="atlas-command-bar">
-      <input class="atlas-input" type="text" placeholder="Type a command, e.g. 'click checkout'" />
-      <button class="atlas-mic-btn" aria-label="Speak a command">🎤</button>
+
+    <!-- CHAT TAB -->
+    <div class="atlas-pane" id="atlas-pane-chat">
+      <div class="atlas-chat-log" id="atlas-chat-log"></div>
+      <div class="atlas-chat-input-bar">
+        <input class="atlas-chat-input" type="text"
+          placeholder="Ask anything or give a command..." />
+        <button class="atlas-mic-btn" aria-label="Speak a command">🎤</button>
+      </div>
     </div>
-    <div class="atlas-search-bar">
-      <input class="atlas-search" type="text" placeholder="🔍 Search elements..." />
+
+    <!-- ELEMENTS TAB -->
+    <div class="atlas-pane atlas-pane-hidden" id="atlas-pane-elements">
+      <div class="atlas-search-bar">
+        <input class="atlas-search" type="text" placeholder="🔍 Search for a button or field..." />
+      </div>
+      <div class="atlas-status" aria-live="polite"></div>
+      <div class="atlas-list" role="list"></div>
     </div>
-    <div class="atlas-status" aria-live="polite"></div>
-    <div class="atlas-list" role="list"></div>
   `;
 
-  document.body.appendChild(rootEl);
+    document.body.appendChild(rootEl);
 
-  listEl = rootEl.querySelector(".atlas-list");
-  statusEl = rootEl.querySelector(".atlas-status");
-  inputEl = rootEl.querySelector(".atlas-input");
-  searchEl = rootEl.querySelector(".atlas-search");
-  micBtn = rootEl.querySelector(".atlas-mic-btn");
+    listEl = rootEl.querySelector(".atlas-list");
+    statusEl = rootEl.querySelector(".atlas-status");
+    chatInputEl = rootEl.querySelector(".atlas-chat-input");
+    searchEl = rootEl.querySelector(".atlas-search");
+    micBtn = rootEl.querySelector(".atlas-mic-btn");
+    chatLogEl = rootEl.querySelector("#atlas-chat-log");
 
-  rootEl.querySelector(".atlas-close").addEventListener("click", () => {
-    handlers.onClose?.();
-  });
+    // Tab switching
+    rootEl.querySelectorAll(".atlas-tab").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        rootEl
+          .querySelectorAll(".atlas-tab")
+          .forEach((t) => t.classList.remove("atlas-tab-active"));
+        tab.classList.add("atlas-tab-active");
+        const target = tab.dataset.tab;
+        rootEl
+          .querySelectorAll(".atlas-pane")
+          .forEach((p) => p.classList.add("atlas-pane-hidden"));
+        rootEl
+          .querySelector(`#atlas-pane-${target}`)
+          .classList.remove("atlas-pane-hidden");
+      });
+    });
 
-  inputEl.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && inputEl.value.trim()) {
-      handlers.onCommandSubmit?.(inputEl.value.trim());
-      inputEl.value = "";
-    }
-  });
+    rootEl
+      .querySelector(".atlas-close")
+      .addEventListener("click", () => handlers.onClose?.());
 
-  micBtn.addEventListener("click", () => handlers.onMicClick?.());
+    chatInputEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && chatInputEl.value.trim()) {
+        const text = chatInputEl.value.trim();
+        chatInputEl.value = "";
+        addChatMessage("user", text);
+        handlers.onCommandSubmit?.(text);
+      }
+    });
 
-  searchEl.addEventListener("input", () => {
-    renderElements(currentItems);
-  });
-};
+    micBtn.addEventListener("click", () => handlers.onMicClick?.());
+    searchEl.addEventListener("input", () => renderElements(currentItems));
+  };
 
-// ── Skeleton loader ───────────────────────────────────────────────────────────
-const setLoading = (isLoading) => {
-  if (!listEl) return;
-  if (!isLoading) return;
+  // ── Chat messages ─────────────────────────────────────────────────────────────
+  const addChatMessage = (role, text) => {
+    if (!chatLogEl) return;
+    const msg = document.createElement("div");
+    msg.className = `atlas-msg atlas-msg-${role}`;
+    msg.innerHTML = `
+    <div class="atlas-msg-bubble">${text}</div>
+  `;
+    chatLogEl.appendChild(msg);
+    chatLogEl.scrollTop = chatLogEl.scrollHeight;
+  };
 
-  // Show skeleton cards while LLM is processing
-  listEl.innerHTML = `
+  const addChatThinking = () => {
+    if (!chatLogEl) return;
+    const msg = document.createElement("div");
+    msg.className = "atlas-msg atlas-msg-agent atlas-msg-thinking";
+    msg.id = "atlas-thinking-indicator";
+    msg.innerHTML = `<div class="atlas-msg-bubble"><span class="atlas-dots"><span>.</span><span>.</span><span>.</span></span></div>`;
+    chatLogEl.appendChild(msg);
+    chatLogEl.scrollTop = chatLogEl.scrollHeight;
+  };
+
+  const removeThinking = () => {
+    document.getElementById("atlas-thinking-indicator")?.remove();
+  };
+
+  // ── Skeleton loader ───────────────────────────────────────────────────────────
+  const setLoading = (isLoading) => {
+    if (!listEl || !isLoading) return;
+    listEl.innerHTML = `
     <div class="atlas-skeleton-label">AI is reading the page...</div>
-    ${Array.from({ length: 5 })
+    ${Array.from({ length: 4 })
       .map(
         () => `
       <div class="atlas-skeleton-group">
         <div class="atlas-skeleton-header"></div>
-        <div class="atlas-skeleton-body">
-          <div class="atlas-skeleton-item"></div>
-          <div class="atlas-skeleton-item short"></div>
-          <div class="atlas-skeleton-item"></div>
-        </div>
       </div>
     `,
       )
       .join("")}
   `;
-};
+  };
 
-// ── Rendering ─────────────────────────────────────────────────────────────────
-const renderElements = (items) => {
-  if (!listEl) return;
-  currentItems = items;
-  const query = (searchEl?.value || "").trim().toLowerCase();
-  listEl.innerHTML = "";
+  // ── Elements rendering ────────────────────────────────────────────────────────
+  const renderElements = (items) => {
+    if (!listEl) return;
+    currentItems = items;
+    const query = (searchEl?.value || "").trim().toLowerCase();
+    listEl.innerHTML = "";
 
-  const groups = {};
-  for (const cat of CATEGORY_ORDER) groups[cat] = [];
-  for (const item of items) {
-    const cat = CATEGORY_ORDER.includes(item.category)
-      ? item.category
-      : "other";
-    groups[cat].push(item);
-  }
+    // Sub-group items that share a group_label first
+    // e.g. "Price range" contains "Minimum price" and "Maximum price"
+    const groups = {};
+    for (const cat of CATEGORY_ORDER)
+      groups[cat] = { ungrouped: [], subgroups: {} };
 
-  let totalVisible = 0;
+    for (const item of items) {
+      const cat = CATEGORY_ORDER.includes(item.category)
+        ? item.category
+        : "other";
+      if (item.group) {
+        if (!groups[cat].subgroups[item.group])
+          groups[cat].subgroups[item.group] = [];
+        groups[cat].subgroups[item.group].push(item);
+      } else {
+        groups[cat].ungrouped.push(item);
+      }
+    }
 
-  for (const cat of CATEGORY_ORDER) {
-    const catItems = groups[cat];
-    if (catItems.length === 0) continue;
+    let totalVisible = 0;
 
-    const filtered = query
-      ? catItems.filter((i) => i.label.toLowerCase().includes(query))
-      : catItems;
+    for (const cat of CATEGORY_ORDER) {
+      const { ungrouped, subgroups } = groups[cat];
+      const allInCat = [...ungrouped, ...Object.values(subgroups).flat()];
+      if (allInCat.length === 0) continue;
 
-    if (query && filtered.length === 0) continue;
+      // Filter by search
+      const filteredUngrouped = query
+        ? ungrouped.filter((i) => i.label.toLowerCase().includes(query))
+        : ungrouped;
 
-    totalVisible += filtered.length;
+      const filteredSubgroups = {};
+      for (const [grpLabel, grpItems] of Object.entries(subgroups)) {
+        const f = query
+          ? grpItems.filter((i) => i.label.toLowerCase().includes(query))
+          : grpItems;
+        if (f.length) filteredSubgroups[grpLabel] = f;
+      }
 
-    const config = CATEGORY_CONFIG[cat] || {
-      label: cat,
-      emoji: "⚙️",
-      startOpen: false,
-    };
-    const isOpen = query ? true : config.startOpen;
+      const totalFiltered =
+        filteredUngrouped.length +
+        Object.values(filteredSubgroups).flat().length;
+      if (query && totalFiltered === 0) continue;
+      totalVisible += totalFiltered;
 
-    const section = document.createElement("div");
-    section.className = "atlas-group";
+      const config = CATEGORY_CONFIG[cat] || { label: cat, emoji: "⚙️" };
+      let isOpen = query ? true : (groupOpenState[cat] ?? false);
 
-    const header = document.createElement("button");
-    header.className = "atlas-group-header";
-    header.setAttribute("aria-expanded", isOpen);
-    header.innerHTML = `
+      const section = document.createElement("div");
+      section.className = "atlas-group";
+
+      const header = document.createElement("button");
+      header.className = "atlas-group-header";
+      header.setAttribute("aria-expanded", String(isOpen));
+      header.innerHTML = `
       <span class="atlas-group-title">
         <span class="atlas-group-emoji">${config.emoji}</span>
         ${config.label}
-        <span class="atlas-group-count">${filtered.length}</span>
+        <span class="atlas-group-count">${totalFiltered}</span>
       </span>
       <span class="atlas-group-chevron">${isOpen ? "▲" : "▼"}</span>
     `;
 
-    const body = document.createElement("div");
-    body.className = "atlas-group-body";
-    if (!isOpen) body.classList.add("atlas-group-collapsed");
+      const body = document.createElement("div");
+      body.className = "atlas-group-body";
+      if (!isOpen) body.classList.add("atlas-group-collapsed");
 
-    header.addEventListener("click", () => {
-      const expanded = header.getAttribute("aria-expanded") === "true";
-      header.setAttribute("aria-expanded", !expanded);
-      header.querySelector(".atlas-group-chevron").textContent = expanded
-        ? "▼"
-        : "▲";
-      body.classList.toggle("atlas-group-collapsed", expanded);
-    });
+      header.addEventListener("click", () => {
+        const expanded = header.getAttribute("aria-expanded") === "true";
+        const next = !expanded;
+        groupOpenState[cat] = next;
+        header.setAttribute("aria-expanded", String(next));
+        header.querySelector(".atlas-group-chevron").textContent = next
+          ? "▲"
+          : "▼";
+        body.classList.toggle("atlas-group-collapsed", !next);
+      });
 
-    for (const item of filtered) {
-      const el = document.createElement("button");
-      el.className = "atlas-item";
-      el.setAttribute("role", "listitem");
+      // Render subgroups first (e.g. "Price Range" containing min/max)
+      for (const [grpLabel, grpItems] of Object.entries(filteredSubgroups)) {
+        const subSection = document.createElement("div");
+        subSection.className = "atlas-subgroup";
 
-      const labelHtml = query
-        ? item.label.replace(
-            new RegExp(
-              `(${query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`,
-              "gi",
-            ),
-            '<mark class="atlas-highlight">$1</mark>',
-          )
-        : item.label;
+        const subHeader = document.createElement("div");
+        subHeader.className = "atlas-subgroup-header";
+        subHeader.textContent = grpLabel;
 
-      el.innerHTML = `<span class="atlas-item-label">${labelHtml}</span>`;
-      el.addEventListener("click", () => handlers.onElementClick?.(item.id));
-      body.appendChild(el);
+        subSection.appendChild(subHeader);
+        for (const item of grpItems) {
+          subSection.appendChild(makeItemEl(item, query));
+        }
+        body.appendChild(subSection);
+      }
+
+      // Then ungrouped items
+      for (const item of filteredUngrouped) {
+        body.appendChild(makeItemEl(item, query));
+      }
+
+      section.appendChild(header);
+      section.appendChild(body);
+      listEl.appendChild(section);
     }
 
-    section.appendChild(header);
-    section.appendChild(body);
-    listEl.appendChild(section);
-  }
+    if (totalVisible === 0) {
+      listEl.innerHTML = query
+        ? `<div class="atlas-empty">No elements match "<strong>${query}</strong>"</div>`
+        : '<div class="atlas-empty">No interactive elements found on this page.</div>';
+    }
+  };
 
-  if (totalVisible === 0) {
-    listEl.innerHTML = query
-      ? `<div class="atlas-empty">No elements match "<strong>${query}</strong>"</div>`
-      : '<div class="atlas-empty">No interactive elements found on this page.</div>';
-  }
-};
+  const makeItemEl = (item, query) => {
+    const el = document.createElement("button");
+    el.className = "atlas-item";
+    el.setAttribute("role", "listitem");
+    const labelHtml = query
+      ? item.label.replace(
+          new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi"),
+          '<mark class="atlas-highlight">$1</mark>',
+        )
+      : item.label;
+    el.innerHTML = `<span class="atlas-item-label">${labelHtml}</span>`;
+    el.addEventListener("click", () => handlers.onElementClick?.(item.id));
+    return el;
+  };
 
-const mount = (cbs = {}) => {
-  handlers = cbs;
-  if (document.getElementById(ROOT_ID)) return;
-  buildDom();
-};
+  // ── Public API ────────────────────────────────────────────────────────────────
+  const mount = (cbs = {}) => {
+    handlers = cbs;
+    groupOpenState = {};
+    if (document.getElementById(ROOT_ID)) return;
+    buildDom();
+  };
 
-const unmount = () => {
-  rootEl?.remove();
-  rootEl = null;
-  currentItems = [];
-};
+  const unmount = () => {
+    rootEl?.remove();
+    rootEl = null;
+    currentItems = [];
+    groupOpenState = {};
+  };
 
-const setStatus = (text, kind = "info") => {
-  if (!statusEl) return;
-  statusEl.textContent = text;
-  statusEl.className = `atlas-status atlas-status-${kind}`;
-};
+  const setStatus = (text, kind = "info") => {
+    if (!statusEl) return;
+    statusEl.textContent = text;
+    statusEl.className = `atlas-status atlas-status-${kind}`;
+  };
 
-const setListening = (isListening) => {
-  micBtn?.classList.toggle("atlas-mic-active", isListening);
-};
+  const setListening = (isListening) => {
+    micBtn?.classList.toggle("atlas-mic-active", isListening);
+  };
 
-window.AtlasSidebar = {
-  mount,
-  unmount,
-  renderElements,
-  deriveDisplayItems,
-  setStatus,
-  setListening,
-  setLoading,
-};
+  window.AtlasSidebar = {
+    mount,
+    unmount,
+    renderElements,
+    deriveDisplayItems,
+    setStatus,
+    setListening,
+    setLoading,
+    addChatMessage,
+    addChatThinking,
+    removeThinking,
+  };
+})();
