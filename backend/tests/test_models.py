@@ -61,6 +61,23 @@ class TestDomNode:
                 aria_label=None, href=None, name=None, role=None,
             )
 
+    def test_sensitive_field_defaults_to_false(self):
+        node = DomNode(
+            id="atlas-001", tag="input", type="text",
+            inner_text=None, placeholder="Search",
+            aria_label=None, href=None, name="q", role=None,
+        )
+        assert node.sensitive is False
+
+    def test_sensitive_field_explicit_true(self):
+        node = DomNode(
+            id="atlas-002", tag="input", type="password",
+            inner_text=None, placeholder="Password",
+            aria_label="Password", href=None, name="pwd", role=None,
+            sensitive=True,
+        )
+        assert node.sensitive is True
+
 
 # ── AgentMessage ──────────────────────────────────────────────────────────────
 

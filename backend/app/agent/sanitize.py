@@ -23,7 +23,9 @@ def strip_pii_from_dom(dom_map: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
         # Flag 1: Is the HTML type explicitly sensitive?
         # Flag 2: Does the ID or Name contain a sensitive keyword?
+        # Flag 3: Is it explicitly flagged sensitive by client-side detector?
         is_sensitive = (
+            bool(node.get('sensitive')) or
             node_type in sensitive_types or
             any(kw in node_id for kw in sensitive_keywords) or
             any(kw in node_name for kw in sensitive_keywords)

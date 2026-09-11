@@ -53,6 +53,7 @@ const jsFiles = [
   'options.js',
   'sidebar.js',
   'speech.js',
+  'tts.js',
   'websocket-client.js'
 ];
 

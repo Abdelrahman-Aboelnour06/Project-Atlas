@@ -25,6 +25,7 @@ chrome.action.onClicked.addListener(async (tab) => {
         "websocket-client.js",
         "executor.js",
         "speech.js",
+        "tts.js",
         "sidebar.js",
         "content.js",
       ]

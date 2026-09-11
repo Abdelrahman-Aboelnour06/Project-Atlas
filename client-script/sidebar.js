@@ -12,10 +12,12 @@
   let chatInputEl = null;
   let searchEl = null;
   let micBtn = null;
+  let modeBtn = null;
   let chatLogEl = null;
   let handlers = {};
   let currentItems = [];
   let groupOpenState = {};
+  let currentMode = "chat"; // 'chat' | 'voice'
 
   // Drag state cleanup ref
   let cleanUpDrag = null;
@@ -179,6 +181,10 @@
     <div class="atlas-pane" id="atlas-pane-chat">
       <div class="atlas-chat-log" id="atlas-chat-log"></div>
       <div class="atlas-chat-input-bar">
+        <button class="atlas-mode-btn" id="atlas-mode-toggle" aria-label="Toggle Voice Mode" title="Switch between Chat and Voice Mode">
+          <span class="atlas-mode-icon">💬</span>
+          <span class="atlas-mode-text">Chat</span>
+        </button>
         <input class="atlas-chat-input" type="text"
           placeholder="Ask anything or give a command..." />
         <button class="atlas-mic-btn" aria-label="Speak a command" title="Voice command">🎤</button>
@@ -202,11 +208,18 @@
     chatInputEl = rootEl.querySelector(".atlas-chat-input");
     searchEl = rootEl.querySelector(".atlas-search");
     micBtn = rootEl.querySelector(".atlas-mic-btn");
+    modeBtn = rootEl.querySelector("#atlas-mode-toggle");
     chatLogEl = rootEl.querySelector("#atlas-chat-log");
 
     const headerEl = rootEl.querySelector(".atlas-header");
     cleanUpDrag = setupDragging(headerEl);
     initWindowPosition();
+
+    modeBtn?.addEventListener("click", () => {
+      const nextMode = currentMode === "chat" ? "voice" : "chat";
+      updateModeUI(nextMode);
+      handlers.onModeChange?.(nextMode);
+    });
 
     // Tab switching
     rootEl.querySelectorAll(".atlas-tab").forEach((tab) => {
@@ -496,6 +509,23 @@
     micBtn?.classList.toggle("atlas-mic-active", isListening);
   };
 
+  const updateModeUI = (mode) => {
+    currentMode = mode;
+    if (!modeBtn) return;
+    const isVoice = mode === "voice";
+    modeBtn.classList.toggle("atlas-mode-voice", isVoice);
+    const icon = modeBtn.querySelector(".atlas-mode-icon");
+    const text = modeBtn.querySelector(".atlas-mode-text");
+    if (icon) icon.textContent = isVoice ? "🔊" : "💬";
+    if (text) text.textContent = isVoice ? "Voice" : "Chat";
+    modeBtn.setAttribute(
+      "aria-label",
+      isVoice
+        ? "Voice Mode active — reads responses aloud (click for Chat Mode)"
+        : "Chat Mode active — silent text responses (click for Voice Mode)",
+    );
+  };
+
   window.AtlasSidebar = {
     mount,
     unmount,
@@ -507,5 +537,7 @@
     addChatMessage,
     addChatThinking,
     removeThinking,
+    getMode: () => currentMode,
+    setMode: updateModeUI,
   };
 })();

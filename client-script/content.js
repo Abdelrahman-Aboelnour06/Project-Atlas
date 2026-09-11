@@ -48,11 +48,21 @@
 
   let conversationHistory = [];
   let pendingConfirmation = null;
+  let currentMode = "chat"; // 'chat' | 'voice'
+
+  const speakIfVoiceMode = (text) => {
+    if (currentMode === "voice" && window.AtlasTTS?.isSupported()) {
+      window.AtlasTTS.speak(text);
+    }
+  };
 
   // ── Unified Agentic Conversation & Multi-Step Execution Pipeline ─────────
   const handleChatInput = async (text) => {
     const rawInput = (text || "").trim();
     if (!rawInput) return;
+
+    // Stop ongoing speech before handling new input
+    window.AtlasTTS?.stop();
 
     const lowerInput = rawInput.toLowerCase();
 
@@ -75,24 +85,27 @@
           await new Promise((r) => setTimeout(r, 600));
           refreshPanel();
 
+          const placedMsg = "Your order has been placed! A licensed pharmacist will review your prescription/order within 24 hours.";
           window.AtlasSidebar.setStatus("Order Placed!", "ok");
           window.AtlasSidebar.removeThinking();
-          window.AtlasSidebar.addChatMessage(
-            "agent",
-            "Your order has been placed! A licensed pharmacist will review your prescription/order within 24 hours.",
-          );
+          window.AtlasSidebar.addChatMessage("agent", placedMsg);
+          speakIfVoiceMode(placedMsg);
         } catch (err) {
+          const errMsg = `Sorry, I ran into an issue: ${err.message}`;
           window.AtlasSidebar.setStatus("Error", "error");
           window.AtlasSidebar.removeThinking();
-          window.AtlasSidebar.addChatMessage("agent", `Sorry, I ran into an issue: ${err.message}`);
+          window.AtlasSidebar.addChatMessage("agent", errMsg);
+          speakIfVoiceMode(errMsg);
         }
         return;
       }
 
       if (isNegative) {
         pendingConfirmation = null;
+        const cancelMsg = "Understood! I've cancelled the purchase and will not place the order.";
         window.AtlasSidebar.setStatus("Cancelled", "info");
-        window.AtlasSidebar.addChatMessage("agent", "Understood! I've cancelled the purchase and will not place the order.");
+        window.AtlasSidebar.addChatMessage("agent", cancelMsg);
+        speakIfVoiceMode(cancelMsg);
         return;
       }
     }
@@ -193,6 +206,7 @@
               handleChatInput(choice);
             },
           });
+          speakIfVoiceMode(confirmText);
           return;
         }
 
@@ -200,6 +214,7 @@
         conversationHistory.push({ role: "assistant", content: replyText });
         window.AtlasSidebar.setStatus("Done.", "ok");
         window.AtlasSidebar.addChatMessage("agent", replyText);
+        speakIfVoiceMode(replyText);
         return;
       }
 
@@ -208,6 +223,7 @@
       conversationHistory.push({ role: "assistant", content: replyText });
       window.AtlasSidebar.setStatus("Ready.", "ok");
       window.AtlasSidebar.addChatMessage("agent", replyText);
+      speakIfVoiceMode(replyText);
 
     } catch (err) {
       console.warn("Agentic planner failed, falling back to command pipeline:", err);
@@ -287,6 +303,7 @@ const handleElementClick = async (atlasId) => {
 
   // ── Voice input ───────────────────────────────────────────────────────────────
   const handleMicClick = () => {
+    window.AtlasTTS?.stop();
     if (!window.AtlasSpeech.isSupported()) {
       window.AtlasSidebar.setStatus(
         "Voice not supported in this browser.",
@@ -337,6 +354,14 @@ const handleElementClick = async (atlasId) => {
       onElementClick: handleElementClick,
       onCommandSubmit: handleChatInput,
       onMicClick: handleMicClick,
+      onModeChange: (newMode) => {
+        currentMode = newMode;
+        if (newMode !== "voice") {
+          window.AtlasTTS?.stop();
+        } else {
+          speakIfVoiceMode("Voice mode enabled. I will read responses aloud.");
+        }
+      },
     });
 
     // Welcome message
@@ -397,6 +422,7 @@ const handleElementClick = async (atlasId) => {
   };
 
   const deactivate = () => {
+    window.AtlasTTS?.stop();
     stopObserving?.();
     stopObserving = null;
     stopUrlWatcher?.();

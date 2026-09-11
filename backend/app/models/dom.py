@@ -15,3 +15,4 @@ class DomNode(BaseModel):
     href:        str | None
     name:        str | None
     role:        str | None
+    sensitive:   bool | None = False

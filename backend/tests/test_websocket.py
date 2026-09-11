@@ -173,6 +173,26 @@ class TestCommandFlow:
         response = self._send(ws_client, payload)
         assert response["status"] == "error"
 
+    def test_sensitive_node_with_text_returns_security_error(self, ws_client):
+        payload = self._valid_payload()
+        payload["dom_map"] = [
+            {
+                "id": "atlas-sec-01",
+                "tag": "input",
+                "type": "password",
+                "inner_text": "secret123",
+                "placeholder": "Password",
+                "aria_label": "Password",
+                "href": None,
+                "name": "pwd",
+                "role": None,
+                "sensitive": True,
+            }
+        ]
+        response = self._send(ws_client, payload)
+        assert response["status"] == "error"
+        assert "Security violation" in response["message"]
+
 
 # ── type:simplify flow ────────────────────────────────────────────────────────
 

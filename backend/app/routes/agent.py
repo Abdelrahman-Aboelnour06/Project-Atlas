@@ -136,6 +136,19 @@ async def websocket_endpoint(websocket: WebSocket, db: AsyncSession = Depends(ge
                 continue
 
             # 6. Shield the DOM map from PII before it reaches the LLM or gets logged
+            # Security enforcement: sensitive nodes must not contain unmasked inner_text
+            has_sensitive_leak = any(
+                bool(node.sensitive) and bool(node.inner_text)
+                for node in message.dom_map
+            )
+            if has_sensitive_leak:
+                logger.error("Security violation: incoming node marked sensitive contains non-null inner_text")
+                await websocket.send_json({
+                    "status": "error",
+                    "message": "Security violation: sensitive fields must not contain text values.",
+                })
+                continue
+
             raw_dom = [node.model_dump() for node in message.dom_map]
             safe_dom = strip_pii_from_dom(raw_dom)
 

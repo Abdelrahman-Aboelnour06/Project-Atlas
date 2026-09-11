@@ -21,6 +21,22 @@
   ].join(",");
 
 const SENSITIVE_INPUT_TYPES = new Set(["password", "email", "tel"]);
+const SENSITIVE_KEYWORD_REGEX =
+  /card|cvv|cvc|ssn|dob|birth|otp|pin|pass|secret|token|security/i;
+const SENSITIVE_AUTOCOMPLETE_REGEX =
+  /cc-|current-password|new-password|one-time-code|bday/i;
+
+const isSensitiveField = (el) => {
+  const type = (el.getAttribute("type") || "").toLowerCase();
+  if (SENSITIVE_INPUT_TYPES.has(type)) return true;
+  const autocomplete = el.getAttribute("autocomplete") || "";
+  if (SENSITIVE_AUTOCOMPLETE_REGEX.test(autocomplete)) return true;
+  const name = el.getAttribute("name") || "";
+  const id = el.id || "";
+  const aria = el.getAttribute("aria-label") || "";
+  const placeholder = el.getAttribute("placeholder") || "";
+  return SENSITIVE_KEYWORD_REGEX.test(`${name} ${id} ${aria} ${placeholder}`);
+};
 
 // ── Noise filter ─────────────────────────────────────────────────────────────
 // Selectors that match UI chrome we never want cluttering the panel:
@@ -295,19 +311,18 @@ const NOISE_TEXT_PATTERNS = [
       atlasId = nextAtlasId();
       el.setAttribute(ATLAS_ID_ATTR, atlasId);
     }
+    const sensitive = isSensitiveField(el);
     return {
       id: atlasId,
       tag: el.tagName.toLowerCase(),
       type: el.getAttribute("type") || null,
-      inner_text:
-        el.tagName === "INPUT" && el.type === "password"
-          ? null
-          : truncate(el.innerText || el.textContent),
+      inner_text: sensitive ? null : truncate(el.innerText || el.textContent),
       placeholder: el.getAttribute("placeholder") || null,
       aria_label: el.getAttribute("aria-label") || null,
       href: el.getAttribute("href") || null,
       name: el.getAttribute("name") || null,
       role: el.getAttribute("role") || null,
+      sensitive: sensitive,
       resolved_label: label,
       group_label: detectGroupLabel(el),
     };

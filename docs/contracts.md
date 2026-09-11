@@ -103,7 +103,8 @@ Each entry in the `dom_map` array follows this shape:
   "aria_label":  "string | null",
   "href":        "string | null",
   "name":        "string | null",
-  "role":        "string | null"
+  "role":        "string | null",
+  "sensitive":   "boolean | null"
 }
 ```
 

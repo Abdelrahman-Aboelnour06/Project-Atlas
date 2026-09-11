@@ -96,6 +96,21 @@ const doFocus = (el) => {
 const READ_ONLY_ACTIONS = new Set(['scroll', 'focus'])
 const MUTATE_ACTIONS   = new Set(['click', 'fill'])
 
+const isCredentialField = (el) => {
+    if (!el || el.tagName !== 'INPUT') return false
+    const type = (el.type || '').toLowerCase()
+    const name = (el.name || '').toLowerCase()
+    const id = (el.id || '').toLowerCase()
+    const autocomplete = (el.getAttribute('autocomplete') || '').toLowerCase()
+    return (
+        type === 'password' ||
+        autocomplete.includes('password') ||
+        autocomplete.includes('username') ||
+        name.includes('password') ||
+        id.includes('password')
+    )
+}
+
 function requestConfirmation(el, action, value) {
     return new Promise((resolve) => {
         const originalOutline = el.style.outline
@@ -110,12 +125,12 @@ function requestConfirmation(el, action, value) {
             box-shadow: 0 4px 20px rgba(0,0,0,0.5); display: flex; align-items: center; gap: 12px; font-size: 14px;
         `
         const label = action === 'fill'
-            ? `Atlas wants to type “${value}” into this field.`
+            ? `Atlas wants to fill this field: “${value || 'value'}”.`
             : `Atlas wants to click this element.`
 
         banner.innerHTML = `
             <span><strong>Confirm action:</strong> ${label}</span>
-            <button id="atlas-confirm-yes" style="background:#22c55e;color:#fff;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;">Confirm</button>
+            <button id="atlas-confirm-yes" style="background:#22c55e;color:#fff;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;">Confirm (Tap)</button>
             <button id="atlas-confirm-no" style="background:#ef4444;color:#fff;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;">Cancel</button>
         `
         document.body.appendChild(banner)
@@ -129,6 +144,39 @@ function requestConfirmation(el, action, value) {
         document.getElementById('atlas-confirm-yes').onclick = () => cleanup(true)
         document.getElementById('atlas-confirm-no').onclick = () => cleanup(false)
     })
+}
+
+const requestNativeCredentials = async (el) => {
+    if (typeof navigator === 'undefined' || !navigator.credentials?.get) {
+        return { ok: false, message: 'Native credential management is not supported in this browser.' }
+    }
+    try {
+        // Voice Guardrail (§6): strictly requires physical tap confirmation
+        const confirmed = await requestConfirmation(el, 'fill', 'Stored Credentials (requires physical tap)')
+        if (!confirmed) {
+            return { ok: false, message: 'Credential autofill cancelled by user.' }
+        }
+
+        const cred = await navigator.credentials.get({
+            password: true,
+            mediation: 'optional',
+        })
+
+        if (cred && cred.password) {
+            doFill(el, cred.password)
+            const form = el.closest('form')
+            if (form && cred.id) {
+                const userField = form.querySelector('input[type="text"], input[type="email"], input[autocomplete*="username"]')
+                if (userField && userField !== el) {
+                    doFill(userField, cred.id)
+                }
+            }
+            return { ok: true, message: 'Autofilled credentials securely via native browser vault.' }
+        }
+        return { ok: false, message: 'No stored credentials selected or available.' }
+    } catch (err) {
+        return { ok: false, message: `Credential autofill: ${err.message}` }
+    }
 }
 
 const execute = async (actionResponse, options = {}) => {
@@ -145,8 +193,16 @@ const execute = async (actionResponse, options = {}) => {
     if (action === 'click') scrollToElement(el)
     if (action === 'fill') scrollToElement(el)
 
-    // Require user confirmation for destructive action if not handled conversationally
-    if (MUTATE_ACTIONS.has(action) && !options.skipConfirmation) {
+    // Handle credential autofill flow when targeting credential fields with null or placeholder value
+    if (action === 'fill' && isCredentialField(el) && (!value || value === '[AUTOFILL]' || value === '[CREDENTIAL]')) {
+        return await requestNativeCredentials(el)
+    }
+
+    // Voice Guardrail (§6): credential/sensitive fields ALWAYS require physical tap confirmation
+    const requiresPhysicalTap = isCredentialField(el)
+    const shouldConfirm = requiresPhysicalTap || (MUTATE_ACTIONS.has(action) && !options.skipConfirmation)
+
+    if (shouldConfirm) {
         const confirmed = await requestConfirmation(el, action, value)
         if (!confirmed) {
             return { ok: false, message: 'Action cancelled by user.' }
@@ -177,5 +233,5 @@ const executeStep = async (step) => {
     }, { skipConfirmation: true })
 }
 
-window.AtlasExecutor = { execute, executeStep }
+window.AtlasExecutor = { execute, executeStep, isCredentialField, requestNativeCredentials }
 })();
