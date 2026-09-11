@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import os
 
-from app.routes import agent, session, health, audit
+from app.routes import agent, session, health, audit, chat
 
 app = FastAPI(
     title="Atlas API",
@@ -15,16 +15,19 @@ app = FastAPI(
 # extension ID (chrome-extension://<id>) can be added without editing code.
 # Wildcard "*" + allow_credentials=True is rejected by browsers anyway, so
 # this was never actually working permissively — just silently broken.
-_default_origins = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://127.0.0.1:8000"
+_default_origins = (
+    "http://localhost:3000,http://127.0.0.1:3000,"
+    "http://localhost:8000,http://127.0.0.1:8000,"
+    "http://localhost:5500,http://127.0.0.1:5500"
+)
 allowed_origins = [
     o.strip()
     for o in os.getenv("ALLOWED_ORIGINS", _default_origins).split(",")
     if o.strip()
 ]
 
-# Chrome extension origin lock – only the specific unpacked/published ID is allowed
-extension_id = os.getenv("EXTENSION_ID", "pknbdfjklmabcdefghijklmnopqrstuv")
-allow_origin_regex = rf"^chrome-extension://{extension_id}$"
+# Allow requests from the extension, localhost on any port, or any host webpage where content scripts run
+allow_origin_regex = os.getenv("ALLOW_ORIGIN_REGEX", r".*")
 
 app.add_middleware(
     CORSMiddleware,
@@ -39,3 +42,4 @@ app.include_router(health.router)                # GET  /health
 app.include_router(session.router, prefix="/v1") # POST /v1/session/start
 app.include_router(agent.router,   prefix="/v1") # WS   /v1/agent
 app.include_router(audit.router,   prefix="/v1") # POST /v1/audit/log
+app.include_router(chat.router,    prefix="/v1") # POST /v1/chat

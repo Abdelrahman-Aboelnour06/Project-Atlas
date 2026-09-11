@@ -10,15 +10,26 @@
   let stopUrlWatcher = null;
   let lastUrl = location.href;
 
+  const DEFAULT_DEV_KEY = "atlas_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6";
+
   const getStoredSettings = () =>
     new Promise((resolve) => {
       chrome.storage.local.get(
         [API_KEY_STORAGE_KEY, BASE_URL_STORAGE_KEY],
         (result) => {
-          resolve({
-            apiKey: result[API_KEY_STORAGE_KEY] || null,
-            baseUrl: result[BASE_URL_STORAGE_KEY] || DEFAULT_BASE_URL,
-          });
+          let apiKey = result[API_KEY_STORAGE_KEY] || null;
+          const baseUrl = result[BASE_URL_STORAGE_KEY] || DEFAULT_BASE_URL;
+
+          // Auto-seed dev API key if not configured and connecting to localhost
+          if (
+            !apiKey &&
+            (baseUrl.includes("localhost:8000") || baseUrl.includes("127.0.0.1:8000"))
+          ) {
+            apiKey = DEFAULT_DEV_KEY;
+            chrome.storage.local.set({ [API_KEY_STORAGE_KEY]: apiKey });
+          }
+
+          resolve({ apiKey, baseUrl });
         },
       );
     });
@@ -35,63 +46,173 @@
       .slice(0, 3000); // cap to avoid huge LLM prompts
   };
 
-  // ── Chat: answer questions about the page via LLM ────────────────────────────
-  const handleChatQuestion = async (text) => {
+  let conversationHistory = [];
+  let pendingConfirmation = null;
+
+  // ── Unified Agentic Conversation & Multi-Step Execution Pipeline ─────────
+  const handleChatInput = async (text) => {
+    const rawInput = (text || "").trim();
+    if (!rawInput) return;
+
+    const lowerInput = rawInput.toLowerCase();
+
+    // 1. Handle Pending Confirmation State
+    if (pendingConfirmation) {
+      const isAffirmative = /^(yes|sure|proceed|place order|confirm|go ahead|ok|do it|please do|yeah|yep|continue)\b/i.test(lowerInput);
+      const isNegative = /^(no|cancel|stop|never mind|don't|dont|wait|abort)\b/i.test(lowerInput);
+
+      if (isAffirmative) {
+        window.AtlasSidebar.setStatus("Finalizing order...", "info");
+        window.AtlasSidebar.addChatThinking();
+
+        const actionToExecute = pendingConfirmation.action;
+        pendingConfirmation = null;
+
+        try {
+          if (actionToExecute) {
+            await window.AtlasExecutor.executeStep(actionToExecute);
+          }
+          await new Promise((r) => setTimeout(r, 600));
+          refreshPanel();
+
+          window.AtlasSidebar.setStatus("Order Placed!", "ok");
+          window.AtlasSidebar.removeThinking();
+          window.AtlasSidebar.addChatMessage(
+            "agent",
+            "Your order has been placed! A licensed pharmacist will review your prescription/order within 24 hours.",
+          );
+        } catch (err) {
+          window.AtlasSidebar.setStatus("Error", "error");
+          window.AtlasSidebar.removeThinking();
+          window.AtlasSidebar.addChatMessage("agent", `Sorry, I ran into an issue: ${err.message}`);
+        }
+        return;
+      }
+
+      if (isNegative) {
+        pendingConfirmation = null;
+        window.AtlasSidebar.setStatus("Cancelled", "info");
+        window.AtlasSidebar.addChatMessage("agent", "Understood! I've cancelled the purchase and will not place the order.");
+        return;
+      }
+    }
+
+    // 2. Multi-Step Agentic Planning
+    window.AtlasSidebar.setStatus("Thinking...", "info");
     window.AtlasSidebar.addChatThinking();
+
     try {
       const pageText = getPageText();
-      const prompt = `You are a helpful assistant for a website. A user is asking a question about the current webpage. Answer in 1-3 plain sentences, like you're talking to an elderly person. Be direct and helpful.
+      const domMap = window.AtlasSerializer.serialize();
+      const { apiKey, baseUrl } = await getStoredSettings();
 
-PAGE CONTENT (summary):
-${pageText}
+      conversationHistory.push({ role: "user", content: rawInput });
+      if (conversationHistory.length > 8) conversationHistory = conversationHistory.slice(-8);
 
-USER QUESTION: ${text}
+      const requestPayload = {
+        url: window.location.href,
+        question: rawInput,
+        page_text: pageText,
+        dom_map: domMap,
+        history: conversationHistory,
+        api_key: apiKey || "",
+      };
 
-Answer:`;
+      let responseData = null;
+      if (chrome?.runtime?.sendMessage) {
+        responseData = await new Promise((resolve, reject) => {
+          chrome.runtime.sendMessage(
+            {
+              type: "ATLAS_CHAT",
+              baseUrl,
+              apiKey: apiKey || "",
+              payload: requestPayload,
+            },
+            (res) => {
+              if (chrome.runtime.lastError) {
+                return reject(new Error(chrome.runtime.lastError.message));
+              }
+              if (!res || !res.ok) {
+                return reject(new Error(res?.error || "Agent request failed"));
+              }
+              resolve(res.data);
+            },
+          );
+        });
+      } else {
+        const res = await fetch(`${baseUrl}/v1/chat`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Atlas-Key": apiKey || "",
+          },
+          body: JSON.stringify(requestPayload),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        responseData = await res.json();
+      }
 
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 200,
-          messages: [{ role: "user", content: prompt }],
-        }),
-      });
-
-      // If Anthropic API isn't available, fall through to backend command pipeline
-      if (!res.ok) throw new Error("API unavailable");
-
-      const data = await res.json();
-      const answer =
-        data.content?.[0]?.text ||
-        "I'm not sure, but you can try searching the page.";
       window.AtlasSidebar.removeThinking();
-      window.AtlasSidebar.addChatMessage("agent", answer);
-    } catch (_) {
-      // Fallback: treat it as a command
+
+      const plan = responseData?.plan;
+
+      // If planner returned multi-step plan
+      if (plan && Array.isArray(plan.steps) && plan.steps.length > 0) {
+        // Execute steps sequentially with high-contrast highlighting
+        for (let i = 0; i < plan.steps.length; i++) {
+          const step = plan.steps[i];
+          window.AtlasSidebar.setStatus(step.description || `Executing step ${i + 1}...`, "info");
+          await window.AtlasExecutor.executeStep(step);
+          await new Promise((r) => setTimeout(r, step.delay_ms || 600));
+        }
+
+        refreshPanel();
+
+        // Check if confirmation is requested before completing sale
+        if (plan.requires_confirmation) {
+          let pendingBtn = null;
+          const updatedDom = window.AtlasSerializer.serialize();
+          const checkoutNode = updatedDom.find((n) => /proceed to checkout|place order|checkout/i.test(n.label || ""));
+          if (checkoutNode) {
+            pendingBtn = { action: "click", element_id: checkoutNode.id, description: "Place order" };
+          }
+
+          pendingConfirmation = {
+            action: pendingBtn || { action: "click", element_id: "checkout-btn" },
+            prompt: plan.confirmation_prompt || plan.reply,
+          };
+
+          const confirmText = plan.confirmation_prompt || plan.reply;
+          conversationHistory.push({ role: "assistant", content: confirmText });
+
+          window.AtlasSidebar.setStatus("Awaiting confirmation", "info");
+          window.AtlasSidebar.addChatMessage("agent", confirmText, {
+            actions: plan.confirmation_options || ["Yes, place order", "No, cancel"],
+            onAction: (choice) => {
+              window.AtlasSidebar.addChatMessage("user", choice);
+              handleChatInput(choice);
+            },
+          });
+          return;
+        }
+
+        const replyText = plan.reply || "Done!";
+        conversationHistory.push({ role: "assistant", content: replyText });
+        window.AtlasSidebar.setStatus("Done.", "ok");
+        window.AtlasSidebar.addChatMessage("agent", replyText);
+        return;
+      }
+
+      // Conversational response without DOM steps
+      const replyText = plan?.reply || responseData?.answer || "I've reviewed the page for you.";
+      conversationHistory.push({ role: "assistant", content: replyText });
+      window.AtlasSidebar.setStatus("Ready.", "ok");
+      window.AtlasSidebar.addChatMessage("agent", replyText);
+
+    } catch (err) {
+      console.warn("Agentic planner failed, falling back to command pipeline:", err);
       window.AtlasSidebar.removeThinking();
-      await runCommand(text);
-    }
-  };
-
-  // ── Detect if input is a question or a command ───────────────────────────────
-  const isQuestion = (text) => {
-    const t = text.trim().toLowerCase();
-    return (
-      t.endsWith("?") ||
-      /^(do|does|is|are|can|what|where|how|who|when|which|has|have|tell me|show me|find|search for)/.test(
-        t,
-      )
-    );
-  };
-
-  const handleChatInput = async (text) => {
-    if (isQuestion(text)) {
-      await handleChatQuestion(text);
-    } else {
-      window.AtlasSidebar.addChatThinking();
-      await runCommand(text);
+      await runCommand(rawInput);
     }
   };
 
@@ -133,6 +254,7 @@ const refreshPanel = () => {
 
 const runCommand = async (command) => {
   window.AtlasSidebar.setStatus("Thinking...", "info");
+  window.AtlasSidebar.addChatThinking();
   try {
     const domMap = window.AtlasSerializer.serialize();
     const response = await window.AtlasSocket.sendCommand({
@@ -142,8 +264,13 @@ const runCommand = async (command) => {
     });
     const result = await window.AtlasExecutor.execute(response);
     window.AtlasSidebar.setStatus(result.message, result.ok ? "ok" : "error");
+    window.AtlasSidebar.removeThinking();
+    const reply = result.message || (result.ok ? "Done!" : "I couldn't perform that action.");
+    window.AtlasSidebar.addChatMessage("agent", reply);
   } catch (err) {
     window.AtlasSidebar.setStatus(`Connection issue: ${err.message}`, "error");
+    window.AtlasSidebar.removeThinking();
+    window.AtlasSidebar.addChatMessage("agent", `Sorry, I ran into an issue: ${err.message}`);
   }
 };
 
@@ -197,14 +324,6 @@ const handleElementClick = async (atlasId) => {
       }
     }, 500);
     return () => clearInterval(interval);
-  };
-
-  const refreshPanel = () => {
-    const domMap = window.AtlasSerializer.serialize();
-    window.AtlasSidebar.renderElements(
-      window.AtlasSidebar.deriveDisplayItems(domMap),
-    );
-    renderSimplified(domMap);
   };
 
   // ── Activate / deactivate ─────────────────────────────────────────────────────
@@ -262,10 +381,18 @@ const handleElementClick = async (atlasId) => {
       window.AtlasSidebar.setStatus("Ready.", "ok");
       renderSimplified(domMap);
     } catch (err) {
+      console.error("Atlas: Connection failed:", err);
       window.AtlasSidebar.setStatus(
         `Couldn't connect: ${err.message}`,
         "error",
       );
+      let guidance = `⚠️ Couldn't connect to Atlas backend (${err.message}).`;
+      if (err.message.includes("401")) {
+        guidance = "⚠️ Invalid API key (HTTP 401). Please check your key in the Atlas extension settings.";
+      } else if (err.message.includes("Failed to fetch") || err.message.includes("NetworkError")) {
+        guidance = `⚠️ Cannot reach Atlas backend at ${baseUrl}. Make sure the Docker container or server is running.`;
+      }
+      window.AtlasSidebar.addChatMessage("agent", guidance);
     }
   };
 
@@ -281,7 +408,15 @@ const handleElementClick = async (atlasId) => {
 
   const toggle = () => (active ? deactivate() : activate());
 
-  chrome.runtime.onMessage.addListener((message) => {
-    if (message.type === "ATLAS_TOGGLE") toggle();
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === "ATLAS_PING") {
+      sendResponse({ status: "ok" });
+      return true;
+    }
+    if (message.type === "ATLAS_TOGGLE") {
+      toggle();
+      sendResponse({ status: "ok", active });
+      return true;
+    }
   });
 })();

@@ -1,7 +1,10 @@
 (function () {
-  // sidebar.js — grouped panel + chat interface
+  // sidebar.js — Apple-Style Floating Window + Grouped Panel & Chat
 
   const ROOT_ID = "atlas-sidebar-root";
+  const DEFAULT_WIDTH = 348;
+  const DEFAULT_HEIGHT = 520;
+  const VIEWPORT_PADDING = 12;
 
   let rootEl = null;
   let listEl = null;
@@ -13,6 +16,9 @@
   let handlers = {};
   let currentItems = [];
   let groupOpenState = {};
+
+  // Drag state cleanup ref
+  let cleanUpDrag = null;
 
   const CATEGORY_CONFIG = {
     button: { label: "Buttons", emoji: "🔘" },
@@ -45,35 +51,144 @@
       group: node.group_label || null,
     }));
 
+  // ── Window Positioning & Dragging ─────────────────────────────────────────────
+  const clamp = (val, min, max) => Math.max(min, Math.min(val, max));
+
+  const applyPosition = (x, y) => {
+    if (!rootEl) return;
+    const width = rootEl.offsetWidth || DEFAULT_WIDTH;
+    const height = rootEl.offsetHeight || DEFAULT_HEIGHT;
+    const maxX = Math.max(VIEWPORT_PADDING, window.innerWidth - width - VIEWPORT_PADDING);
+    const maxY = Math.max(VIEWPORT_PADDING, window.innerHeight - height - VIEWPORT_PADDING);
+    const clampedX = clamp(x, VIEWPORT_PADDING, maxX);
+    const clampedY = clamp(y, VIEWPORT_PADDING, maxY);
+
+    rootEl.style.left = `${clampedX}px`;
+    rootEl.style.top = `${clampedY}px`;
+    return { x: clampedX, y: clampedY };
+  };
+
+  const initWindowPosition = () => {
+    const defaultX = Math.max(VIEWPORT_PADDING, window.innerWidth - DEFAULT_WIDTH - 24);
+    const defaultY = Math.max(VIEWPORT_PADDING, window.innerHeight - DEFAULT_HEIGHT - 24);
+
+    if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.get(["atlasWindowPos"], (result) => {
+        const pos = result?.atlasWindowPos;
+        if (pos && typeof pos.x === "number" && typeof pos.y === "number") {
+          applyPosition(pos.x, pos.y);
+        } else {
+          applyPosition(defaultX, defaultY);
+        }
+      });
+    } else {
+      applyPosition(defaultX, defaultY);
+    }
+  };
+
+  const setupDragging = (headerEl) => {
+    let isDragging = false;
+    let startX = 0;
+    let startY = 0;
+    let initialLeft = 0;
+    let initialTop = 0;
+
+    const onMouseDown = (e) => {
+      // Don't drag when interacting with controls
+      if (e.target.closest("button, input, [role='tab'], .atlas-tab, .atlas-traffic-btn")) {
+        return;
+      }
+      isDragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      const rect = rootEl.getBoundingClientRect();
+      initialLeft = rect.left;
+      initialTop = rect.top;
+      rootEl.classList.add("atlas-dragging");
+      document.body.style.userSelect = "none";
+      e.preventDefault();
+    };
+
+    const onMouseMove = (e) => {
+      if (!isDragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      applyPosition(initialLeft + dx, initialTop + dy);
+    };
+
+    const onMouseUp = () => {
+      if (!isDragging) return;
+      isDragging = false;
+      rootEl.classList.remove("atlas-dragging");
+      document.body.style.userSelect = "";
+      const rect = rootEl.getBoundingClientRect();
+      const pos = { x: Math.round(rect.left), y: Math.round(rect.top) };
+      if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.set({ atlasWindowPos: pos });
+      }
+    };
+
+    const onResize = () => {
+      if (!rootEl) return;
+      const rect = rootEl.getBoundingClientRect();
+      applyPosition(rect.left, rect.top);
+    };
+
+    headerEl.addEventListener("mousedown", onMouseDown);
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    window.addEventListener("resize", onResize);
+
+    return () => {
+      headerEl.removeEventListener("mousedown", onMouseDown);
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+      window.removeEventListener("resize", onResize);
+      document.body.style.userSelect = "";
+    };
+  };
+
   // ── DOM construction ──────────────────────────────────────────────────────────
   const buildDom = () => {
     rootEl = document.createElement("div");
     rootEl.id = ROOT_ID;
+    rootEl.setAttribute("role", "dialog");
+    rootEl.setAttribute("aria-label", "Atlas Accessibility Assistant");
 
     rootEl.innerHTML = `
-    <div class="atlas-header">
-      <span class="atlas-title">⚡ Atlas</span>
-      <div class="atlas-tab-bar">
-        <button class="atlas-tab atlas-tab-active" data-tab="chat">💬 Chat</button>
-        <button class="atlas-tab" data-tab="elements">🗂 Elements</button>
+    <!-- macOS Window Titlebar / Header -->
+    <div class="atlas-header" title="Drag to move Atlas window">
+      <div class="atlas-traffic-lights">
+        <button class="atlas-traffic-btn atlas-traffic-close" aria-label="Close Atlas window" title="Close">
+          <span class="atlas-traffic-close-icon">✕</span>
+        </button>
       </div>
+
+      <span class="atlas-title">Atlas</span>
+
+      <div class="atlas-tab-bar" role="tablist">
+        <button class="atlas-tab atlas-tab-active" data-tab="chat" role="tab" aria-selected="true">Chat</button>
+        <button class="atlas-tab" data-tab="elements" role="tab" aria-selected="false">Elements</button>
+      </div>
+
+      <!-- Fallback close button for accessibility / test compatibility -->
       <button class="atlas-close" aria-label="Close Atlas sidebar">×</button>
     </div>
 
-    <!-- CHAT TAB -->
+    <!-- CHAT TAB PANE -->
     <div class="atlas-pane" id="atlas-pane-chat">
       <div class="atlas-chat-log" id="atlas-chat-log"></div>
       <div class="atlas-chat-input-bar">
         <input class="atlas-chat-input" type="text"
           placeholder="Ask anything or give a command..." />
-        <button class="atlas-mic-btn" aria-label="Speak a command">🎤</button>
+        <button class="atlas-mic-btn" aria-label="Speak a command" title="Voice command">🎤</button>
       </div>
     </div>
 
-    <!-- ELEMENTS TAB -->
+    <!-- ELEMENTS TAB PANE -->
     <div class="atlas-pane atlas-pane-hidden" id="atlas-pane-elements">
       <div class="atlas-search-bar">
-        <input class="atlas-search" type="text" placeholder="🔍 Search for a button or field..." />
+        <input class="atlas-search" type="text" placeholder="Search buttons, inputs, links..." />
       </div>
       <div class="atlas-status" aria-live="polite"></div>
       <div class="atlas-list" role="list"></div>
@@ -89,13 +204,21 @@
     micBtn = rootEl.querySelector(".atlas-mic-btn");
     chatLogEl = rootEl.querySelector("#atlas-chat-log");
 
+    const headerEl = rootEl.querySelector(".atlas-header");
+    cleanUpDrag = setupDragging(headerEl);
+    initWindowPosition();
+
     // Tab switching
     rootEl.querySelectorAll(".atlas-tab").forEach((tab) => {
       tab.addEventListener("click", () => {
         rootEl
           .querySelectorAll(".atlas-tab")
-          .forEach((t) => t.classList.remove("atlas-tab-active"));
+          .forEach((t) => {
+            t.classList.remove("atlas-tab-active");
+            t.setAttribute("aria-selected", "false");
+          });
         tab.classList.add("atlas-tab-active");
+        tab.setAttribute("aria-selected", "true");
         const target = tab.dataset.tab;
         rootEl
           .querySelectorAll(".atlas-pane")
@@ -106,9 +229,21 @@
       });
     });
 
+    // Close handlers (traffic light & fallback)
+    const handleClose = () => {
+      if (!rootEl) return;
+      rootEl.classList.add("atlas-closing");
+      setTimeout(() => {
+        handlers.onClose?.();
+      }, 150);
+    };
+
+    rootEl
+      .querySelector(".atlas-traffic-close")
+      ?.addEventListener("click", handleClose);
     rootEl
       .querySelector(".atlas-close")
-      .addEventListener("click", () => handlers.onClose?.());
+      ?.addEventListener("click", handleClose);
 
     chatInputEl.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && chatInputEl.value.trim()) {
@@ -124,13 +259,53 @@
   };
 
   // ── Chat messages ─────────────────────────────────────────────────────────────
-  const addChatMessage = (role, text) => {
+  const addChatMessage = (role, text, options = null) => {
     if (!chatLogEl) return;
     const msg = document.createElement("div");
     msg.className = `atlas-msg atlas-msg-${role}`;
+
+    let actionsHtml = "";
+    if (options && Array.isArray(options.actions) && options.actions.length > 0) {
+      actionsHtml = `
+        <div class="atlas-chat-actions">
+          ${options.actions
+            .map((act, idx) => {
+              const label = typeof act === "string" ? act : act.label;
+              const isConfirm = /yes|proceed|place|confirm|ok/i.test(label);
+              const isCancel = /no|cancel|stop/i.test(label);
+              const extraClass = isConfirm ? "atlas-chip-confirm" : (isCancel ? "atlas-chip-cancel" : "");
+              return `<button class="atlas-chip-btn ${extraClass}" data-chip-idx="${idx}">${label}</button>`;
+            })
+            .join("")}
+        </div>
+      `;
+    }
+
     msg.innerHTML = `
-    <div class="atlas-msg-bubble">${text}</div>
-  `;
+      <div class="atlas-msg-bubble">
+        <div class="atlas-msg-text">${text}</div>
+        ${actionsHtml}
+      </div>
+    `;
+
+    if (options && Array.isArray(options.actions)) {
+      msg.querySelectorAll(".atlas-chip-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const idx = parseInt(btn.dataset.chipIdx, 10);
+          const act = options.actions[idx];
+          const choice = typeof act === "string" ? act : (act.value || act.label);
+          // Remove buttons after choice
+          msg.querySelector(".atlas-chat-actions")?.remove();
+          if (options.onAction) {
+            options.onAction(choice, act);
+          } else {
+            addChatMessage("user", choice);
+            handlers.onCommandSubmit?.(choice);
+          }
+        });
+      });
+    }
+
     chatLogEl.appendChild(msg);
     chatLogEl.scrollTop = chatLogEl.scrollHeight;
   };
@@ -153,17 +328,17 @@
   const setLoading = (isLoading) => {
     if (!listEl || !isLoading) return;
     listEl.innerHTML = `
-    <div class="atlas-skeleton-label">AI is reading the page...</div>
-    ${Array.from({ length: 4 })
-      .map(
-        () => `
-      <div class="atlas-skeleton-group">
-        <div class="atlas-skeleton-header"></div>
-      </div>
-    `,
-      )
-      .join("")}
-  `;
+      <div class="atlas-skeleton-label">Reading page elements...</div>
+      ${Array.from({ length: 3 })
+        .map(
+          () => `
+        <div class="atlas-skeleton-group">
+          <div class="atlas-skeleton-header"></div>
+        </div>
+      `,
+        )
+        .join("")}
+    `;
   };
 
   // ── Elements rendering ────────────────────────────────────────────────────────
@@ -173,8 +348,6 @@
     const query = (searchEl?.value || "").trim().toLowerCase();
     listEl.innerHTML = "";
 
-    // Sub-group items that share a group_label first
-    // e.g. "Price range" contains "Minimum price" and "Maximum price"
     const groups = {};
     for (const cat of CATEGORY_ORDER)
       groups[cat] = { ungrouped: [], subgroups: {} };
@@ -199,7 +372,6 @@
       const allInCat = [...ungrouped, ...Object.values(subgroups).flat()];
       if (allInCat.length === 0) continue;
 
-      // Filter by search
       const filteredUngrouped = query
         ? ungrouped.filter((i) => i.label.toLowerCase().includes(query))
         : ungrouped;
@@ -228,13 +400,13 @@
       header.className = "atlas-group-header";
       header.setAttribute("aria-expanded", String(isOpen));
       header.innerHTML = `
-      <span class="atlas-group-title">
-        <span class="atlas-group-emoji">${config.emoji}</span>
-        ${config.label}
-        <span class="atlas-group-count">${totalFiltered}</span>
-      </span>
-      <span class="atlas-group-chevron">${isOpen ? "▲" : "▼"}</span>
-    `;
+        <span class="atlas-group-title">
+          <span class="atlas-group-emoji">${config.emoji}</span>
+          ${config.label}
+          <span class="atlas-group-count">${totalFiltered}</span>
+        </span>
+        <span class="atlas-group-chevron">${isOpen ? "▲" : "▼"}</span>
+      `;
 
       const body = document.createElement("div");
       body.className = "atlas-group-body";
@@ -251,7 +423,6 @@
         body.classList.toggle("atlas-group-collapsed", !next);
       });
 
-      // Render subgroups first (e.g. "Price Range" containing min/max)
       for (const [grpLabel, grpItems] of Object.entries(filteredSubgroups)) {
         const subSection = document.createElement("div");
         subSection.className = "atlas-subgroup";
@@ -267,7 +438,6 @@
         body.appendChild(subSection);
       }
 
-      // Then ungrouped items
       for (const item of filteredUngrouped) {
         body.appendChild(makeItemEl(item, query));
       }
@@ -308,6 +478,8 @@
   };
 
   const unmount = () => {
+    cleanUpDrag?.();
+    cleanUpDrag = null;
     rootEl?.remove();
     rootEl = null;
     currentItems = [];

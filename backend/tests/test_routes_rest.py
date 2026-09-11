@@ -232,3 +232,44 @@ class TestAuditLog:
             }
             r = client.post("/v1/audit/log", json=payload)
             assert r.status_code == 200, f"error_type '{error_type}' should be accepted"
+
+
+# ── POST /v1/chat ─────────────────────────────────────────────────────────────
+
+class TestChat:
+    def test_valid_chat_returns_200(self, client):
+        with patch("app.agent.llm_client.call_llm", new=AsyncMock(return_value="This page sells electronics.")):
+            r = client.post(
+                "/v1/chat",
+                headers={"X-Atlas-Key": DEMO_API_KEY},
+                json={
+                    "url": "https://demo.atlas.com",
+                    "question": "What is this page?",
+                    "page_text": "Welcome to electronics shop",
+                },
+            )
+            assert r.status_code == 200
+            assert r.json()["status"] == "ok"
+            assert "electronics" in r.json()["answer"]
+
+    def test_invalid_key_returns_401(self, client):
+        r = client.post(
+            "/v1/chat",
+            headers={"X-Atlas-Key": WRONG_API_KEY},
+            json={
+                "url": "https://demo.atlas.com",
+                "question": "What is this?",
+            },
+        )
+        assert r.status_code == 401
+
+    def test_missing_key_returns_401(self, client):
+        r = client.post(
+            "/v1/chat",
+            json={
+                "url": "https://demo.atlas.com",
+                "question": "What is this?",
+            },
+        )
+        assert r.status_code == 401
+

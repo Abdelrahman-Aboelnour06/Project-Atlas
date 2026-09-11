@@ -1,3 +1,4 @@
+(function () {
 // speech.js
 // Task B — handles audio only (per docs/conventions.md: speech.js only
 // handles audio, no DOM manipulation beyond its own mic-status callback).
@@ -60,3 +61,4 @@ const stop = () => {
 }
 
 window.AtlasSpeech = { isSupported, start, stop }
+})();

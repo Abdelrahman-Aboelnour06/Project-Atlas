@@ -1,3 +1,4 @@
+(function () {
 // executor.js
 // Task D — owns all DOM WRITING (per docs/conventions.md: executor.js owns
 // DOM writes, dom-serializer.js owns DOM reads — don't cross the line).
@@ -130,7 +131,7 @@ function requestConfirmation(el, action, value) {
     })
 }
 
-const execute = async (actionResponse) => {
+const execute = async (actionResponse, options = {}) => {
     const { status, action, element_id: elementId, value } = actionResponse
     if (status === 'error' || status === 'no_match' || action === 'none') {
         return { ok: false, message: actionResponse.message }
@@ -144,8 +145,8 @@ const execute = async (actionResponse) => {
     if (action === 'click') scrollToElement(el)
     if (action === 'fill') scrollToElement(el)
 
-    // Require user confirmation for any destructive action
-    if (MUTATE_ACTIONS.has(action)) {
+    // Require user confirmation for destructive action if not handled conversationally
+    if (MUTATE_ACTIONS.has(action) && !options.skipConfirmation) {
         const confirmed = await requestConfirmation(el, action, value)
         if (!confirmed) {
             return { ok: false, message: 'Action cancelled by user.' }
@@ -166,4 +167,15 @@ const execute = async (actionResponse) => {
     return { ok: true, message: actionResponse.message }
 }
 
-window.AtlasExecutor = { execute }
+const executeStep = async (step) => {
+    return execute({
+        status: 'ok',
+        action: step.action,
+        element_id: step.element_id,
+        value: step.value,
+        message: step.description || `Performed ${step.action}`,
+    }, { skipConfirmation: true })
+}
+
+window.AtlasExecutor = { execute, executeStep }
+})();

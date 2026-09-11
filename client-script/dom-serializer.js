@@ -26,6 +26,7 @@ const SENSITIVE_INPUT_TYPES = new Set(["password", "email", "tel"]);
 // Selectors that match UI chrome we never want cluttering the panel:
 // language pickers, account menus, cookie banners, price/filter widgets, etc.
 const NOISE_SELECTORS = [
+  "#atlas-sidebar-root", // never scan ourselves
   // Amazon-specific nav/utility chrome
   "#nav-global-location-popover-link",
   "#nav-link-accountList",
@@ -47,92 +48,43 @@ const NOISE_SELECTORS = [
   "#sp-cc",
   "#cookie-banner",
   '[id*="cookie"]',
+  '[class*="cookie"]',
   '[class*="cookie-banner"]',
+  '[id*="gdpr"]',
+  '[class*="gdpr"]',
   // Generic footer / utility patterns
   "footer a",
+  "footer button",
   '[aria-label*="language" i]',
   '[aria-label*="country" i]',
   '[aria-label*="currency" i]',
   '[aria-label*="region" i]',
+  '[aria-label*="breadcrumb" i]',
+  // Skip elements inside known chrome/nav containers
+  "nav a",
+  '[role="navigation"] a',
+  '[role="navigation"] button',
+  '[role="banner"] a',
+  // Google / internal widget chrome
+  "[data-ogsr-up]",
+  '[jsaction*="dismiss"]',
 ];
 
 const NOISE_TEXT_PATTERNS = [
   /^change (language|country|region|currency)/i,
   /^select (language|country|region|currency)/i,
-  /^\$\d+(\.\d+)?\s*[-–]\s*\$\d+/, // price ranges like "$10 - $50"
+  /^\$[\d,]+(\.\d+)?\s*[-–]\s*\$[\d,]+/, // price ranges like "$10 - $50"
   /^filter by/i,
   /^sort by/i,
   /^all departments/i,
   /^sign in$/i,
+  /^log in$/i,
   /^returns & orders/i,
+  /^back to top/i,
+  /^skip to (main|content|nav)/i,
 ];
 
-// ── Hidden element detection (defends against prompt injection) ─────────────
-function isTrulyHidden(el) {
-  if (el.hidden) return true;
-  if (el.closest('[aria-hidden="true"]')) return true;
-  const style = window.getComputedStyle(el);
-  if (style.display === 'none' || style.visibility === 'hidden') return true;
-  if (parseFloat(style.opacity) < 0.1) return true;
-  if (parseFloat(style.fontSize) === 0) return true;
-  if (el.offsetParent === null && el.tagName !== 'BODY') return true;
-  return false;
-}
 
-
-const isNoise = (el) => {
-  // Check structural noise selectors
-  for (const sel of NOISE_SELECTORS) {
-    try {
-      if (el.matches(sel) || el.closest(sel)) return true;
-    } catch (_) {}
-  }
-  // Check text content patterns
-  const text = (el.innerText || el.textContent || "").trim();
-  for (const pattern of NOISE_TEXT_PATTERNS) {
-    if (pattern.test(text)) return true;
-  }
-  return false;
-};
-  // ── Hard noise: always skip these regardless of content ───────────────────────
-  const NOISE_SELECTORS = [
-    "#atlas-sidebar-root", // never scan ourselves
-    // cookie / GDPR banners
-    '[id*="cookie"]',
-    '[class*="cookie"]',
-    '[id*="gdpr"]',
-    '[class*="gdpr"]',
-    // language / region pickers
-    '[aria-label*="language" i]',
-    '[aria-label*="country" i]',
-    '[aria-label*="currency" i]',
-    '[aria-label*="region" i]',
-    // breadcrumbs, pagination, footer links
-    '[aria-label*="breadcrumb" i]',
-    "footer a",
-    "footer button",
-    // skip elements inside known chrome/nav containers
-    "nav a", // pure nav links handled separately
-    '[role="navigation"] a',
-    '[role="navigation"] button',
-    '[role="banner"] a', // header links (logo, home)
-    // Google / internal widget chrome
-    "[data-ogsr-up]",
-    '[jsaction*="dismiss"]',
-  ];
-
-  // ── Text patterns that are always noise ───────────────────────────────────────
-  const NOISE_TEXT_PATTERNS = [
-    /^change (language|country|region|currency)/i,
-    /^\$[\d,]+(\.\d+)?\s*[-–]\s*\$[\d,]+/, // price ranges
-    /^filter by/i,
-    /^sort by/i,
-    /^sign in$/i,
-    /^log in$/i,
-    /^returns & orders/i,
-    /^back to top/i,
-    /^skip to (main|content|nav)/i,
-  ];
 
   // ── Universal quality filters ─────────────────────────────────────────────────
   // These run on EVERY site, not just Amazon.
@@ -215,9 +167,13 @@ const isNoise = (el) => {
 
   // ── Visibility ────────────────────────────────────────────────────────────────
   const isVisible = (el) => {
+    if (el.hidden) return false;
+    if (el.closest('[aria-hidden="true"]')) return false;
     const style = window.getComputedStyle(el);
     if (style.display === "none" || style.visibility === "hidden") return false;
     if (parseFloat(style.opacity) < 0.1) return false;
+    if (parseFloat(style.fontSize) === 0) return false;
+    if (el.offsetParent === null && el.tagName !== "BODY") return false;
     const rect = el.getBoundingClientRect();
     return rect.width > 0 && rect.height > 0;
   };
@@ -357,18 +313,6 @@ const isNoise = (el) => {
     };
   };
 
-const isEnabled = (el) => !el.disabled;
-
-const serialize = () => {
-  const nodes = Array.from(document.querySelectorAll(INTERACTIVE_SELECTOR))
-    .filter((el) => !el.closest("#atlas-sidebar-root"))
-    .filter(isVisible)
-    .filter((el) => !isTrulyHidden(el))
-    .filter(isEnabled)
-    .filter((el) => !isNoise(el))
-    .map(serializeNode);
-  return nodes;
-};
   // ── Main serialize ────────────────────────────────────────────────────────────
   const serialize = () => {
     seenLabels.clear(); // reset duplicate tracker on each scan

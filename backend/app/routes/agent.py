@@ -97,8 +97,16 @@ async def websocket_endpoint(websocket: WebSocket, db: AsyncSession = Depends(ge
                 await websocket.send_json({"status": "ok"})
                 continue
 
-            # 3. For any other message type, authentication is required
-            if not authenticated:
+            # 3. For any other message type, authenticate per-message or require pre-auth
+            msg_api_key = data.get("api_key")
+            if msg_api_key:
+                tid = await db_connection.validate_api_key(db, msg_api_key)
+                if not tid:
+                    await websocket.send_json({"status": "error", "message": "Invalid or inactive API key."})
+                    continue
+                authenticated = True
+                tenant_id = tid
+            elif not authenticated:
                 await websocket.send_json({"status": "error", "message": "Not authenticated. Send auth message first."})
                 continue
 
