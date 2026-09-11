@@ -304,23 +304,43 @@ const handleElementClick = async (atlasId) => {
   // ── Voice input ───────────────────────────────────────────────────────────────
   const handleMicClick = () => {
     window.AtlasTTS?.stop();
-    if (!window.AtlasSpeech.isSupported()) {
-      window.AtlasSidebar.setStatus(
-        "Voice not supported in this browser.",
-        "error",
-      );
+
+    if (window.AtlasSpeech.isListening?.()) {
+      window.AtlasSpeech.stop();
+      window.AtlasSidebar.setListening(false);
       return;
     }
+
+    if (!window.AtlasSpeech.isSupported()) {
+      const msg = "Voice recognition is not supported in this browser.";
+      window.AtlasSidebar.setStatus(msg, "error");
+      window.AtlasSidebar.addChatMessage("agent", `⚠️ ${msg}`);
+      return;
+    }
+
     window.AtlasSidebar.setListening(true);
+    window.AtlasSidebar.setStatus("Listening... speak now", "info");
+
+    const inputField = document.querySelector("#atlas-sidebar-root .atlas-chat-input");
+
     window.AtlasSpeech.start({
+      onInterim: (interim) => {
+        if (inputField) inputField.value = interim;
+      },
       onResult: (transcript) => {
+        if (inputField) inputField.value = "";
         window.AtlasSidebar.addChatMessage("user", transcript);
         handleChatInput(transcript);
       },
-      onEnd: () => window.AtlasSidebar.setListening(false),
+      onEnd: () => {
+        window.AtlasSidebar.setListening(false);
+      },
       onError: (err) => {
+        console.error("Atlas: Voice input error:", err);
         window.AtlasSidebar.setListening(false);
         window.AtlasSidebar.setStatus(err.message, "error");
+        window.AtlasSidebar.addChatMessage("agent", `⚠️ ${err.message}`);
+        speakIfVoiceMode(err.message);
       },
     });
   };
