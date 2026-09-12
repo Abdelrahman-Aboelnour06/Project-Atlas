@@ -315,3 +315,54 @@ class TestRateLimiting:
             ws.send_json(self._command_payload())
             allowed = ws.receive_json()
             assert allowed["status"] == "success"
+
+
+# ── type:chat flow ────────────────────────────────────────────────────────────
+
+class TestChatFlow:
+    def _chat_payload(self):
+        return {
+            "session_id": "sess-chat-001",
+            "api_key":    DEMO_API_KEY,
+            "url":        "https://demo.atlas.com",
+            "dom_map":    SAMPLE_DOM_MAP,
+            "command":    "What products are available?",
+            "type":       "chat",
+            "page_text":  "CareLink Pharmacy provides medications and healthcare supplies.",
+        }
+
+    def test_successful_chat_response(self, ws_client):
+        with patch("app.agent.llm_client.call_llm", new=AsyncMock(return_value="This page offers various medications and vitamins.")) as mock_llm:
+            with ws_client.websocket_connect("/v1/agent") as ws:
+                ws.send_json(self._chat_payload())
+                response = ws.receive_json()
+
+            assert response["status"] == "success"
+            assert "medications" in response["message"]
+            mock_llm.assert_called_once()
+
+
+# ── type:summary flow ─────────────────────────────────────────────────────────
+
+class TestSummaryFlow:
+    def _summary_payload(self):
+        return {
+            "session_id": "sess-sum-001",
+            "api_key":    DEMO_API_KEY,
+            "url":        "https://demo.atlas.com",
+            "dom_map":    SAMPLE_DOM_MAP,
+            "command":    "",
+            "type":       "summary",
+            "page_text":  "CareLink Pharmacy. Upload your Rx, browse OTC meds, or check out.",
+        }
+
+    def test_successful_summary_response(self, ws_client):
+        with patch("app.agent.llm_client.call_llm", new=AsyncMock(return_value="This is CareLink Pharmacy. You can browse medications or submit a prescription.")) as mock_llm:
+            with ws_client.websocket_connect("/v1/agent") as ws:
+                ws.send_json(self._summary_payload())
+                response = ws.receive_json()
+
+            assert response["status"] == "success"
+            assert "CareLink Pharmacy" in response["message"]
+            mock_llm.assert_called_once()
+

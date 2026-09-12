@@ -1,13 +1,14 @@
-// speech.js
-// Task B — handles audio only (per docs/conventions.md: speech.js only
-// handles audio, no DOM manipulation beyond its own mic-status callback).
-//
-// Public API (window.AtlasSpeech):
-//   AtlasSpeech.isSupported() -> boolean
-//   AtlasSpeech.start({ onResult, onEnd, onError }) -> void
-//   AtlasSpeech.stop() -> void
+;(function () {
+  // speech.js
+  // Task B — handles audio only (per docs/conventions.md: speech.js only
+  // handles audio, no DOM manipulation beyond its own mic-status callback).
+  //
+  // Public API (window.AtlasSpeech):
+  //   AtlasSpeech.isSupported() -> boolean
+  //   AtlasSpeech.start({ onResult, onEnd, onError }) -> void
+  //   AtlasSpeech.stop() -> void
 
-const SpeechRecognitionImpl =
+  const SpeechRecognitionImpl =
     window.SpeechRecognition || window.webkitSpeechRecognition
 
 let recognition = null
@@ -59,4 +60,34 @@ const stop = () => {
     if (recognition && listening) recognition.stop()
 }
 
-window.AtlasSpeech = { isSupported, start, stop }
+// ── Text-to-Speech output ───────────────────────────────────────────────────
+// Completes the voice loop: Atlas listens (STT above) and now talks back.
+// Rate is 0.9 (slightly slower than default) for elderly / impaired users.
+// TTS is on by default — user can toggle via the sidebar mute button.
+
+let ttsEnabled = true
+
+const speak = (text) => {
+    if (!ttsEnabled || !window.speechSynthesis) return
+    window.speechSynthesis.cancel()
+    const utterance = new SpeechSynthesisUtterance(text)
+    utterance.rate = 0.9
+    utterance.pitch = 1.0
+    utterance.lang = 'en-US'
+    window.speechSynthesis.speak(utterance)
+}
+
+const stopSpeaking = () => {
+    window.speechSynthesis?.cancel()
+}
+
+const toggleTts = () => {
+    ttsEnabled = !ttsEnabled
+    if (!ttsEnabled) stopSpeaking()
+    return ttsEnabled
+}
+
+const isTtsEnabled = () => ttsEnabled
+
+  window.AtlasSpeech = { isSupported, start, stop, speak, stopSpeaking, toggleTts, isTtsEnabled }
+})()

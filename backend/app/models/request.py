@@ -9,7 +9,8 @@ class AgentMessage(BaseModel):
     url:        str
     dom_map:    list[DomNode]
     command:    str
+    page_text:  str = ""
     # Contract 1 v1.1 — which pipeline to run. Required, no default: an
     # explicit type keeps the two pipelines unambiguous rather than
     # silently guessing "command" for a malformed/incomplete message.
-    type:       Literal["command", "simplify"]
+    type:       Literal["command", "simplify", "chat", "summary"]

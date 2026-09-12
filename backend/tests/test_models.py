@@ -88,6 +88,32 @@ class TestAgentMessage:
         )
         assert msg.type == "simplify"
 
+    def test_valid_chat_message(self, sample_dom_map):
+        msg = AgentMessage(
+            session_id="sess-003",
+            api_key="atlas_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
+            url="https://demo.atlas.com",
+            dom_map=sample_dom_map,
+            command="what medications are on sale?",
+            type="chat",
+            page_text="CareLink Pharmacy ...",
+        )
+        assert msg.type == "chat"
+        assert msg.page_text == "CareLink Pharmacy ..."
+
+    def test_valid_summary_message(self, sample_dom_map):
+        msg = AgentMessage(
+            session_id="sess-004",
+            api_key="atlas_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
+            url="https://demo.atlas.com",
+            dom_map=sample_dom_map,
+            command="",
+            type="summary",
+            page_text="CareLink Pharmacy ...",
+        )
+        assert msg.type == "summary"
+        assert msg.page_text == "CareLink Pharmacy ..."
+
     def test_type_field_exists(self, sample_dom_map):
         """Contract v1.1 added `type` — must be present on the model."""
         msg = AgentMessage(

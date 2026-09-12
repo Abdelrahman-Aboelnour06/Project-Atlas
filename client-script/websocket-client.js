@@ -1,19 +1,20 @@
-// websocket-client.js
-// Task C — owns the socket only (per docs/conventions.md module boundaries).
-// Talks to the backend per docs/contracts.md Contract 1 / Contract 2 and
-// backend/app/models/request.py (AgentMessage: session_id, api_key, url,
-// dom_map, command).
-//
-// Public API (window.AtlasSocket):
-//   AtlasSocket.connect({ baseUrl, apiKey }) -> Promise<void>
-//   AtlasSocket.sendCommand({ url, domMap, command }) -> Promise<ActionResponse>
-//   AtlasSocket.onDisconnect(fn)
-//   AtlasSocket.close()
-//
-// ActionResponse shape (Contract 2):
-//   { status, action, element_id, value, message }
+;(function () {
+  // websocket-client.js
+  // Task C — owns the socket only (per docs/conventions.md module boundaries).
+  // Talks to the backend per docs/contracts.md Contract 1 / Contract 2 and
+  // backend/app/models/request.py (AgentMessage: session_id, api_key, url,
+  // dom_map, command).
+  //
+  // Public API (window.AtlasSocket):
+  //   AtlasSocket.connect({ baseUrl, apiKey }) -> Promise<void>
+  //   AtlasSocket.sendCommand({ url, domMap, command }) -> Promise<ActionResponse>
+  //   AtlasSocket.onDisconnect(fn)
+  //   AtlasSocket.close()
+  //
+  // ActionResponse shape (Contract 2):
+  //   { status, action, element_id, value, message }
 
-const DEFAULT_BASE_URL = 'http://localhost:8000'
+  const DEFAULT_BASE_URL = 'http://localhost:8000'
 const RECONNECT_DELAY_MS = 1500
 const MAX_RECONNECT_ATTEMPTS = 5
 
@@ -140,10 +141,58 @@ const onDisconnect = (fn) => {
   disconnectHandlers.push(fn)
 }
 
+// Chat Q&A pipeline — sends the user's question + page text to the backend
+// for an LLM-powered answer about the page content.
+const sendChat = ({ url, domMap, command, pageText }) => {
+  if (!socket || socket.readyState !== WebSocket.OPEN) {
+    return Promise.reject(new Error('Socket is not connected'))
+  }
+
+  return new Promise((resolve, reject) => {
+    pendingQueue.push({ resolve, reject })
+    socket.send(
+      JSON.stringify({
+        session_id: sessionId,
+        api_key: apiKey,
+        url,
+        dom_map: domMap,
+        command,
+        page_text: pageText || '',
+        type: 'chat',
+      })
+    )
+  })
+}
+
+// Page summary pipeline — asks the backend for a 2-3 sentence description
+// of what the page is and what the user can do on it.
+const sendSummary = ({ url, domMap, pageText }) => {
+  if (!socket || socket.readyState !== WebSocket.OPEN) {
+    return Promise.reject(new Error('Socket is not connected'))
+  }
+
+  return new Promise((resolve, reject) => {
+    pendingQueue.push({ resolve, reject })
+    socket.send(
+      JSON.stringify({
+        session_id: sessionId,
+        api_key: apiKey,
+        url,
+        dom_map: domMap,
+        command: '',
+        page_text: pageText || '',
+        type: 'summary',
+      })
+    )
+  })
+}
+
 const close = () => {
   disconnectHandlers = []
   if (socket) socket.close()
   socket = null
 }
 
-window.AtlasSocket = { connect, sendCommand, sendSimplify, onDisconnect, close }
+  window.AtlasSocket = { connect, sendCommand, sendSimplify, sendChat, sendSummary, onDisconnect, close }
+})()
+

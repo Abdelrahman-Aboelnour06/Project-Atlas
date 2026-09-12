@@ -59,7 +59,10 @@
         <button class="atlas-tab atlas-tab-active" data-tab="chat">💬 Chat</button>
         <button class="atlas-tab" data-tab="elements">🗂 Elements</button>
       </div>
-      <button class="atlas-close" aria-label="Close Atlas sidebar">×</button>
+      <div class="atlas-header-actions">
+        <button class="atlas-tts-toggle" aria-label="Toggle voice output">🔊</button>
+        <button class="atlas-close" aria-label="Close Atlas sidebar">×</button>
+      </div>
     </div>
 
     <!-- CHAT TAB -->
@@ -109,6 +112,18 @@
     rootEl
       .querySelector(".atlas-close")
       .addEventListener("click", () => handlers.onClose?.());
+
+    const ttsToggle = rootEl.querySelector(".atlas-tts-toggle");
+    if (ttsToggle) {
+      ttsToggle.addEventListener("click", () => {
+        const enabled = window.AtlasSpeech?.toggleTts?.();
+        ttsToggle.textContent = enabled ? "🔊" : "🔇";
+        ttsToggle.setAttribute(
+          "aria-label",
+          enabled ? "Mute voice output" : "Unmute voice output",
+        );
+      });
+    }
 
     chatInputEl.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && chatInputEl.value.trim()) {

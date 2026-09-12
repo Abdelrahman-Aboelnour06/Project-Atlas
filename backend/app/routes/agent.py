@@ -45,6 +45,8 @@ from app.agent import prompt as command_prompt
 from app.agent import parser as command_parser
 from app.agent import simplify_prompt
 from app.agent import simplify_parser
+from app.agent import chat_prompt
+from app.agent import summary_prompt
 from app.agent import rate_limiter
 from app.agent.sanitize import strip_pii_from_dom, trim_log_payload
 
@@ -120,6 +122,23 @@ async def websocket_endpoint(websocket: WebSocket, db: AsyncSession = Depends(ge
                     elements = simplify_parser.parse_simplify_response(raw_llm, safe_dom)
                     final_response = {"status": "success", "elements": elements, "message": None}
 
+                elif message.type == "chat":
+                    prompt_text = chat_prompt.build_chat_prompt(
+                        page_text=message.page_text,
+                        question=message.command,
+                        url=message.url,
+                    )
+                    raw_llm = await llm_client.call_llm(prompt_text)
+                    final_response = {"status": "success", "message": raw_llm.strip()}
+
+                elif message.type == "summary":
+                    prompt_text = summary_prompt.build_summary_prompt(
+                        page_text=message.page_text,
+                        url=message.url,
+                    )
+                    raw_llm = await llm_client.call_llm(prompt_text)
+                    final_response = {"status": "success", "message": raw_llm.strip()}
+
                 else:  # "command"
                     prompt_text = command_prompt.build_prompt(safe_dom, message.command)
                     raw_llm = await llm_client.call_llm(prompt_text)
@@ -144,9 +163,7 @@ async def websocket_endpoint(websocket: WebSocket, db: AsyncSession = Depends(ge
                 if message.type == "simplify":
                     final_response = _simplify_error("AI service unavailable. Please try again.")
                 else:
-                    final_response = ActionResponse.error(
-                        "AI service unavailable. Please try again."
-                    ).model_dump()
+                    final_response = {"status": "error", "message": "AI service unavailable. Please try again."}
 
             # 7. Send the final JSON payload back to the frontend extension
             await websocket.send_json(final_response)

@@ -24,8 +24,9 @@ Message sent **from the browser snippet → FastAPI backend**.
   "api_key":    "string",
   "url":        "string",
   "dom_map":    [ /* see Contract 3 */ ],
-  "type":       "command | simplify",
-  "command":    "string"
+  "type":       "command | simplify | chat | summary",
+  "command":    "string",
+  "page_text":  "string (optional)"
 }
 ```
 
@@ -35,8 +36,9 @@ Message sent **from the browser snippet → FastAPI backend**.
 | `api_key` | `string` | Tenant API key — used to authenticate the request |
 | `url` | `string` | Current page URL — used for audit logging |
 | `dom_map` | `array` | Serialized DOM nodes — see Contract 3 |
-| `type` | `"command" \| "simplify"` | Which pipeline to run. **REQUIRED — no default.** Omitting it makes the whole message invalid (see error handling below). |
-| `command` | `string` | Raw transcribed voice command. Required field on every message (send `""` when `type` is `"simplify"`). |
+| `type` | `"command" \| "simplify" \| "chat" \| "summary"` | Which pipeline to run. **REQUIRED — no default.** Omitting it makes the whole message invalid (see error handling below). |
+| `command` | `string` | Raw transcribed command or chat question. Required field on every message (send `""` when `type` is `"simplify"` or `"summary"`). |
+| `page_text` | `string` | Optional extracted page visible text (capped at 3000 chars), sent with `"chat"` and `"summary"` requests for page context. |
 
 ### WebSocket Error Handling
 
@@ -222,6 +224,24 @@ Response:
 
 ---
 
+## Contract 6 — Chat & Summary Response
+
+Message sent **from FastAPI backend → browser snippet**, in response to a `type: "chat"` or `type: "summary"` request.
+
+```json
+{
+  "status":  "success | error",
+  "message": "string"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `status` | `"success" \| "error"` | Whether the AI generated a response |
+| `message` | `string` | Plain-language answer to user question (chat) or 2-3 sentence overview of page and possible actions (summary) |
+
+---
+
 ## Versioning
 
 | Version | Date | Change |
@@ -229,3 +249,4 @@ Response:
 | v1.0 | Day 1 — Hour 1 | Initial contracts locked |
 | v1.1 | Day 2 — Hour 0 | `id` = synthetic `data-atlas-id`, not native `id`; added `type` field to Contract 1; added Contract 5 (simplify response + audit log) |
 | v1.2 | Day 2 — Hour 4 | `type` corrected to **required, no default** (matches `AgentMessage`); WS error-handling defined — invalid/malformed messages and bad API keys return a JSON error and keep the connection open, they don't close the socket. |
+| v1.3 | Day 2 — Hour 8 | Added `chat` and `summary` types to Contract 1 + optional `page_text` field; added Contract 6 (plain-language chat & summary response). |

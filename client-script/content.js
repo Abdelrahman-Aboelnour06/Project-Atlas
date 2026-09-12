@@ -35,43 +35,29 @@
       .slice(0, 3000); // cap to avoid huge LLM prompts
   };
 
-  // ── Chat: answer questions about the page via LLM ────────────────────────────
+  // ── Chat: answer questions about the page via backend LLM ──────────────────
   const handleChatQuestion = async (text) => {
     window.AtlasSidebar.addChatThinking();
     try {
+      const domMap = window.AtlasSerializer.serialize();
       const pageText = getPageText();
-      const prompt = `You are a helpful assistant for a website. A user is asking a question about the current webpage. Answer in 1-3 plain sentences, like you're talking to an elderly person. Be direct and helpful.
-
-PAGE CONTENT (summary):
-${pageText}
-
-USER QUESTION: ${text}
-
-Answer:`;
-
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 200,
-          messages: [{ role: "user", content: prompt }],
-        }),
+      const response = await window.AtlasSocket.sendChat({
+        url: window.location.href,
+        domMap,
+        command: text,
+        pageText,
       });
-
-      // If Anthropic API isn't available, fall through to backend command pipeline
-      if (!res.ok) throw new Error("API unavailable");
-
-      const data = await res.json();
+      window.AtlasSidebar.removeThinking();
       const answer =
-        data.content?.[0]?.text ||
-        "I'm not sure, but you can try searching the page.";
-      window.AtlasSidebar.removeThinking();
+        response.message || "I'm not sure — try rephrasing your question.";
       window.AtlasSidebar.addChatMessage("agent", answer);
-    } catch (_) {
-      // Fallback: treat it as a command
+      window.AtlasSpeech?.speak?.(answer);
+    } catch (err) {
       window.AtlasSidebar.removeThinking();
-      await runCommand(text);
+      window.AtlasSidebar.addChatMessage(
+        "agent",
+        "❌ Couldn't get an answer right now. Try again in a moment.",
+      );
     }
   };
 
@@ -141,6 +127,7 @@ Answer:`;
         : `❌ ${response.message || "I couldn't find that on the page."}`;
       window.AtlasSidebar.removeThinking();
       window.AtlasSidebar.addChatMessage("agent", msg);
+      window.AtlasSpeech?.speak?.(response.message || (result.ok ? "Done." : "I couldn't find that on the page."));
       window.AtlasSidebar.setStatus(
         result.ok ? "Done." : "No match found.",
         result.ok ? "ok" : "error",
@@ -259,11 +246,11 @@ Answer:`;
       onMicClick: handleMicClick,
     });
 
-    // Welcome message
-    window.AtlasSidebar.addChatMessage(
-      "agent",
-      'Hi! I\'m Atlas. You can ask me anything about this page, or tell me what you\'d like to do — like "click checkout" or "fill in my name".',
-    );
+    // Welcome message + TTS
+    const welcomeMsg =
+      'Hi! I\'m Atlas. You can ask me anything about this page, or tell me what you\'d like to do — like "click checkout" or "fill in my name".';
+    window.AtlasSidebar.addChatMessage("agent", welcomeMsg);
+    window.AtlasSpeech?.speak?.(welcomeMsg);
 
     if (!apiKey) {
       window.AtlasSidebar.addChatMessage(
@@ -300,6 +287,25 @@ Answer:`;
       );
       window.AtlasSidebar.setStatus("Ready.", "ok");
       renderSimplified(domMap);
+
+      // ── Page summary — auto-describe the page on activation ──────────────
+      try {
+        const pageText = getPageText();
+        const summaryResp = await window.AtlasSocket.sendSummary({
+          url: window.location.href,
+          domMap,
+          pageText,
+        });
+        if (summaryResp.status === "success" && summaryResp.message) {
+          window.AtlasSidebar.addChatMessage(
+            "agent",
+            `📄 ${summaryResp.message}`,
+          );
+          window.AtlasSpeech?.speak?.(summaryResp.message);
+        }
+      } catch (_) {
+        // Non-critical — don't block activation if summary fails
+      }
     } catch (err) {
       window.AtlasSidebar.setStatus(
         `Couldn't connect: ${err.message}`,
@@ -313,6 +319,7 @@ Answer:`;
     stopObserving = null;
     stopUrlWatcher?.();
     stopUrlWatcher = null;
+    window.AtlasSpeech?.stopSpeaking();
     window.AtlasSocket?.close();
     window.AtlasSidebar.unmount();
     active = false;
