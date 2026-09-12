@@ -40,8 +40,9 @@ class AgenticPlan(BaseModel):
     steps: List[PlanStep] = Field(default_factory=list)
     requires_confirmation: bool = False
     confirmation_prompt: Optional[str] = None
-    confirmation_options: List[str] = Field(default_factory=lambda: ["Yes, place order", "No, cancel"])
-    pending_action: Optional[Dict[str, Any]] = None
+    confirmation_options: List[str] = Field(default_factory=lambda: ["Yes, proceed", "No, cancel"])
+    pending_step: Optional[PlanStep] = None
+    confirmation_success_message: Optional[str] = "Done! Action completed."
 
 
 def _clean_json_str(raw: str) -> str:
@@ -65,37 +66,46 @@ def _get_valid_element_ids(dom_map: List[Dict[str, Any]]) -> set:
 
 
 SYSTEM_PROMPT = """You are Atlas, an intelligent, empathetic AI accessibility web agent.
-You help elderly, disabled, and everyday users navigate and perform tasks on web pages naturally using speech or text.
+You help elderly, disabled, and everyday users navigate and perform tasks on ANY website naturally using speech or text.
 
 You receive:
-1. Current page URL and text summary.
-2. The DOM MAP of interactive elements (buttons, inputs, links) on the page.
+1. Current page URL and extracted visible page text.
+2. The DOM MAP of interactive elements (buttons, inputs, links, dropdowns) on the page.
 3. Recent conversation history.
 4. The user's latest message or command.
 
-YOUR GOAL:
-Understand the user's intent in natural human terms and produce an AGENTIC PLAN.
-For multi-step requests like "buy me some paracetamol" or "order vitamin d":
-1. Find the appropriate product / item.
-2. Formulate steps:
-   - Step 1: Click the product's "Add to Cart" button.
-   - Step 2: Click the "Proceed to Checkout" or "View Cart" button if the goal is to purchase/buy.
-3. ALWAYS protect the user before final payment / order placement:
-   - Set `requires_confirmation: true`
-   - Provide a clear `confirmation_prompt`: "I have added [Product] ($[Price]) to your cart and opened checkout. Would you like me to complete the purchase?"
-   - Provide `confirmation_options`: ["Yes, place order", "No, cancel"]
+YOUR CAPABILITIES ON ANY WEBSITE:
+1. General Web Navigation & Interaction:
+   - Click links, buttons, tabs, menu toggles, search buttons.
+   - Fill in text inputs, search boxes, login/registration forms, filters, comments, or contact forms.
+   - Scroll or focus on relevant sections of the page.
 
-For simple questions (e.g. "Do you have aspirin?", "What is on this page?"):
-- Return `type: "conversation"`, a friendly direct `reply`, and empty `steps: []`.
+2. Multi-Step Goal Execution:
+   - Understand high-level user requests (e.g. "search for quantum computing", "find the pricing section", "add to cart", "filter by rating", "sign up for newsletter").
+   - Formulate logical sequential steps (Step 1: fill search field, Step 2: click search button).
 
-For conversational confirmations:
-- If the user previously received a purchase/checkout prompt and says "yes", "proceed", "go ahead", "sure":
-  - Formulate the step to finalize checkout / place the order, and set `requires_confirmation: false`.
-- If the user says "no", "stop", "cancel", "never mind":
-  - Return `type: "conversation"` confirming the order was canceled and no purchase was made.
+3. Safety & Human-in-the-Loop Confirmation:
+   - For actions that have real-world consequences (placing an order, spending money, deleting data, booking tickets, submitting a binding form):
+     - Formulate preliminary steps, but STOP before final execution.
+     - Set `requires_confirmation: true`.
+     - Set `confirmation_prompt`: A clear, natural question explaining what is about to be done (e.g. "I have filled the form. Would you like me to submit it?").
+     - Set `confirmation_options`: ["Yes, proceed", "No, cancel"].
+     - Set `pending_step`: The final action step to execute if the user confirms.
+     - Set `confirmation_success_message`: A confirmation message (e.g. "Done! Your submission has been completed.").
+
+4. Conversational Question Answering:
+   - For questions about the page (e.g. "What is this website?", "Who is the author?", "What are the pricing tiers?", "Summarize the article", "What are the rules?"):
+     - Answer directly in 1 to 3 plain, friendly, helpful sentences based on the page content.
+     - Return `type: "conversation"`, a clear `reply`, and empty `steps: []`.
+
+5. Conversational Confirmations:
+   - If the user was previously asked for confirmation and says "yes", "sure", "proceed", "confirm", "go ahead":
+     - Formulate the step to complete the action and set `requires_confirmation: false`.
+   - If the user says "no", "cancel", "stop", "never mind":
+     - Return `type: "conversation"` confirming the action was cancelled with no changes made.
 
 CRITICAL SECURITY RULE:
-Only use element IDs that actually exist in the provided DOM MAP. Never invent element IDs.
+Only use element IDs that actually exist in the provided DOM MAP. Never invent or hallucinate element IDs.
 
 OUTPUT FORMAT:
 Return ONLY valid raw JSON with this exact schema:
@@ -107,14 +117,20 @@ Return ONLY valid raw JSON with this exact schema:
     {
       "action": "click" | "fill" | "scroll" | "focus",
       "element_id": "exact-id-from-dom-map",
-      "value": "text to type if action is fill",
+      "value": "text to type if action is fill, or null",
       "description": "brief description of this step",
       "delay_ms": 600
     }
   ],
   "requires_confirmation": true | false,
   "confirmation_prompt": "question to ask user if confirmation needed, or null",
-  "confirmation_options": ["Yes, place order", "No, cancel"]
+  "confirmation_options": ["Yes, proceed", "No, cancel"],
+  "pending_step": {
+    "action": "click",
+    "element_id": "exact-id-from-dom-map",
+    "description": "brief description"
+  } | null,
+  "confirmation_success_message": "message after confirmed execution"
 }
 """
 
@@ -188,6 +204,16 @@ JSON RESPONSE:"""
         reply = data.get("reply") or "I've processed your request."
         plan_type = data.get("type", "plan" if validated_steps else "conversation")
 
+        raw_pending = data.get("pending_step")
+        pending_step_obj = None
+        if isinstance(raw_pending, dict) and str(raw_pending.get("element_id")) in valid_ids:
+            pending_step_obj = PlanStep(
+                action=raw_pending.get("action", "click"),
+                element_id=str(raw_pending["element_id"]),
+                value=raw_pending.get("value"),
+                description=raw_pending.get("description", "Confirm action"),
+            )
+
         return AgenticPlan(
             type=plan_type,
             thought=data.get("thought", ""),
@@ -195,27 +221,30 @@ JSON RESPONSE:"""
             steps=validated_steps,
             requires_confirmation=bool(data.get("requires_confirmation", False)),
             confirmation_prompt=data.get("confirmation_prompt"),
-            confirmation_options=data.get("confirmation_options", ["Yes, place order", "No, cancel"]),
+            confirmation_options=data.get("confirmation_options", ["Yes, proceed", "No, cancel"]),
+            pending_step=pending_step_obj,
+            confirmation_success_message=data.get("confirmation_success_message", "Done! Action completed."),
         )
 
     except Exception as exc:
         logger.warning("Agentic planner failed or returned invalid JSON: %s", exc)
         lower_msg = user_message.strip().lower()
-        if lower_msg in {"yes", "sure", "proceed", "place order", "go ahead", "confirm", "ok"}:
-            checkout_nodes = [n for n in concise_dom if "checkout" in (n.get("label") or "").lower() or "submit" in (n.get("label") or "").lower()]
-            if checkout_nodes:
+        if lower_msg in {"yes", "sure", "proceed", "place order", "go ahead", "confirm", "ok", "submit"}:
+            confirm_nodes = [n for n in concise_dom if any(k in (n.get("label") or "").lower() for k in ("confirm", "submit", "proceed", "place", "order", "finish", "checkout", "send", "save"))]
+            if confirm_nodes:
                 return AgenticPlan(
                     type="plan",
-                    reply="Great! Confirming your order now.",
-                    steps=[PlanStep(action="click", element_id=checkout_nodes[0]["id"], description="Complete order")],
-                    requires_confirmation=False
+                    reply="Great! Confirming and completing that for you now.",
+                    steps=[PlanStep(action="click", element_id=confirm_nodes[0]["id"], description="Confirm action")],
+                    requires_confirmation=False,
+                    confirmation_success_message="Done! Action completed."
                 )
             return AgenticPlan(
                 type="conversation",
-                reply="Got it! Order confirmed.",
+                reply="Understood! Confirmed.",
                 steps=[]
             )
-        elif lower_msg in {"no", "cancel", "stop", "never mind", "dont buy"}:
+        elif lower_msg in {"no", "cancel", "stop", "never mind", "abort"}:
             return AgenticPlan(
                 type="conversation",
                 reply="No problem, I've cancelled that for you.",
@@ -224,6 +253,6 @@ JSON RESPONSE:"""
 
         return AgenticPlan(
             type="conversation",
-            reply="I understand you'd like to do that, but I need a moment. Could you please specify which item or button you'd like me to interact with?",
+            reply="I'm here to help you navigate this webpage. You can ask me questions about the page, or tell me what to click, search, or fill in.",
             steps=[]
         )

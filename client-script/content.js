@@ -72,10 +72,11 @@
       const isNegative = /^(no|cancel|stop|never mind|don't|dont|wait|abort)\b/i.test(lowerInput);
 
       if (isAffirmative) {
-        window.AtlasSidebar.setStatus("Finalizing order...", "info");
+        window.AtlasSidebar.setStatus("Completing action...", "info");
         window.AtlasSidebar.addChatThinking();
 
         const actionToExecute = pendingConfirmation.action;
+        const successMsg = pendingConfirmation.successMessage || "Done! Action completed.";
         pendingConfirmation = null;
 
         try {
@@ -85,11 +86,10 @@
           await new Promise((r) => setTimeout(r, 600));
           refreshPanel();
 
-          const placedMsg = "Your order has been placed! A licensed pharmacist will review your prescription/order within 24 hours.";
-          window.AtlasSidebar.setStatus("Order Placed!", "ok");
+          window.AtlasSidebar.setStatus("Done.", "ok");
           window.AtlasSidebar.removeThinking();
-          window.AtlasSidebar.addChatMessage("agent", placedMsg);
-          speakIfVoiceMode(placedMsg);
+          window.AtlasSidebar.addChatMessage("agent", `✅ ${successMsg}`);
+          speakIfVoiceMode(successMsg);
         } catch (err) {
           const errMsg = `Sorry, I ran into an issue: ${err.message}`;
           window.AtlasSidebar.setStatus("Error", "error");
@@ -102,7 +102,7 @@
 
       if (isNegative) {
         pendingConfirmation = null;
-        const cancelMsg = "Understood! I've cancelled the purchase and will not place the order.";
+        const cancelMsg = "Understood! I've cancelled that action for you.";
         window.AtlasSidebar.setStatus("Cancelled", "info");
         window.AtlasSidebar.addChatMessage("agent", cancelMsg);
         speakIfVoiceMode(cancelMsg);
@@ -181,17 +181,24 @@
 
         refreshPanel();
 
-        // Check if confirmation is requested before completing sale
+        // Check if confirmation is requested before completing action
         if (plan.requires_confirmation) {
           let pendingBtn = null;
-          const updatedDom = window.AtlasSerializer.serialize();
-          const checkoutNode = updatedDom.find((n) => /proceed to checkout|place order|checkout/i.test(n.label || ""));
-          if (checkoutNode) {
-            pendingBtn = { action: "click", element_id: checkoutNode.id, description: "Place order" };
+          if (plan.pending_step && plan.pending_step.element_id) {
+            pendingBtn = plan.pending_step;
+          } else {
+            const updatedDom = window.AtlasSerializer.serialize();
+            const confirmNode = updatedDom.find((n) =>
+              /submit|confirm|place order|checkout|proceed|pay|send|finish|save|sign in|log in/i.test(n.label || "")
+            );
+            if (confirmNode) {
+              pendingBtn = { action: "click", element_id: confirmNode.id, description: confirmNode.label };
+            }
           }
 
           pendingConfirmation = {
-            action: pendingBtn || { action: "click", element_id: "checkout-btn" },
+            action: pendingBtn,
+            successMessage: plan.confirmation_success_message || "Done! Action completed.",
             prompt: plan.confirmation_prompt || plan.reply,
           };
 
@@ -200,7 +207,7 @@
 
           window.AtlasSidebar.setStatus("Awaiting confirmation", "info");
           window.AtlasSidebar.addChatMessage("agent", confirmText, {
-            actions: plan.confirmation_options || ["Yes, place order", "No, cancel"],
+            actions: plan.confirmation_options || ["Yes, proceed", "No, cancel"],
             onAction: (choice) => {
               window.AtlasSidebar.addChatMessage("user", choice);
               handleChatInput(choice);
