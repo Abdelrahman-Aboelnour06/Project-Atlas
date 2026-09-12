@@ -273,3 +273,33 @@ class TestChat:
         )
         assert r.status_code == 401
 
+
+# ── POST /v1/summary ─────────────────────────────────────────────────────────
+
+class TestSummary:
+    def test_valid_summary_returns_200(self, client):
+        with patch("app.agent.llm_client.call_llm", new=AsyncMock(return_value="This is a pharmacy store. You can buy medications.")):
+            r = client.post(
+                "/v1/summary",
+                headers={"X-Atlas-Key": DEMO_API_KEY},
+                json={
+                    "url": "https://demo.atlas.com",
+                    "page_text": "CareLink Pharmacy",
+                },
+            )
+            assert r.status_code == 200
+            assert r.json()["status"] == "ok"
+            assert "pharmacy" in r.json()["summary"]
+
+    def test_summary_invalid_key_returns_401(self, client):
+        r = client.post(
+            "/v1/summary",
+            headers={"X-Atlas-Key": WRONG_API_KEY},
+            json={
+                "url": "https://demo.atlas.com",
+                "page_text": "CareLink Pharmacy",
+            },
+        )
+        assert r.status_code == 401
+
+

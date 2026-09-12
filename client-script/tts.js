@@ -35,9 +35,20 @@
       .trim();
   };
 
+  let muted = false;
+
+  const setMuted = (isMuted) => {
+    muted = isMuted;
+    if (muted) stop();
+    return muted;
+  };
+
+  const isMuted = () => muted;
+
+  const toggleMute = () => setMuted(!muted);
+
   const speak = (text, { onStart, onEnd, onError } = {}) => {
-    if (!isSupported()) {
-      onError?.(new Error("Speech synthesis is not supported in this browser."));
+    if (!isSupported() || muted) {
       return;
     }
 
@@ -49,7 +60,7 @@
     try {
       const utterance = new SpeechSynthesisUtterance(sanitized);
       utterance.lang = "en-US";
-      utterance.rate = 1.0;
+      utterance.rate = 0.9;
       utterance.pitch = 1.0;
 
       utterance.onstart = () => {
@@ -81,5 +92,8 @@
     isSupported,
     speak,
     stop,
+    isMuted,
+    setMuted,
+    toggleMute,
   };
 })();

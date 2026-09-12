@@ -14,12 +14,53 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.connection import get_db
 from app.db import connection as db_connection
-from app.agent import llm_client, agentic_planner
+from app.agent import llm_client, agentic_planner, summary_prompt
 from app.agent.agentic_planner import AgenticPlan
 from app.agent.llm_client import LLMError
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+class SummaryRequest(BaseModel):
+    url: str
+    page_text: Optional[str] = ""
+    api_key: Optional[str] = None
+
+
+class SummaryResponse(BaseModel):
+    status: str
+    summary: str
+
+
+@router.post("/summary", response_model=SummaryResponse)
+async def summary_endpoint(
+    payload: SummaryRequest,
+    x_atlas_key: Optional[str] = Header(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Page summary endpoint for accessibility.
+    Returns a warm 2-sentence summary describing what the page is and what actions are available.
+    """
+    key = x_atlas_key or payload.api_key
+    if not key:
+        raise HTTPException(status_code=401, detail="Missing API key")
+
+    tenant_id = await db_connection.validate_api_key(db, key)
+    if not tenant_id:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+    prompt = summary_prompt.build_summary_prompt(
+        page_text=payload.page_text or "",
+        url=payload.url,
+    )
+    try:
+        raw_llm = await llm_client.call_llm(prompt)
+        return SummaryResponse(status="ok", summary=raw_llm.strip())
+    except Exception as exc:
+        logger.warning("Summary generation failed: %s", exc)
+        return SummaryResponse(status="error", summary="Welcome to this webpage.")
 
 
 class ChatRequest(BaseModel):

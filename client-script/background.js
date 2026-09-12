@@ -229,4 +229,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       });
     return true;
   }
+
+  if (message.type === "ATLAS_SUMMARY") {
+    const summaryBase = message.baseUrl || "http://localhost:8000";
+    fetch(`${summaryBase}/v1/summary`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Atlas-Key": message.apiKey || "",
+      },
+      body: JSON.stringify(message.payload),
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        sendResponse({ ok: true, data });
+      })
+      .catch((err) => {
+        sendResponse({ ok: false, error: err.message });
+      });
+    return true;
+  }
 });

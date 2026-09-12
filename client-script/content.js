@@ -425,6 +425,51 @@ const handleElementClick = async (atlasId) => {
       );
       window.AtlasSidebar.setStatus("Ready.", "ok");
       renderSimplified(domMap);
+
+      // ── Page summary on activation ──────────────────────────────────
+      try {
+        const pageText = getPageText();
+        let summaryText = "";
+        if (chrome?.runtime?.sendMessage) {
+          const sRes = await new Promise((resolve, reject) => {
+            chrome.runtime.sendMessage(
+              {
+                type: "ATLAS_SUMMARY",
+                baseUrl,
+                apiKey: apiKey || "",
+                payload: { url: window.location.href, page_text: pageText, api_key: apiKey || "" },
+              },
+              (res) => {
+                if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+                if (!res || !res.ok) return reject(new Error(res?.error || "Summary failed"));
+                resolve(res.data);
+              }
+            );
+          });
+          summaryText = sRes?.summary;
+        } else {
+          const sRes = await fetch(`${baseUrl}/v1/summary`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Atlas-Key": apiKey || "",
+            },
+            body: JSON.stringify({ url: window.location.href, page_text: pageText, api_key: apiKey || "" }),
+          });
+          if (sRes.ok) {
+            const sData = await sRes.json();
+            summaryText = sData.summary;
+          }
+        }
+        if (summaryText) {
+          window.AtlasSidebar.addChatMessage("agent", `📄 ${summaryText}`);
+          if (window.AtlasTTS?.isSupported()) {
+            window.AtlasTTS.speak(summaryText);
+          }
+        }
+      } catch (_) {
+        // Non-critical: does not block activation
+      }
     } catch (err) {
       console.error("Atlas: Connection failed:", err);
       window.AtlasSidebar.setStatus(
