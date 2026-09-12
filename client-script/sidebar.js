@@ -268,8 +268,12 @@
       </div>
 
       <div class="atlas-header-actions">
-        <button class="atlas-refresh-btn" id="atlas-header-refresh" aria-label="Refresh page analysis" title="Refresh Page Elements & Summary">
-          <span class="atlas-refresh-icon">🔄</span>
+        <button class="atlas-refresh-btn" id="atlas-header-refresh" aria-label="Reload page analysis" title="Reload Page Elements & Summary">
+          <svg class="atlas-refresh-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/>
+            <path d="M21 3v5h-5"/>
+          </svg>
+          <span class="atlas-refresh-label">Reload</span>
         </button>
         <!-- Fallback close button for accessibility / test compatibility -->
         <button class="atlas-close" aria-label="Close Atlas sidebar">×</button>
@@ -457,7 +461,7 @@
   const setRefreshing = (isRefreshing) => {
     if (!rootEl) return;
     rootEl
-      .querySelectorAll(".atlas-refresh-icon")
+      .querySelectorAll(".atlas-refresh-svg, .atlas-refresh-icon")
       .forEach((el) => {
         if (isRefreshing) {
           el.classList.add("atlas-spin");
@@ -465,6 +469,10 @@
           el.classList.remove("atlas-spin");
         }
       });
+    const labelEl = rootEl.querySelector(".atlas-refresh-label");
+    if (labelEl) {
+      labelEl.textContent = isRefreshing ? "Reloading..." : "Reload";
+    }
   };
 
   // ── Skeleton loader ───────────────────────────────────────────────────────────
@@ -533,9 +541,9 @@
       if (filteredItems.length === 0) continue;
       totalVisible += filteredItems.length;
 
-      // Expand all categories by default so user sees content immediately;
-      // auto-expand when filtering by query; respect manual toggle
-      const isOpen = query ? true : (groupOpenState[cat.key] ?? true);
+      // Categories are collapsed by default on initial load;
+      // auto-expand when user searches with a query; respect manual toggle
+      const isOpen = query ? true : (groupOpenState[cat.key] ?? false);
 
       const section = document.createElement("div");
       section.className = "atlas-group";

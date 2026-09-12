@@ -425,32 +425,54 @@
   }
 }
 
-/* ── Refresh Controls ── */
+/* ── Reload / Refresh Button ── */
 #atlas-sidebar-root .atlas-header-actions {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0;
 }
 
-#atlas-sidebar-root .atlas-refresh-btn,
-#atlas-sidebar-root .atlas-elements-refresh-btn {
-  background: transparent;
-  border: none;
+#atlas-sidebar-root .atlas-refresh-btn {
+  background: var(--atlas-control-bg, rgba(255, 255, 255, 0.08));
+  border: 1px solid var(--atlas-control-border, rgba(255, 255, 255, 0.12));
   cursor: pointer;
   color: var(--atlas-secondary-label, #8e8e93);
-  font-size: 14px;
-  padding: 4px 6px;
-  border-radius: 6px;
-  display: flex;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 9px;
+  border-radius: 7px;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
+  gap: 5px;
   transition: all 0.15s ease;
   line-height: 1;
+  outline: none;
+  user-select: none;
 }
 
 #atlas-sidebar-root .atlas-refresh-btn:hover {
-  background: var(--atlas-control-bg-hover, rgba(255, 255, 255, 0.1));
+  background: var(--atlas-control-bg-hover, rgba(255, 255, 255, 0.15));
   color: var(--atlas-label, #ffffff);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+#atlas-sidebar-root .atlas-refresh-btn:active {
+  transform: scale(0.96);
+}
+
+#atlas-sidebar-root .atlas-refresh-svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  display: inline-block;
+  stroke: currentColor;
+}
+
+#atlas-sidebar-root .atlas-refresh-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 #atlas-sidebar-root .atlas-spin {
