@@ -372,31 +372,109 @@
   border-color: rgba(255, 59, 48, 0.3);
 }
 
-/* Thinking Indicator */
-#atlas-sidebar-root .atlas-dots span {
+/* ── Thinking / Typing Indicator Bubble ── */
+#atlas-sidebar-root .atlas-msg-thinking {
+  margin-bottom: 8px;
+}
+
+#atlas-sidebar-root .atlas-msg-thinking .atlas-msg-bubble {
+  padding: 10px 14px;
+  background: var(--atlas-msg-agent-bg, rgba(255, 255, 255, 0.08));
+  border: 1px solid var(--atlas-msg-agent-border, rgba(255, 255, 255, 0.1));
+  border-radius: 14px 14px 14px 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+}
+
+#atlas-sidebar-root .atlas-typing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+#atlas-sidebar-root .atlas-typing-indicator .atlas-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--atlas-secondary-label, #8e8e93);
+  border-radius: 50%;
   display: inline-block;
-  animation: atlas-dot-bounce 1.2s infinite;
-  font-size: 16px;
-  line-height: 1;
+  animation: atlas-typing-wave 1.4s infinite ease-in-out both;
 }
 
-#atlas-sidebar-root .atlas-dots span:nth-child(2) {
-  animation-delay: 0.2s;
+#atlas-sidebar-root .atlas-typing-indicator .atlas-dot:nth-child(1) {
+  animation-delay: -0.32s;
+}
+#atlas-sidebar-root .atlas-typing-indicator .atlas-dot:nth-child(2) {
+  animation-delay: -0.16s;
+}
+#atlas-sidebar-root .atlas-typing-indicator .atlas-dot:nth-child(3) {
+  animation-delay: 0s;
 }
 
-#atlas-sidebar-root .atlas-dots span:nth-child(3) {
-  animation-delay: 0.4s;
-}
-
-@keyframes atlas-dot-bounce {
+@keyframes atlas-typing-wave {
   0%, 80%, 100% {
-    transform: translateY(0);
+    transform: scale(0.65);
     opacity: 0.35;
   }
   40% {
-    transform: translateY(-4px);
+    transform: scale(1.15) translateY(-3px);
     opacity: 1;
+    background: #007aff;
   }
+}
+
+/* ── Refresh Controls ── */
+#atlas-sidebar-root .atlas-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#atlas-sidebar-root .atlas-refresh-btn,
+#atlas-sidebar-root .atlas-elements-refresh-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--atlas-secondary-label, #8e8e93);
+  font-size: 14px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  line-height: 1;
+}
+
+#atlas-sidebar-root .atlas-refresh-btn:hover,
+#atlas-sidebar-root .atlas-elements-refresh-btn:hover {
+  background: var(--atlas-control-bg-hover, rgba(255, 255, 255, 0.1));
+  color: var(--atlas-label, #ffffff);
+}
+
+#atlas-sidebar-root .atlas-elements-refresh-btn {
+  background: var(--atlas-control-bg);
+  border: 1px solid var(--atlas-control-border);
+  padding: 6px 10px;
+  border-radius: 8px;
+}
+
+#atlas-sidebar-root .atlas-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#atlas-sidebar-root .atlas-spin {
+  display: inline-block;
+  animation: atlas-spin-anim 0.8s linear infinite;
+}
+
+@keyframes atlas-spin-anim {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 /* ── Chat Input Bar ── */

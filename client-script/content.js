@@ -267,13 +267,73 @@
     );
   };
 
-const refreshPanel = () => {
-  const domMap = window.AtlasSerializer.serialize();
-  window.AtlasSidebar.renderElements(
-    window.AtlasSidebar.deriveDisplayItems(domMap),
-  );
-  renderSimplified(domMap);
-};
+  // ── Page summary fetcher ──────────────────────────────────────────────────────
+  const fetchPageSummary = async ({ showThinking = false } = {}) => {
+    try {
+      const pageText = getPageText();
+      const { apiKey, baseUrl } = await getStoredSettings();
+      if (!pageText || pageText.length < 10) return;
+
+      if (showThinking) {
+        window.AtlasSidebar.addChatThinking();
+      }
+
+      let summaryText = "";
+      if (chrome?.runtime?.sendMessage) {
+        const sRes = await new Promise((resolve, reject) => {
+          chrome.runtime.sendMessage(
+            {
+              type: "ATLAS_SUMMARY",
+              baseUrl,
+              apiKey: apiKey || "",
+              payload: { url: window.location.href, page_text: pageText, api_key: apiKey || "" },
+            },
+            (res) => {
+              if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+              if (!res || !res.ok) return reject(new Error(res?.error || "Summary failed"));
+              resolve(res.data);
+            }
+          );
+        });
+        summaryText = sRes?.summary;
+      } else {
+        const sRes = await fetch(`${baseUrl}/v1/summary`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Atlas-Key": apiKey || "",
+          },
+          body: JSON.stringify({ url: window.location.href, page_text: pageText, api_key: apiKey || "" }),
+        });
+        if (sRes.ok) {
+          const sData = await sRes.json();
+          summaryText = sData.summary;
+        }
+      }
+
+      if (showThinking) {
+        window.AtlasSidebar.removeThinking();
+      }
+
+      if (summaryText) {
+        window.AtlasSidebar.addChatMessage("agent", `📄 ${summaryText}`);
+        speakIfVoiceMode(summaryText);
+      }
+    } catch (_) {
+      if (showThinking) {
+        window.AtlasSidebar.removeThinking();
+      }
+      // Non-critical: does not block
+    }
+  };
+
+  const refreshPanel = () => {
+    const domMap = window.AtlasSerializer.serialize();
+    window.AtlasSidebar.renderElements(
+      window.AtlasSidebar.deriveDisplayItems(domMap),
+    );
+    renderSimplified(domMap);
+  };
 
 const runCommand = async (command) => {
   window.AtlasSidebar.setStatus("Thinking...", "info");
@@ -362,8 +422,11 @@ const handleElementClick = async (atlasId) => {
       if (location.href !== lastUrl) {
         lastUrl = location.href;
         window.AtlasSidebar.setStatus("Page changed — refreshing...", "info");
-        setTimeout(() => {
-          if (active) refreshPanel();
+        setTimeout(async () => {
+          if (active) {
+            refreshPanel();
+            await fetchPageSummary({ showThinking: true });
+          }
         }, 800);
       }
     }, 500);
@@ -387,6 +450,22 @@ const handleElementClick = async (atlasId) => {
           window.AtlasTTS?.stop();
         } else {
           speakIfVoiceMode("Voice mode enabled. I will read responses aloud.");
+        }
+      },
+      onRefresh: async () => {
+        window.AtlasSidebar.setStatus("Refreshing page & elements...", "info");
+        try {
+          const domMap = window.AtlasSerializer.serialize();
+          window.AtlasSidebar.renderElements(
+            window.AtlasSidebar.deriveDisplayItems(domMap),
+          );
+          await renderSimplified(domMap);
+          await fetchPageSummary({ showThinking: true });
+          window.AtlasSidebar.setStatus("Page & Elements refreshed.", "ok");
+        } catch (err) {
+          window.AtlasSidebar.setStatus("Refresh failed.", "error");
+        } finally {
+          window.AtlasSidebar.setRefreshing(false);
         }
       },
     });
@@ -434,49 +513,7 @@ const handleElementClick = async (atlasId) => {
       renderSimplified(domMap);
 
       // ── Page summary on activation ──────────────────────────────────
-      try {
-        const pageText = getPageText();
-        let summaryText = "";
-        if (chrome?.runtime?.sendMessage) {
-          const sRes = await new Promise((resolve, reject) => {
-            chrome.runtime.sendMessage(
-              {
-                type: "ATLAS_SUMMARY",
-                baseUrl,
-                apiKey: apiKey || "",
-                payload: { url: window.location.href, page_text: pageText, api_key: apiKey || "" },
-              },
-              (res) => {
-                if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
-                if (!res || !res.ok) return reject(new Error(res?.error || "Summary failed"));
-                resolve(res.data);
-              }
-            );
-          });
-          summaryText = sRes?.summary;
-        } else {
-          const sRes = await fetch(`${baseUrl}/v1/summary`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Atlas-Key": apiKey || "",
-            },
-            body: JSON.stringify({ url: window.location.href, page_text: pageText, api_key: apiKey || "" }),
-          });
-          if (sRes.ok) {
-            const sData = await sRes.json();
-            summaryText = sData.summary;
-          }
-        }
-        if (summaryText) {
-          window.AtlasSidebar.addChatMessage("agent", `📄 ${summaryText}`);
-          if (window.AtlasTTS?.isSupported()) {
-            window.AtlasTTS.speak(summaryText);
-          }
-        }
-      } catch (_) {
-        // Non-critical: does not block activation
-      }
+      await fetchPageSummary({ showThinking: true });
     } catch (err) {
       console.error("Atlas: Connection failed:", err);
       window.AtlasSidebar.setStatus(

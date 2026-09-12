@@ -173,8 +173,13 @@
         <button class="atlas-tab" data-tab="elements" role="tab" aria-selected="false">Elements</button>
       </div>
 
-      <!-- Fallback close button for accessibility / test compatibility -->
-      <button class="atlas-close" aria-label="Close Atlas sidebar">×</button>
+      <div class="atlas-header-actions">
+        <button class="atlas-refresh-btn" id="atlas-header-refresh" aria-label="Refresh page analysis" title="Refresh Page Elements & Summary">
+          <span class="atlas-refresh-icon">🔄</span>
+        </button>
+        <!-- Fallback close button for accessibility / test compatibility -->
+        <button class="atlas-close" aria-label="Close Atlas sidebar">×</button>
+      </div>
     </div>
 
     <!-- CHAT TAB PANE -->
@@ -195,6 +200,9 @@
     <div class="atlas-pane atlas-pane-hidden" id="atlas-pane-elements">
       <div class="atlas-search-bar">
         <input class="atlas-search" type="text" placeholder="Search buttons, inputs, links..." />
+        <button class="atlas-elements-refresh-btn" id="atlas-elements-refresh" title="Refresh Elements" aria-label="Refresh elements">
+          <span class="atlas-refresh-icon">🔄</span>
+        </button>
       </div>
       <div class="atlas-status" aria-live="polite"></div>
       <div class="atlas-list" role="list"></div>
@@ -269,6 +277,18 @@
 
     micBtn.addEventListener("click", () => handlers.onMicClick?.());
     searchEl.addEventListener("input", () => renderElements(currentItems));
+
+    const triggerRefresh = () => {
+      setRefreshing(true);
+      handlers.onRefresh?.();
+    };
+
+    rootEl
+      .querySelector("#atlas-header-refresh")
+      ?.addEventListener("click", triggerRefresh);
+    rootEl
+      .querySelector("#atlas-elements-refresh")
+      ?.addEventListener("click", triggerRefresh);
   };
 
   // ── Chat messages ─────────────────────────────────────────────────────────────
@@ -325,16 +345,38 @@
 
   const addChatThinking = () => {
     if (!chatLogEl) return;
+    if (document.getElementById("atlas-thinking-indicator")) return;
     const msg = document.createElement("div");
     msg.className = "atlas-msg atlas-msg-agent atlas-msg-thinking";
     msg.id = "atlas-thinking-indicator";
-    msg.innerHTML = `<div class="atlas-msg-bubble"><span class="atlas-dots"><span>.</span><span>.</span><span>.</span></span></div>`;
+    msg.innerHTML = `
+      <div class="atlas-msg-bubble">
+        <div class="atlas-typing-indicator" aria-label="Atlas is thinking">
+          <span class="atlas-dot"></span>
+          <span class="atlas-dot"></span>
+          <span class="atlas-dot"></span>
+        </div>
+      </div>
+    `;
     chatLogEl.appendChild(msg);
     chatLogEl.scrollTop = chatLogEl.scrollHeight;
   };
 
   const removeThinking = () => {
     document.getElementById("atlas-thinking-indicator")?.remove();
+  };
+
+  const setRefreshing = (isRefreshing) => {
+    if (!rootEl) return;
+    rootEl
+      .querySelectorAll(".atlas-refresh-icon")
+      .forEach((el) => {
+        if (isRefreshing) {
+          el.classList.add("atlas-spin");
+        } else {
+          el.classList.remove("atlas-spin");
+        }
+      });
   };
 
   // ── Skeleton loader ───────────────────────────────────────────────────────────
@@ -534,6 +576,7 @@
     setStatus,
     setListening,
     setLoading,
+    setRefreshing,
     addChatMessage,
     addChatThinking,
     removeThinking,
