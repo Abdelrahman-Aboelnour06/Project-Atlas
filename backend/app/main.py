@@ -1,6 +1,20 @@
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Ensure .env is loaded regardless of current working directory
+_env_candidates = [
+    Path.cwd() / ".env",
+    Path.cwd() / "backend" / ".env",
+    Path(__file__).resolve().parent.parent / ".env",
+]
+for _p in _env_candidates:
+    if _p.is_file():
+        load_dotenv(dotenv_path=_p)
+        break
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import os
 
 from app.routes import agent, session, health, audit, chat
 
