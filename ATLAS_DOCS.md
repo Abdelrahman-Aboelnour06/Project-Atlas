@@ -49,53 +49,55 @@ Atlas starts as a browser extension. The long-term vision is a platform where an
 
 ```mermaid
 flowchart TD
-    subgraph Browser["Chrome Browser"]
-        EXT["Chrome Extension\n(client-script/)"]
-        CS["content.js\nOrchestrator"]
-        SER["dom-serializer.js\nPage Scanner"]
-        SB["sidebar.js\nUI Panel"]
-        WS_CLIENT["websocket-client.js\nWS Client"]
-        EXEC["executor.js\nAction Runner"]
-        SPEECH["speech.js\nVoice Input"]
+    subgraph Browser["Chrome Browser (client-script/)"]
+        EXT["Extension Core\nmanifest.json & background.js"]
+        CS["content.js\nOrchestrator & Flow Coordinator"]
+        SER["dom-serializer.js\nDynamic Semantic Categorizer & Filter"]
+        SB["sidebar.js\nUI (Accordion, SVG Controls, Typing Wave)"]
+        WS_CLIENT["websocket-client.js\nBidirectional WS & REST Client"]
+        EXEC["executor.js\nUniversal Interaction Engine (W3C Pointer, dblclick, Enter)"]
+        SPEECH["speech.js\nVoice Input & TTS Output"]
     end
 
-    subgraph Docker["Docker Container (localhost:8000)"]
-        FASTAPI["FastAPI Backend\n(Python)"]
-        AGENT["agent.py\nWebSocket Route"]
-        AUTH["API Key Auth\n(SHA-256 lookup)"]
+    subgraph Backend["FastAPI Backend (localhost:8000)"]
+        MAIN["main.py\nFastAPI App & CORS Config"]
+        AGENT["agent.py\nWebSocket & Action Route"]
+        CHAT_ROUTE["chat.py\nREST Natural Language Route"]
+        AUTH["API Key Auth\nSHA-256 Lookup"]
+        RATE["rate_limiter.py\nSliding Window Limiter"]
+        PLANNER["agentic_planner.py\nMulti-Step Agentic Action Planner"]
         SIMPLIFY["simplify_prompt.py\nDOM Simplifier"]
-        CMD["prompt.py\nCommand Handler"]
         HEALTH["health.py\nHealth Check"]
     end
 
     subgraph Cloud["External Services"]
-        NEON["Neon.tech\nPostgreSQL\n(Serverless)"]
-        NVIDIA["NVIDIA NIM API\nmeta/llama-3.1-8b-instruct"]
+        NEON["Neon.tech\nPostgreSQL (Serverless)"]
+        NVIDIA["NVIDIA NIM API\nMeta Llama 3.1 8B Instruct"]
     end
 
     EXT -->|"Toggle message"| CS
-    CS --> SER
-    CS --> SB
-    CS --> WS_CLIENT
+    CS <--> SER
+    CS <--> SB
+    CS <--> WS_CLIENT
     CS --> EXEC
-    CS --> SPEECH
+    CS <--> SPEECH
 
-    SER -->|"DOM node list"| CS
-    WS_CLIENT -->|"WebSocket\nws://localhost:8000/v1/agent"| AGENT
+    SER -->|"Dynamic Categorized DOM Map"| CS
+    WS_CLIENT <-->|"WebSocket /v1/agent\nREST /v1/chat"| AGENT
 
     AGENT --> AUTH
     AUTH -->|"SHA-256 key lookup"| NEON
+    AGENT --> RATE
+    AGENT -->|"agentic action planning"| PLANNER
     AGENT -->|"simplify request"| SIMPLIFY
-    AGENT -->|"command request"| CMD
 
-    SIMPLIFY -->|"HTTPS POST"| NVIDIA
-    CMD -->|"HTTPS POST"| NVIDIA
-    NVIDIA -->|"JSON response"| AGENT
-    AGENT -->|"WebSocket reply"| WS_CLIENT
+    PLANNER <-->|"HTTPS REST"| NVIDIA
+    SIMPLIFY <-->|"HTTPS REST"| NVIDIA
+    AGENT -->|"Action Plan / Steps reply"| WS_CLIENT
 
     WS_CLIENT --> CS
     CS --> EXEC
-    EXEC -->|"click/fill/focus\non real DOM"| Browser
+    EXEC -->|"W3C pointer, click, open (dblclick+Enter), fill\non real DOM"| Browser
 ```
 
 ### Layer Explanations
@@ -104,42 +106,42 @@ flowchart TD
 
 | File | Role |
 |---|---|
-| `manifest.json` | Extension config — permissions, content script injection, background worker |
-| `content.js` | **Orchestrator.** Wires all modules together. Handles activate/deactivate, URL change detection, command routing |
-| `dom-serializer.js` | **Page scanner.** Reads the DOM, scores elements (primary vs secondary tier), resolves human-readable labels, detects groups |
-| `sidebar.js` | **UI.** Renders the sidebar panel — tabs, chat interface, grouped elements, search, skeleton loader |
-| `sidebar.css` | Sidebar styles, scoped under `#atlas-sidebar-root` to avoid clashing with host page CSS |
-| `websocket-client.js` | Manages the WebSocket connection to the backend. Handles connect, disconnect, send, receive |
-| `executor.js` | Executes actions on the real DOM (`click`, `fill`, `focus`, `scroll`) given an element's `data-atlas-id` |
-| `speech.js` | Web Speech API wrapper for voice input |
-| `background.js` | Service worker — listens for toolbar icon click, sends `ATLAS_TOGGLE` message to content script |
-| `options.js` / `options.html` | Settings page — user enters their API key and backend URL |
+| `manifest.json` | Extension config — permissions, content script injection, background service worker |
+| `content.js` | **Orchestrator.** Wires modules together, detects URL/SPA changes, handles command routing and sidebar interactions |
+| `dom-serializer.js` | **Dynamic Semantic Categorizer.** Scans DOM, discards non-interactive noise, dynamically classifies elements into semantic groups (Navigation, Files & Folders, Controls, Search, Links) with emoji metadata and collapsible structures |
+| `sidebar.js` | **UI.** Accessible sidebar panel — dual tabs (Chat & Elements), collapsed accordion menus on load, SVG reload button, 3-dot wave typing animation, search filtering |
+| `sidebar.css` | Scoped styling under `#atlas-sidebar-root` with accessibility themes, animations, and focus rings |
+| `websocket-client.js` | Bidirectional connection to backend `/v1/agent` and REST client for `/v1/chat` |
+| `executor.js` | **Universal Interaction Engine.** Simulates complete W3C event sequences (`pointerdown` → `mousedown` → `pointerup` → `mouseup` → `click`), universal `open` (`dblclick` + `Enter` keyCode 13) for desktop web apps (Google Drive, Dropbox, Notion), plus `fill`, `scroll`, `focus` |
+| `speech.js` | Web Speech API wrapper for speech-to-text recognition and text-to-speech output |
+| `background.js` | Service worker — listens for extension icon activation and triggers `ATLAS_TOGGLE` |
+| `options.js` / `options.html` | Settings page — tenant API key and backend connection configuration |
 
 #### Backend / API Layer (`backend/app/`)
 
-Built with **FastAPI** (Python). Runs inside Docker on port 8000.
+Built with **FastAPI** (Python). Runs inside Docker or standalone on port 8000.
 
 | File | Role |
 |---|---|
-| `main.py` | App entry point. Registers middleware (CORS), mounts routes |
-| `routes/agent.py` | WebSocket endpoint at `/v1/agent`. Validates API key, routes to simplify or command pipeline |
-| `routes/health.py` | GET `/health` — returns status of app, DB connection, and LLM reachability |
-| `routes/session.py` | Session management routes |
-| `agent/simplify_prompt.py` | Builds the LLM prompt for the `simplify` pipeline |
-| `agent/prompt.py` | Builds the LLM prompt for the `command` pipeline |
-| `db/connection.py` | SQLAlchemy async engine setup for Neon |
-| `migrations/001_init.sql` | Schema definition — run once on a fresh database |
-| `migrations/seed.py` | Seeds demo tenant and API key |
+| `main.py` | App entry point. Configures CORS, rate limiting middleware, mounts API and WebSocket routes |
+| `routes/agent.py` | WebSocket `/v1/agent`. Authenticates session, routes to agentic planner or simplify pipeline |
+| `routes/chat.py` | REST `/v1/chat`. Natural language conversational fallback |
+| `routes/health.py` | GET `/health` — live health check reporting DB connectivity and LLM reachability |
+| `agent/agentic_planner.py` | **Multi-Step Agentic Planner.** Translates user commands + page context into structured multi-step action plans (`click`, `open`, `fill`, `scroll`, `focus`), handles confirmation requirements |
+| `agent/simplify_prompt.py` | Generates prompt to simplify complex DOM maps into clean, plain-language accessibility labels |
+| `db/connection.py` | SQLAlchemy async engine setup for Neon PostgreSQL |
+| `migrations/001_init.sql` | Relational schema definition (tenants, api_keys, usage_logs, error_logs) |
+| `migrations/seed.py` | Demo tenant and seeded credentials |
 
 #### Database Layer
 
-**Neon.tech** — serverless PostgreSQL hosted on AWS Europe. Scales to zero when idle (important for hackathon budgets). Connected via `asyncpg` with `ssl=require`.
+**Neon.tech** — serverless PostgreSQL hosted on AWS Europe. Scales to zero when idle with TLS encrypted connections (`asyncpg`).
 
 #### External Integrations
 
 | Service | Purpose | Protocol |
 |---|---|---|
-| NVIDIA NIM API | LLM inference (Llama 3.1 8B) | HTTPS REST POST |
+| NVIDIA NIM API | Hosted LLM inference (Meta Llama 3.1 8B Instruct) | HTTPS REST POST |
 | Neon.tech | PostgreSQL database | `asyncpg` over TLS |
 
 ### Data Flow — End to End
@@ -326,13 +328,22 @@ interface DomNode {
   "dom_map": [ /* DomNode[] */ ]
 }
 
-// Command response (Backend → Extension)
+// Command response / Agentic Action Plan (Backend → Extension)
 {
   "status": "success",
-  "action": "click",
-  "element_id": "atlas-456",
-  "value": null,
-  "message": "Clicking 'Proceed to Checkout'"
+  "thought": "Locating and opening the requested item.",
+  "steps": [
+    {
+      "action": "open",
+      "element_id": "atlas-row-123",
+      "value": null,
+      "description": "Double-clicking and activating item"
+    }
+  ],
+  "confirmation_prompt": null,
+  "confirmation_options": [],
+  "pending_step": null,
+  "message": "Opening file..."
 }
 ```
 
@@ -355,24 +366,24 @@ The raw key never touches the database. Only the hash is stored. This means even
 ### ✅ Completed
 
 - [x] Chrome Extension (Manifest V3) — fully functional
-- [x] DOM serializer with two-tier scoring (primary / secondary elements)
-- [x] Universal noise filtering (works on any website, not just Amazon)
-- [x] Smart label resolution (8-priority fallback chain: `<label>` → `aria-labelledby` → `title` → `aria-label` → inner text → wrapping label → name → placeholder)
-- [x] Grouped elements panel with collapsible categories
-- [x] "Show more" expander for secondary (lower-confidence) elements
-- [x] Live search across all groups with text highlighting
-- [x] Chat interface with message history
-- [x] Question vs command detection (`isQuestion()`)
-- [x] Voice input via Web Speech API
-- [x] FastAPI backend running in Docker
-- [x] WebSocket endpoint at `/ws/v1/agent`
+- [x] Universal Prime Directive: 100% website-agnostic across Google Drive, Gmail, Amazon, SPAs, etc.
+- [x] Dynamic AI Semantic Categorizer (Navigation, Files & Folders, Controls, Inputs, Links)
+- [x] Accordion-style collapsible groups (collapsed by default on load)
+- [x] Vector SVG Reload button with synchronized UI re-indexing
+- [x] Universal Interaction Engine (`doClick` with W3C Pointer/Mouse sequences)
+- [x] Universal `doOpen` (full double-click + W3C Enter keyCode 13 for desktop web apps)
+- [x] Multi-Step Agentic Action Planner (`agentic_planner.py` with multi-action steps & confirmation dialogs)
+- [x] 3-dot wave typing indicator animation during inference
+- [x] REST `/v1/chat` & `/v1/audit/log` routes
+- [x] DOM serializer with two-tier scoring and robust label resolution
+- [x] Voice input via Web Speech API and text-to-speech output
+- [x] FastAPI backend running in Docker / standalone
+- [x] WebSocket endpoint at `/v1/agent`
 - [x] API key authentication via SHA-256 hash lookup in Neon
-- [x] Simplify pipeline (DOM → NVIDIA → clean labels)
-- [x] Command pipeline (text command → NVIDIA → action)
 - [x] PII protection — password fields stripped before leaving browser
 - [x] Neon PostgreSQL database initialized and seeded
 - [x] Health endpoint (`GET /health`) returning db + llm status
-- [x] URL change detection for SPAs (polls every 500ms, refreshes panel after navigation)
+- [x] URL change detection for SPAs
 - [x] MutationObserver with pause/resume to prevent re-render loops
 - [x] Skeleton loading animation while LLM processes
 - [x] CareLink Pharmacy demo site (realistic pharmacy for live demos)
