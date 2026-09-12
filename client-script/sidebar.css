@@ -448,23 +448,9 @@
   line-height: 1;
 }
 
-#atlas-sidebar-root .atlas-refresh-btn:hover,
-#atlas-sidebar-root .atlas-elements-refresh-btn:hover {
+#atlas-sidebar-root .atlas-refresh-btn:hover {
   background: var(--atlas-control-bg-hover, rgba(255, 255, 255, 0.1));
   color: var(--atlas-label, #ffffff);
-}
-
-#atlas-sidebar-root .atlas-elements-refresh-btn {
-  background: var(--atlas-control-bg);
-  border: 1px solid var(--atlas-control-border);
-  padding: 6px 10px;
-  border-radius: 8px;
-}
-
-#atlas-sidebar-root .atlas-search-bar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
 }
 
 #atlas-sidebar-root .atlas-spin {

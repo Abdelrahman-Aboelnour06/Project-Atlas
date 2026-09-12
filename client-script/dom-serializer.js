@@ -8,7 +8,7 @@
   const INTERACTIVE_SELECTOR = [
     "button",
     "a[href]",
-    'input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"])',
+    'input:not([type="hidden"])',
     "select",
     "textarea",
     '[role="button"]',
@@ -16,8 +16,22 @@
     '[role="textbox"]',
     '[role="combobox"]',
     '[role="menuitem"]',
+    '[role="menuitemcheckbox"]',
     '[role="tab"]',
     '[role="switch"]',
+    '[role="checkbox"]',
+    '[role="radio"]',
+    '[role="searchbox"]',
+    '[role="treeitem"]',
+    '[role="option"]',
+    // Google Drive, web app rows, cards & clickable elements
+    '[role="row"][data-id]',
+    '[role="row"][data-target]',
+    '[role="row"][tabindex]',
+    '[data-id][tabindex="0"]',
+    '[data-target][tabindex="0"]',
+    '[jsaction*="click"][tabindex="0"]',
+    '[data-tooltip][tabindex="0"]',
   ].join(",");
 
 const SENSITIVE_INPUT_TYPES = new Set(["password", "email", "tel"]);
@@ -40,7 +54,7 @@ const isSensitiveField = (el) => {
 
 // ── Noise filter ─────────────────────────────────────────────────────────────
 // Selectors that match UI chrome we never want cluttering the panel:
-// language pickers, account menus, cookie banners, price/filter widgets, etc.
+// language pickers, cookie banners, price/filter widgets, etc.
 const NOISE_SELECTORS = [
   "#atlas-sidebar-root", // never scan ourselves
   // Amazon-specific nav/utility chrome
@@ -76,12 +90,7 @@ const NOISE_SELECTORS = [
   '[aria-label*="currency" i]',
   '[aria-label*="region" i]',
   '[aria-label*="breadcrumb" i]',
-  // Skip elements inside known chrome/nav containers
-  "nav a",
-  '[role="navigation"] a',
-  '[role="navigation"] button',
-  '[role="banner"] a',
-  // Google / internal widget chrome
+  // Google / internal dismiss chrome
   "[data-ogsr-up]",
   '[jsaction*="dismiss"]',
 ];
@@ -93,8 +102,6 @@ const NOISE_TEXT_PATTERNS = [
   /^filter by/i,
   /^sort by/i,
   /^all departments/i,
-  /^sign in$/i,
-  /^log in$/i,
   /^returns & orders/i,
   /^back to top/i,
   /^skip to (main|content|nav)/i,
@@ -103,11 +110,14 @@ const NOISE_TEXT_PATTERNS = [
 
 
   // ── Universal quality filters ─────────────────────────────────────────────────
-  // These run on EVERY site, not just Amazon.
+  // These run on EVERY site.
 
   // 1. No meaningful label at all — not useful to show
   const hasMeaningfulLabel = (el) => {
     const candidates = [
+      el.getAttribute("data-tooltip"),
+      el.getAttribute("data-title"),
+      el.getAttribute("data-name"),
       el.getAttribute("aria-label"),
       el.getAttribute("aria-labelledby") ? "has-ref" : null,
       el.getAttribute("title"),
@@ -144,12 +154,21 @@ const NOISE_TEXT_PATTERNS = [
     return false;
   };
 
-  // 3. Tiny icon buttons with no visible text (likely decorative chrome)
+  // 3. Tiny icon buttons with no visible text AND no descriptive tooltip/label
   const isBareIconButton = (el) => {
     const text = (el.innerText || el.textContent || "").trim();
     if (text.length > 0) return false; // has text, keep it
+
+    // Accessible icon buttons with tooltips, titles, or aria-labels are NOT bare!
+    const aria = (el.getAttribute("aria-label") || "").trim();
+    const title = (el.getAttribute("title") || "").trim();
+    const tooltip = (el.getAttribute("data-tooltip") || el.getAttribute("data-title") || "").trim();
+    if (aria && !MACHINE_LABEL_PATTERN.test(aria) && aria.length > 1) return false;
+    if (title && !MACHINE_LABEL_PATTERN.test(title) && title.length > 1) return false;
+    if (tooltip && !MACHINE_LABEL_PATTERN.test(tooltip) && tooltip.length > 1) return false;
+
     const rect = el.getBoundingClientRect();
-    // Small square with no text = almost certainly an icon button
+    // Small square with no text and no accessible label = decorative/bare chrome
     if (rect.width < 36 && rect.height < 36) return true;
     return false;
   };
@@ -231,26 +250,47 @@ const NOISE_TEXT_PATTERNS = [
       }
     }
 
-    // 3. title attribute (often descriptive on icon buttons)
+    // 3. data-tooltip or data-title (Google Drive & modern web apps use this extensively)
+    const tooltip = el.getAttribute("data-tooltip") || el.getAttribute("data-title") || el.getAttribute("aria-description");
+    if (tooltip?.trim() && !MACHINE_LABEL_PATTERN.test(tooltip)) {
+      return truncate(tooltip);
+    }
+
+    // 4. title attribute (often descriptive on icon buttons)
     const title = el.getAttribute("title");
     if (title?.trim() && !MACHINE_LABEL_PATTERN.test(title)) {
       return truncate(title);
     }
 
-    // 4. aria-label — but only if it doesn't look machine-generated
+    // 5. aria-label — but only if it doesn't look machine-generated
     const ariaLabel = el.getAttribute("aria-label");
     if (ariaLabel?.trim() && !MACHINE_LABEL_PATTERN.test(ariaLabel)) {
       return truncate(ariaLabel);
     }
 
-    // 5. Inner text for buttons and links
-    if (tag === "button" || tag === "a") {
-      // Strip out icon-only content (single chars, emoji, etc.)
-      const text = (el.innerText || el.textContent || "")
-        .trim()
-        .replace(/\s+/g, " ");
-      if (text.length > 1 && !/^[\W\d]$/.test(text)) return truncate(text);
+    // 6. data-name attribute
+    const dataName = el.getAttribute("data-name");
+    if (dataName?.trim() && !MACHINE_LABEL_PATTERN.test(dataName)) {
+      return truncate(dataName);
     }
+
+    // 7. Child title or filename (for rows, treeitems, cards in Drive/web apps)
+    const elRole = el.getAttribute("role");
+    if (elRole === "row" || elRole === "treeitem" || elRole === "gridcell") {
+      const childItem = el.querySelector('[data-tooltip], [data-name], [class*="name"], [class*="title"], [role="gridcell"]');
+      if (childItem) {
+        const cText = childItem.getAttribute("data-tooltip") || childItem.getAttribute("data-name") || (childItem.innerText || "").trim();
+        if (cText && cText.length > 1 && !MACHINE_LABEL_PATTERN.test(cText)) {
+          return truncate(cText);
+        }
+      }
+    }
+
+    // 8. Inner text for buttons, links, rows, and interactive elements
+    const text = (el.innerText || el.textContent || "")
+      .trim()
+      .replace(/\s+/g, " ");
+    if (text.length > 1 && !/^[\W\d]$/.test(text)) return truncate(text);
 
     // 6. Wrapping <label>
     const wrapping = el.closest("label");

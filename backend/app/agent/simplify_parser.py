@@ -103,10 +103,16 @@ def parse_simplify_response(raw: str, dom_map: list | None) -> list[dict]:
         if category not in VALID_CATEGORIES:
             category = DEFAULT_CATEGORY
 
-        clean_elements.append({
+        clean_item = {
             "element_id": element_id,
             "label": label,
             "category": category,
-        })
+        }
+        if entry.get("group"):
+            clean_item["group"] = str(entry["group"]).strip()
+        if entry.get("emoji"):
+            clean_item["emoji"] = str(entry["emoji"]).strip()
+
+        clean_elements.append(clean_item)
 
     return clean_elements

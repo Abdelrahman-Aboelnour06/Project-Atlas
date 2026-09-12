@@ -22,36 +22,130 @@
   // Drag state cleanup ref
   let cleanUpDrag = null;
 
-  const CATEGORY_CONFIG = {
-    button: { label: "Buttons", emoji: "🔘" },
-    input: { label: "Text fields & forms", emoji: "✏️" },
-    link: { label: "Links", emoji: "🔗" },
-    select: { label: "Dropdowns", emoji: "▾" },
-    other: { label: "Other", emoji: "⚙️" },
+  // ── Dynamic Semantic Category System ──────────────────────────────────────────
+  const DEFAULT_CATEGORIES = {
+    files: { label: "Files & Folders", emoji: "📁", priority: 1 },
+    actions: { label: "Actions & Create", emoji: "⚡", priority: 2 },
+    search_filters: { label: "Search & Filters", emoji: "🔍", priority: 3 },
+    navigation: { label: "Navigation & Sections", emoji: "🧭", priority: 4 },
+    view_settings: { label: "View & Settings", emoji: "⚙️", priority: 5 },
+    commerce: { label: "Shopping & Cart", emoji: "🛒", priority: 6 },
+    account: { label: "Account & Profile", emoji: "👤", priority: 7 },
+    inputs: { label: "Text Fields & Forms", emoji: "📝", priority: 8 },
+    buttons: { label: "Buttons & Controls", emoji: "🔘", priority: 9 },
+    links: { label: "Links & Resources", emoji: "🔗", priority: 10 },
+    other: { label: "Other Elements", emoji: "📌", priority: 99 },
   };
-  const CATEGORY_ORDER = ["button", "input", "link", "select", "other"];
 
-  const categoryFor = (node) => {
-    if (node.tag === "a") return "link";
-    if (node.tag === "button") return "button";
-    if (node.tag === "input" || node.tag === "textarea") return "input";
-    if (node.tag === "select") return "select";
-    return node.role || "other";
+  const classifyNode = (node) => {
+    const rawLabel = (
+      node.resolved_label ||
+      node.aria_label ||
+      node.inner_text ||
+      node.placeholder ||
+      node.name ||
+      ""
+    ).trim();
+    const l = rawLabel.toLowerCase();
+    const tag = (node.tag || "").toLowerCase();
+    const role = (node.role || "").toLowerCase();
+    const type = (node.type || "").toLowerCase();
+
+    // 1. Files, Folders & Documents (Google Drive, Cloud storage, attachments, file lists)
+    if (
+      /\.(pdf|docx?|pptx?|xlsx?|csv|zip|rar|tar|gz|7z|txt|png|jpe?g|gif|svg|mp[34]|avi|mkv|json|py|js|html|epub)\b/i.test(rawLabel) ||
+      ((role === "row" || role === "treeitem" || role === "gridcell") && !/^(home|activity|my drive|shared|trash|starred|recent|spam|storage)\b/i.test(l)) ||
+      (/\b(folder|file|document|spreadsheet|presentation|slide|archive|pdf|download|drive)\b/i.test(l) && !/^(new|create|upload|add)\b/i.test(l))
+    ) {
+      return { category: "files", label: "Files & Folders", emoji: "📁" };
+    }
+
+    // 2. Quick Actions & Creation (+ New, Create, Add, Upload, Compose, Submit)
+    if (
+      /^(\+|create|new|add|upload|compose|submit|send|save|publish|export|import|delete|trash|remove|checkout|confirm|apply)\b/i.test(l) ||
+      /\b(create new|new folder|new file|upload file|upload folder|add new|submit form)\b/i.test(l)
+    ) {
+      return { category: "actions", label: "Actions & Create", emoji: "⚡" };
+    }
+
+    // 3. Search & Filters
+    if (
+      type === "search" ||
+      role === "searchbox" ||
+      /\b(search|filter|find|query)\b/i.test(l) ||
+      /^(type|people|modified|source|date|category|sort|order by|filter by|filter)\b/i.test(l)
+    ) {
+      return { category: "search_filters", label: "Search & Filters", emoji: "🔍" };
+    }
+
+    // 4. Navigation & Sections (Sidebar, tabs, main areas)
+    if (
+      tag === "a" ||
+      role === "tab" ||
+      role === "link" ||
+      /\b(home|activity|workspaces|my drive|shared with me|recent|starred|spam|trash|storage|computers|dashboard|explore|subscriptions|library|overview|menu|back|forward|next|previous|page)\b/i.test(l)
+    ) {
+      return { category: "navigation", label: "Navigation & Sections", emoji: "🧭" };
+    }
+
+    // 5. View Controls & Settings (Layout, Grid, List, Details, Settings, Help)
+    if (
+      /\b(view|layout|grid|list|details|info|settings|options|preferences|more actions|more options|customize|help|support|shortcuts)\b/i.test(l)
+    ) {
+      return { category: "view_settings", label: "View & Settings", emoji: "⚙️" };
+    }
+
+    // 6. Shopping & Commerce
+    if (
+      /\b(cart|checkout|buy|price|order|add to cart|bag|wishlist|pay|purchase|subscribe)\b/i.test(l)
+    ) {
+      return { category: "commerce", label: "Shopping & Cart", emoji: "🛒" };
+    }
+
+    // 7. Account & Profile
+    if (
+      /\b(account|sign in|log in|sign out|log out|profile|avatar|user|switch account|my account)\b/i.test(l)
+    ) {
+      return { category: "account", label: "Account & Profile", emoji: "👤" };
+    }
+
+    // 8. Form text fields & inputs
+    if (
+      tag === "input" ||
+      tag === "textarea" ||
+      tag === "select" ||
+      role === "textbox" ||
+      role === "combobox"
+    ) {
+      return { category: "inputs", label: "Text Fields & Forms", emoji: "📝" };
+    }
+
+    // 9. Buttons
+    if (tag === "button" || role === "button") {
+      return { category: "buttons", label: "Buttons & Controls", emoji: "🔘" };
+    }
+
+    return { category: "other", label: "Other Elements", emoji: "📌" };
   };
 
   const deriveDisplayItems = (domMap) =>
-    domMap.map((node) => ({
-      id: node.id,
-      label:
-        node.resolved_label ||
-        node.aria_label ||
-        node.inner_text ||
-        node.placeholder ||
-        node.name ||
-        node.tag,
-      category: categoryFor(node),
-      group: node.group_label || null,
-    }));
+    domMap.map((node) => {
+      const detected = classifyNode(node);
+      return {
+        id: node.id,
+        label:
+          node.resolved_label ||
+          node.aria_label ||
+          node.inner_text ||
+          node.placeholder ||
+          node.name ||
+          node.tag,
+        category: detected.category,
+        category_label: detected.label,
+        emoji: detected.emoji,
+        group: node.group_label || null,
+      };
+    });
 
   // ── Window Positioning & Dragging ─────────────────────────────────────────────
   const clamp = (val, min, max) => Math.max(min, Math.min(val, max));
@@ -200,9 +294,6 @@
     <div class="atlas-pane atlas-pane-hidden" id="atlas-pane-elements">
       <div class="atlas-search-bar">
         <input class="atlas-search" type="text" placeholder="Search buttons, inputs, links..." />
-        <button class="atlas-elements-refresh-btn" id="atlas-elements-refresh" title="Refresh Elements" aria-label="Refresh elements">
-          <span class="atlas-refresh-icon">🔄</span>
-        </button>
       </div>
       <div class="atlas-status" aria-live="polite"></div>
       <div class="atlas-list" role="list"></div>
@@ -285,9 +376,6 @@
 
     rootEl
       .querySelector("#atlas-header-refresh")
-      ?.addEventListener("click", triggerRefresh);
-    rootEl
-      .querySelector("#atlas-elements-refresh")
       ?.addEventListener("click", triggerRefresh);
   };
 
@@ -403,50 +491,51 @@
     const query = (searchEl?.value || "").trim().toLowerCase();
     listEl.innerHTML = "";
 
-    const groups = {};
-    for (const cat of CATEGORY_ORDER)
-      groups[cat] = { ungrouped: [], subgroups: {} };
+    // ── Group by Dynamic Category (AI group, semantic category, or sub-group) ──
+    const catMap = new Map();
 
     for (const item of items) {
-      const cat = CATEGORY_ORDER.includes(item.category)
-        ? item.category
-        : "other";
-      if (item.group) {
-        if (!groups[cat].subgroups[item.group])
-          groups[cat].subgroups[item.group] = [];
-        groups[cat].subgroups[item.group].push(item);
-      } else {
-        groups[cat].ungrouped.push(item);
+      // Priority: explicit AI/element group > category_label > default config label > fallback
+      const catKey = item.group || item.category || "other";
+      let catLabel = item.group || item.category_label || DEFAULT_CATEGORIES[item.category]?.label || catKey;
+      let catEmoji = item.emoji || DEFAULT_CATEGORIES[item.category]?.emoji || "⚙️";
+
+      if (catLabel.length > 0) {
+        catLabel = catLabel.charAt(0).toUpperCase() + catLabel.slice(1);
       }
+
+      if (!catMap.has(catKey)) {
+        const defaultPriority = DEFAULT_CATEGORIES[item.category]?.priority ?? 50;
+        catMap.set(catKey, {
+          key: catKey,
+          label: catLabel,
+          emoji: catEmoji,
+          priority: defaultPriority,
+          items: [],
+        });
+      }
+      catMap.get(catKey).items.push(item);
     }
+
+    // Sort categories by priority, then alphabetically
+    const sortedCategories = Array.from(catMap.values()).sort((a, b) => {
+      if (a.priority !== b.priority) return a.priority - b.priority;
+      return a.label.localeCompare(b.label);
+    });
 
     let totalVisible = 0;
 
-    for (const cat of CATEGORY_ORDER) {
-      const { ungrouped, subgroups } = groups[cat];
-      const allInCat = [...ungrouped, ...Object.values(subgroups).flat()];
-      if (allInCat.length === 0) continue;
+    for (const cat of sortedCategories) {
+      const filteredItems = query
+        ? cat.items.filter((i) => i.label.toLowerCase().includes(query))
+        : cat.items;
 
-      const filteredUngrouped = query
-        ? ungrouped.filter((i) => i.label.toLowerCase().includes(query))
-        : ungrouped;
+      if (filteredItems.length === 0) continue;
+      totalVisible += filteredItems.length;
 
-      const filteredSubgroups = {};
-      for (const [grpLabel, grpItems] of Object.entries(subgroups)) {
-        const f = query
-          ? grpItems.filter((i) => i.label.toLowerCase().includes(query))
-          : grpItems;
-        if (f.length) filteredSubgroups[grpLabel] = f;
-      }
-
-      const totalFiltered =
-        filteredUngrouped.length +
-        Object.values(filteredSubgroups).flat().length;
-      if (query && totalFiltered === 0) continue;
-      totalVisible += totalFiltered;
-
-      const config = CATEGORY_CONFIG[cat] || { label: cat, emoji: "⚙️" };
-      let isOpen = query ? true : (groupOpenState[cat] ?? false);
+      // Expand all categories by default so user sees content immediately;
+      // auto-expand when filtering by query; respect manual toggle
+      const isOpen = query ? true : (groupOpenState[cat.key] ?? true);
 
       const section = document.createElement("div");
       section.className = "atlas-group";
@@ -456,9 +545,9 @@
       header.setAttribute("aria-expanded", String(isOpen));
       header.innerHTML = `
         <span class="atlas-group-title">
-          <span class="atlas-group-emoji">${config.emoji}</span>
-          ${config.label}
-          <span class="atlas-group-count">${totalFiltered}</span>
+          <span class="atlas-group-emoji">${cat.emoji}</span>
+          ${cat.label}
+          <span class="atlas-group-count">${filteredItems.length}</span>
         </span>
         <span class="atlas-group-chevron">${isOpen ? "▲" : "▼"}</span>
       `;
@@ -470,7 +559,7 @@
       header.addEventListener("click", () => {
         const expanded = header.getAttribute("aria-expanded") === "true";
         const next = !expanded;
-        groupOpenState[cat] = next;
+        groupOpenState[cat.key] = next;
         header.setAttribute("aria-expanded", String(next));
         header.querySelector(".atlas-group-chevron").textContent = next
           ? "▲"
@@ -478,22 +567,7 @@
         body.classList.toggle("atlas-group-collapsed", !next);
       });
 
-      for (const [grpLabel, grpItems] of Object.entries(filteredSubgroups)) {
-        const subSection = document.createElement("div");
-        subSection.className = "atlas-subgroup";
-
-        const subHeader = document.createElement("div");
-        subHeader.className = "atlas-subgroup-header";
-        subHeader.textContent = grpLabel;
-
-        subSection.appendChild(subHeader);
-        for (const item of grpItems) {
-          subSection.appendChild(makeItemEl(item, query));
-        }
-        body.appendChild(subSection);
-      }
-
-      for (const item of filteredUngrouped) {
+      for (const item of filteredItems) {
         body.appendChild(makeItemEl(item, query));
       }
 

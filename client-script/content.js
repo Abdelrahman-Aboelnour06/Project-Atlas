@@ -257,6 +257,7 @@
           label: el.label,
           category: el.category,
           group: el.group || null,
+          emoji: el.emoji || null,
         }));
         window.AtlasSidebar.renderElements(items);
         return;
