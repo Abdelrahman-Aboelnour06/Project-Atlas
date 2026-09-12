@@ -1,13 +1,24 @@
 import os
+from pathlib import Path
 import httpx
 import asyncio
 from dotenv import load_dotenv
 
-load_dotenv()
+# Ensure .env is loaded regardless of working directory
+_env_candidates = [
+    Path.cwd() / ".env",
+    Path.cwd() / "backend" / ".env",
+    Path(__file__).resolve().parent.parent.parent / ".env",
+    Path(__file__).resolve().parent.parent / ".env",
+]
+for _p in _env_candidates:
+    if _p.is_file():
+        load_dotenv(dotenv_path=_p)
+        break
 
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "nvidia_nim").lower()
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://integrate.api.nvidia.com/v1")
-LLM_MODEL = os.getenv("LLM_MODEL", "meta/llama-3.1-70b-instruct")
+LLM_MODEL = os.getenv("LLM_MODEL", "meta/llama-3.2-11b-vision-instruct")
 LLM_API_KEY = os.getenv("LLM_API_KEY", "")
 
 if LLM_PROVIDER != "ollama" and not LLM_API_KEY:
