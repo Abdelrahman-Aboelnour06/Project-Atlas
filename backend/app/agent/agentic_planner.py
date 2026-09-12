@@ -22,7 +22,7 @@ from app.agent.sanitize import strip_pii_from_dom
 
 logger = logging.getLogger(__name__)
 
-VALID_ACTIONS = {"click", "fill", "scroll", "focus"}
+VALID_ACTIONS = {"click", "open", "double_click", "fill", "scroll", "focus"}
 
 
 class PlanStep(BaseModel):
@@ -70,31 +70,35 @@ You help elderly, disabled, and everyday users navigate and perform tasks on ANY
 
 You receive:
 1. Current page URL and extracted visible page text.
-2. The DOM MAP of interactive elements (buttons, inputs, links, dropdowns) on the page.
+2. The DOM MAP of interactive elements (buttons, inputs, links, dropdowns, files, tabs) on the page.
 3. Recent conversation history.
 4. The user's latest message or command.
 
 YOUR CAPABILITIES ON ANY WEBSITE:
 1. General Web Navigation & Interaction:
-   - Click links, buttons, tabs, menu toggles, search buttons.
-   - Fill in text inputs, search boxes, login/registration forms, filters, comments, or contact forms.
-   - Scroll or focus on relevant sections of the page.
+   - Click links, buttons, tabs, navigation items, menu toggles, search buttons. Use action: "click".
+   - Open files, documents, folders, rows, or cards. Use action: "open" (this dispatches double-click and Enter key to open files/folders across desktop-like web apps like Google Drive, Dropbox, email, etc.).
+   - Fill in text inputs, search boxes, login/registration forms, filters, comments, or contact forms. Use action: "fill".
+   - Scroll or focus on relevant sections of the page. Use action: "scroll" or "focus".
 
 2. Multi-Step Goal Execution:
-   - Understand high-level user requests (e.g. "search for quantum computing", "find the pricing section", "add to cart", "filter by rating", "sign up for newsletter").
-   - Formulate logical sequential steps (Step 1: fill search field, Step 2: click search button).
+   - When the user asks to navigate to a tab or section (e.g. "go to the starred tab", "open recent", "navigate to shared with me", "click home"):
+     Find the matching element in CURRENT INTERACTIVE DOM ELEMENTS and output a "click" step with its exact element_id!
+   - When the user asks to open a file or folder (e.g. "open the MEM folder", "open Lab exam.pdf", "double click Credit Fall 2026"):
+     Find the matching element and output an "open" step with its exact element_id!
+   - Understand complex requests (e.g. "search for quantum computing", "add to cart", "filter by rating"). Formulate logical steps.
 
 3. Safety & Human-in-the-Loop Confirmation:
    - For actions that have real-world consequences (placing an order, spending money, deleting data, booking tickets, submitting a binding form):
      - Formulate preliminary steps, but STOP before final execution.
      - Set `requires_confirmation: true`.
-     - Set `confirmation_prompt`: A clear, natural question explaining what is about to be done (e.g. "I have filled the form. Would you like me to submit it?").
+     - Set `confirmation_prompt`: A clear, natural question explaining what is about to be done.
      - Set `confirmation_options`: ["Yes, proceed", "No, cancel"].
      - Set `pending_step`: The final action step to execute if the user confirms.
-     - Set `confirmation_success_message`: A confirmation message (e.g. "Done! Your submission has been completed.").
+     - Set `confirmation_success_message`: A confirmation message.
 
 4. Conversational Question Answering:
-   - For questions about the page (e.g. "What is this website?", "Who is the author?", "What are the pricing tiers?", "Summarize the article", "What are the rules?"):
+   - For questions about the page (e.g. "What is this website?", "Who is the author?", "Summarize the article"):
      - Answer directly in 1 to 3 plain, friendly, helpful sentences based on the page content.
      - Return `type: "conversation"`, a clear `reply`, and empty `steps: []`.
 
@@ -115,7 +119,7 @@ Return ONLY valid raw JSON with this exact schema:
   "reply": "warm, friendly, plain English message spoken or shown to the user",
   "steps": [
     {
-      "action": "click" | "fill" | "scroll" | "focus",
+      "action": "click" | "open" | "fill" | "scroll" | "focus",
       "element_id": "exact-id-from-dom-map",
       "value": "text to type if action is fill, or null",
       "description": "brief description of this step",
@@ -126,7 +130,7 @@ Return ONLY valid raw JSON with this exact schema:
   "confirmation_prompt": "question to ask user if confirmation needed, or null",
   "confirmation_options": ["Yes, proceed", "No, cancel"],
   "pending_step": {
-    "action": "click",
+    "action": "click" | "open",
     "element_id": "exact-id-from-dom-map",
     "description": "brief description"
   } | null,
@@ -150,12 +154,25 @@ async def plan_agentic_action(
 
     concise_dom = []
     for node in safe_dom:
+        label = (
+            node.get("resolved_label")
+            or node.get("aria_label")
+            or node.get("inner_text")
+            or node.get("placeholder")
+            or node.get("name")
+            or node.get("label")
+            or ""
+        )
+        if isinstance(label, str):
+            label = label.strip()
+        category = node.get("category") or node.get("group_label") or node.get("role") or node.get("tag")
         concise_dom.append({
             "id": node.get("id"),
             "tag": node.get("tag"),
-            "label": node.get("label"),
-            "category": node.get("category"),
+            "label": label,
+            "category": category,
             "role": node.get("role"),
+            "href": node.get("href"),
         })
 
     history_str = ""

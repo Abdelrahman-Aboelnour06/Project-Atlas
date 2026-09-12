@@ -47,15 +47,90 @@ const glow = (el) => {
     glowTimers.set(el, timer)
 }
 
-const scrollToElement = (el) => {
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-}
+const dispatchMouseSequence = (el, detail = 1) => {
+    const rect = el.getBoundingClientRect();
+    const clientX = rect.left + rect.width / 2;
+    const clientY = rect.top + rect.height / 2;
+    const eventInit = {
+        bubbles: true,
+        cancelable: true,
+        view: window,
+        detail,
+        clientX,
+        clientY,
+        buttons: 1,
+    };
+    el.dispatchEvent(new PointerEvent('pointerdown', eventInit));
+    el.dispatchEvent(new MouseEvent('mousedown', eventInit));
+    el.dispatchEvent(new PointerEvent('pointerup', eventInit));
+    el.dispatchEvent(new MouseEvent('mouseup', eventInit));
+    el.dispatchEvent(new MouseEvent('click', eventInit));
+};
 
 const doClick = (el) => {
-    scrollToElement(el)
-    glow(el)
-    el.click()
-}
+    scrollToElement(el);
+    glow(el);
+    el.focus();
+    dispatchMouseSequence(el, 1);
+    el.click();
+
+    // If this element or a parent/child is an anchor with href, activate it
+    const link = el.tagName === 'A' ? el : (el.closest('a[href]') || el.querySelector('a[href]'));
+    if (link && link !== el && link.href) {
+        link.click();
+    }
+};
+
+const doOpen = async (el) => {
+    scrollToElement(el);
+    glow(el);
+    el.focus();
+
+    // 1. First click in sequence (detail: 1)
+    dispatchMouseSequence(el, 1);
+    el.click();
+
+    await new Promise((r) => setTimeout(r, 60));
+
+    // 2. Second click in sequence (detail: 2) + dblclick
+    const rect = el.getBoundingClientRect();
+    const clientX = rect.left + rect.width / 2;
+    const clientY = rect.top + rect.height / 2;
+    const dblInit = {
+        bubbles: true,
+        cancelable: true,
+        view: window,
+        detail: 2,
+        clientX,
+        clientY,
+    };
+    el.dispatchEvent(new PointerEvent('pointerdown', dblInit));
+    el.dispatchEvent(new MouseEvent('mousedown', dblInit));
+    el.dispatchEvent(new PointerEvent('pointerup', dblInit));
+    el.dispatchEvent(new MouseEvent('mouseup', dblInit));
+    el.dispatchEvent(new MouseEvent('click', dblInit));
+    el.dispatchEvent(new MouseEvent('dblclick', dblInit));
+
+    // 3. Enter keypress (universal accessibility standard for opening selected items, folders, files)
+    const enterInit = {
+        key: 'Enter',
+        code: 'Enter',
+        keyCode: 13,
+        which: 13,
+        bubbles: true,
+        cancelable: true,
+        view: window,
+    };
+    el.dispatchEvent(new KeyboardEvent('keydown', enterInit));
+    el.dispatchEvent(new KeyboardEvent('keypress', enterInit));
+    el.dispatchEvent(new KeyboardEvent('keyup', enterInit));
+
+    // 4. If anchor with href
+    const link = el.tagName === 'A' ? el : (el.closest('a[href]') || el.querySelector('a[href]'));
+    if (link && link.href) {
+        link.click();
+    }
+};
 
 // Maps a tag name to the native value-setter it needs — using the native
 // setter (rather than plain `el.value = x`) is required for React/Vue-
@@ -94,7 +169,7 @@ const doFocus = (el) => {
 }
 
 const READ_ONLY_ACTIONS = new Set(['scroll', 'focus'])
-const MUTATE_ACTIONS   = new Set(['click', 'fill'])
+const MUTATE_ACTIONS   = new Set(['click', 'open', 'double_click', 'dblclick', 'fill'])
 
 const isCredentialField = (el) => {
     if (!el || el.tagName !== 'INPUT') return false
@@ -211,27 +286,41 @@ const execute = async (actionResponse, options = {}) => {
 
     try {
         switch (action) {
-            case 'click':   doClick(el); break
-            case 'fill':    doFill(el, value); break
-            case 'scroll':  doScroll(el); break
-            case 'focus':   doFocus(el); break
-            default:        return { ok: false, message: `Unknown action '${action}'` }
+            case 'click':
+                doClick(el);
+                break;
+            case 'open':
+            case 'double_click':
+            case 'dblclick':
+                await doOpen(el);
+                break;
+            case 'fill':
+                doFill(el, value);
+                break;
+            case 'scroll':
+                doScroll(el);
+                break;
+            case 'focus':
+                doFocus(el);
+                break;
+            default:
+                return { ok: false, message: `Unknown action '${action}'` };
         }
     } catch (err) {
-        return { ok: false, message: `Failed to perform action: ${err.message}` }
+        return { ok: false, message: `Failed to perform action: ${err.message}` };
     }
-    return { ok: true, message: actionResponse.message }
-}
+    return { ok: true, message: actionResponse.message };
+};
 
 const executeStep = async (step) => {
-    return execute({
+    return await execute({
         status: 'ok',
         action: step.action,
         element_id: step.element_id,
         value: step.value,
         message: step.description || `Performed ${step.action}`,
-    }, { skipConfirmation: true })
-}
+    }, { skipConfirmation: true });
+};
 
 window.AtlasExecutor = { execute, executeStep, isCredentialField, requestNativeCredentials }
 })();

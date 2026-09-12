@@ -359,13 +359,21 @@ const runCommand = async (command) => {
 };
 
 const handleElementClick = async (atlasId) => {
+  const el = window.AtlasSerializer?.getElementByAtlasId(atlasId);
+  const isFileOrRow = el && (
+    el.getAttribute("role") === "row" ||
+    el.getAttribute("role") === "treeitem" ||
+    /\.(pdf|docx?|pptx?|xlsx?|csv|zip|rar|tar|gz|txt|png|jpe?g|gif|mp[34]|avi|mkv|json|py|js|html|epub)\b/i.test(el.innerText || el.getAttribute("data-tooltip") || "")
+  );
+  const actionToUse = isFileOrRow ? "open" : "click";
+
   const result = await window.AtlasExecutor.execute({
     status: "ok",
-    action: "click",
+    action: actionToUse,
     element_id: atlasId,
     value: null,
-    message: "Done.",
-  });
+    message: isFileOrRow ? "Opening..." : "Done.",
+  }, { skipConfirmation: true });
   window.AtlasSidebar.setStatus(result.message, result.ok ? "ok" : "error");
 };
 
