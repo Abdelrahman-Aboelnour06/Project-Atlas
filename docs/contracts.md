@@ -54,9 +54,46 @@ reconnect. The socket only closes on a genuinely unhandled server exception
 
 ---
 
-## Contract 2 — Action JSON Format
+## Contract 2 — Action JSON Format (Single-Action & Multi-Step Agentic Plans)
 
 Message sent **from FastAPI backend → browser snippet**, in response to a `type: "command"` request.
+
+### Multi-Step Agentic Action Plan (Current Standard)
+
+```json
+{
+  "status": "success | error",
+  "thought": "Internal LLM reasoning",
+  "steps": [
+    {
+      "action": "click | open | fill | scroll | focus",
+      "element_id": "string",
+      "value": "string | null",
+      "description": "string"
+    }
+  ],
+  "confirmation_prompt": "string | null",
+  "confirmation_options": ["Yes, proceed", "No, cancel"],
+  "pending_step": {
+    "action": "click | open",
+    "element_id": "string",
+    "description": "string"
+  } | null,
+  "message": "Human-readable summary or TTS feedback"
+}
+```
+
+### Action Types
+
+| Action | Supported Elements | Execution Behavior |
+|---|---|---|
+| `"click"` | Buttons, links, tabs, checkboxes, toggles | Dispatches W3C `pointerdown` → `mousedown` → `pointerup` → `mouseup` → `click` + anchor navigation |
+| `"open"` | Files, folders, rows, treeitems, documents | Dispatches W3C double-click sequence (`detail: 1` → 60ms delay → `detail: 2` + `dblclick`) + W3C `Enter` keypress (`keyCode: 13`) |
+| `"fill"` | Text inputs, textareas, search fields | Sets prototype value & dispatches `input` + `change` events |
+| `"scroll"` | Any page element | Centers element in viewport with accessibility glow effect |
+| `"focus"` | Any focusable element | Brings browser keyboard focus and active glow |
+
+### Legacy Single-Action Format (Supported for Backward Compatibility)
 
 ```json
 {
