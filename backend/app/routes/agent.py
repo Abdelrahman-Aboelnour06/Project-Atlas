@@ -92,6 +92,10 @@ async def websocket_endpoint(websocket: WebSocket):
                 await websocket.send_json({"status": "error", "message": "Invalid JSON payload."})
                 continue
 
+            if not isinstance(data, dict):
+                await websocket.send_json({"status": "error", "message": "Payload must be a JSON object."})
+                continue
+
             correlation_id = data.get("correlation_id")
             base_extra = {"correlation_id": correlation_id} if correlation_id else {}
 

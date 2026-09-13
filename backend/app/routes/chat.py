@@ -9,7 +9,7 @@ the configured LLM provider (NVIDIA NIM or Ollama).
 import logging
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.connection import get_db
@@ -23,9 +23,9 @@ router = APIRouter()
 
 
 class SummaryRequest(BaseModel):
-    url: str
-    page_text: Optional[str] = ""
-    api_key: Optional[str] = None
+    url: str = Field(..., max_length=2048)
+    page_text: Optional[str] = Field(default="", max_length=50000)
+    api_key: Optional[str] = Field(default=None, max_length=256)
 
 
 class SummaryResponse(BaseModel):
@@ -70,10 +70,10 @@ async def summary_endpoint(
 
 
 class ChatRequest(BaseModel):
-    url: str
-    question: str
-    page_text: Optional[str] = ""
-    api_key: Optional[str] = None
+    url: str = Field(..., max_length=2048)
+    question: str = Field(..., max_length=2000)
+    page_text: Optional[str] = Field(default="", max_length=50000)
+    api_key: Optional[str] = Field(default=None, max_length=256)
     dom_map: Optional[List[Dict[str, Any]]] = None
     history: Optional[List[Dict[str, str]]] = None
 

@@ -64,3 +64,54 @@ Integrity mode: demo
 ### Test Suite Passing
 - [ ] All 129+ backend tests pass (`pytest tests/`).
 - [ ] `run_ci.ps1 -Stage all` passes all 4 tiers (Security, Unit, Module, System).
+
+## Follow-up — 2026-09-13T10:33:52Z
+
+Perform a comprehensive multi-agent security and resilience audit across the entire Project Atlas codebase, delivering an evidence-backed master report, attack chains, resilience analysis, and prioritized remediation plan without modifying production code.
+
+Working directory: c:\Users\abdel\OneDrive\Desktop\Hackthon\shit2
+Integrity mode: development
+
+## Requirements
+
+### R1. Independent Multi-Perspective Security & Resilience Audit
+Execute an in-depth audit of the full codebase across 7 specialized domains without pre-filtering or partitioning:
+1. **Identity & Access**: Authentication, JWT validation/tampering, IDOR, session lifecycle, RLS/database rules, authorization across privilege levels.
+2. **Secrets & Data Exposure**: Bundled client assets, server-to-client serialization leaks, git history, storage buckets, PII/metadata retention, cloud/LLM credentials.
+3. **Injection & Runtime Exploitation**: Injection vectors (SQL/NoSQL/command/template), XSS, code execution, unsafe deserialization, path traversal, SSRF, TOCTOU/race conditions, runtime logic bypasses.
+4. **Supply Chain & Dependencies**: Direct & transitive dependency vulnerabilities, package freshness/staleness, typosquatting/hallucination checks against registries, pipeline integrity, prompt injection surfaces in LLM tool calling.
+5. **Configuration & Infrastructure**: Security headers (CSP, HSTS, etc.), CORS, CSRF, rate limiting, debug modes, Docker/container configurations, IAM permissions, TLS/crypto primitives.
+6. **Resilience & Blast-Radius**: Single points of failure (cloud, DNS, CDN, auth, DB), co-located monitoring/alerting, configuration change safety, graceful degradation, rollback & backup feasibility.
+7. **Adversarial QA & Red Teaming**: Chain multi-vulnerability exploits across subagent findings, recalibrate severities based on practical exploitability, and identify unclassified edge-case flaws.
+
+### R2. Strict Non-Destructive Audit Constraints
+- **Audit only**: Do not alter codebase files or modify production/configuration code during the audit.
+- **Evidence-backed**: Every finding must cite a specific file, line number, configuration block, or dynamic request/response evidence. Uncertain items must be flagged as "Needs manual review".
+- **Safe verification**: Verification payloads must be benign canary markers only; never execute destructive tests.
+
+### R3. Synthesized Deliverables & Actionable Output
+Consolidate findings into a single structured master audit report artifact containing:
+- **Executive Summary**: Risk posture, top 3 most critical threats, and identified attack chains.
+- **Master Findings Table**: Vulnerability | Location (file & line) | Severity (Critical/High/Medium/Low/Info) | CWE/OWASP Reference | Found By | Verified Behaviorally (Y/N).
+- **Resilience Findings Table**: Single Point of Failure | Location | Blast Radius | Recommended Mitigation.
+- **Attack Chains & Exploitation Paths**: Concrete multi-step exploit chains linking multiple findings.
+- **Prioritized Remediation Plan**: Fix strategy, estimated effort (<1h, 1-4h, >4h), and breaking change risk for each issue.
+- **Quick Wins**: High-impact hardening fixes requiring <30 minutes to implement.
+- **CI / Regression Prevention Checklist**: Concrete test criteria and lint/static rules to enforce in CI.
+- **Needs Manual Review**: Items requiring live production infrastructure, external secret access, or human business decisions.
+
+## Acceptance Criteria
+
+### Audit Rigor & Quality
+- [ ] Every repository directory (`backend/`, `client-script/`, `dashboard/`, `demo-site/`, deployment scripts, and configs) is audited across all 7 domains.
+- [ ] 100% of reported vulnerabilities include exact file paths, line ranges, or configuration references.
+- [ ] No speculative findings: every unverified finding is explicitly tagged as "Needs manual review" rather than asserted as confirmed.
+- [ ] Zero code files modified in the repository working directory.
+
+### Synthesis & Actionability
+- [ ] Master report provides a unified, deduplicated findings table with verified behavioral flags.
+- [ ] At least one end-to-end attack chain analysis is synthesized if compound vulnerabilities exist.
+- [ ] Separate resilience table detailing blast radii and graceful degradation failures.
+- [ ] Actionable remediation plan categorized by severity and effort with explicit breaking change warnings.
+- [ ] CI prevention checklist includes concrete test criteria or rule configurations.
+

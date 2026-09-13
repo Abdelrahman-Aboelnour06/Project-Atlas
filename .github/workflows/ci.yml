@@ -146,6 +146,10 @@ jobs:
         working-directory: ./backend
         run: pytest tests/test_security_resilience.py -v --tb=short
 
+      - name: Run Universal Auth & Transaction Integrity Tests
+        working-directory: ./backend
+        run: pytest tests/test_auth_and_transactions.py -v --tb=short
+
       - name: Set up Node.js for Dashboard
         uses: actions/setup-node@v4
         with:

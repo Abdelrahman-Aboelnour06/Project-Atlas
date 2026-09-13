@@ -1,10 +1,11 @@
-﻿<#
+<#
 .SYNOPSIS
-  run_ci.ps1 — Atlas CI/CD Pipeline Local Runner
+  run_ci.ps1 - Atlas CI/CD Pipeline Local Runner
   Executes Unit, Module, and System tests locally to ensure code remains stable.
 
 .USAGE
-  .\run_ci.ps1               # Runs all tiers (Unit, Module, System)
+  .\run_ci.ps1               # Runs all tiers (Security, Unit, Module, System)
+  .\run_ci.ps1 -Stage security # Runs only Security tests
   .\run_ci.ps1 -Stage unit   # Runs only Unit tests
   .\run_ci.ps1 -Stage module # Runs only Module tests
   .\run_ci.ps1 -Stage system # Runs only System tests
@@ -28,9 +29,9 @@ if (-not (Test-Path $VenvPython)) {
 
 function Write-Banner ($title) {
     Write-Host ""
-    Write-Host "══════════════════════════════════════════════════════════" -ForegroundColor Cyan
+    Write-Host "==========================================================" -ForegroundColor Cyan
     Write-Host "  $title" -ForegroundColor Cyan
-    Write-Host "══════════════════════════════════════════════════════════" -ForegroundColor Cyan
+    Write-Host "==========================================================" -ForegroundColor Cyan
     Write-Host ""
 }
 
@@ -50,13 +51,13 @@ function Run-Step ($stepName, [scriptblock]$action) {
     }
 }
 
-Write-Banner "Atlas CI/CD Pipeline — Stage: $Stage"
+Write-Banner "Atlas CI/CD Pipeline - Stage: $Stage"
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # 0. SECURITY QUALITY GATE TIER
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 if ($Stage -eq "all" -or $Stage -eq "security") {
-    Write-Host "── TIER 0: SECURITY QUALITY GATE ───────────────────────" -ForegroundColor Red
+    Write-Host "-- TIER 0: SECURITY QUALITY GATE -----------------------" -ForegroundColor Red
 
     # Git tracked .env check
     Run-Step "Security: Ensure No .env Files Tracked in Git" {
@@ -81,13 +82,23 @@ if ($Stage -eq "all" -or $Stage -eq "security") {
             Pop-Location
         }
     }
+
+    # Universal authentication gates and transaction rollback integrity tests
+    Run-Step "Security and Transactions: Universal Auth Gates and DB Transaction Integrity" {
+        Push-Location $BackendDir
+        try {
+            & $VenvPython -m pytest tests/test_auth_and_transactions.py -v --tb=short
+        } finally {
+            Pop-Location
+        }
+    }
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # 1. UNIT TESTING TIER
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 if ($Stage -eq "all" -or $Stage -eq "unit") {
-    Write-Host "── TIER 1: UNIT TESTS ──────────────────────────────────" -ForegroundColor Magenta
+    Write-Host "-- TIER 1: UNIT TESTS ----------------------------------" -ForegroundColor Magenta
 
     # Extension code syntax and manifest validation
     Run-Step "Unit: Extension Script Syntax and Manifest Integrity" {
@@ -125,11 +136,11 @@ if ($Stage -eq "all" -or $Stage -eq "unit") {
     }
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # 2. MODULE TESTING TIER
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 if ($Stage -eq "all" -or $Stage -eq "module") {
-    Write-Host "── TIER 2: MODULE TESTS ────────────────────────────────" -ForegroundColor Magenta
+    Write-Host "-- TIER 2: MODULE TESTS --------------------------------" -ForegroundColor Magenta
 
     # Database connection & hashing utilities
     Run-Step "Module: DB Utilities and Key Hashing" {
@@ -166,11 +177,11 @@ if ($Stage -eq "all" -or $Stage -eq "module") {
     }
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # 3. SYSTEM TESTING TIER
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 if ($Stage -eq "all" -or $Stage -eq "system") {
-    Write-Host "── TIER 3: SYSTEM TESTS ────────────────────────────────" -ForegroundColor Magenta
+    Write-Host "-- TIER 3: SYSTEM TESTS --------------------------------" -ForegroundColor Magenta
 
     # WebSocket agent integration pipeline
     Run-Step "System: WebSocket Agent Pipeline (Handshake, Simplify, Command, RateLimit)" {

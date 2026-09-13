@@ -39,6 +39,7 @@ if [ "$STAGE" = "all" ] || [ "$STAGE" = "security" ]; then
     run_step "Security: Ensure No .env Files Tracked in Git" bash -c '! git ls-files | grep -E "(^|/)\.env($|\.)"'
     run_step "Security: Extension Security Quality Gates and AST Audit" node "$CLIENT_DIR/test_extension.js"
     (cd "$BACKEND_DIR" && run_step "Security: Security & Resilience Tests" "$PYTHON" -m pytest tests/test_security_resilience.py -v --tb=short)
+    (cd "$BACKEND_DIR" && run_step "Security & Transactions: Universal Auth Gates & DB Transaction Integrity" "$PYTHON" -m pytest tests/test_auth_and_transactions.py -v --tb=short)
 fi
 
 # 1. UNIT TESTING

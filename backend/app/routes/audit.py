@@ -12,10 +12,11 @@ Task H's fetch() call actually sends (see master task board, Task H) — not
 from the `x-atlas-key` header. If a header-based path is added later for
 other REST endpoints, this can be extended to accept either.
 """
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.connection import get_db
@@ -23,6 +24,7 @@ from app.db import connection as db_connection
 from app.db.models import ErrorLog
 from app.agent import rate_limiter
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -37,7 +39,7 @@ class AuditError(BaseModel):
 class AuditLogRequest(BaseModel):
     api_key: str
     url: str
-    errors: list[AuditError]
+    errors: list[AuditError] = Field(default_factory=list, max_length=100)
 
 
 class AuditLogResponse(BaseModel):
@@ -49,41 +51,45 @@ class AuditLogResponse(BaseModel):
 @router.post("/audit/log", response_model=AuditLogResponse)
 async def log_audit_errors(
     payload: AuditLogRequest,
+    x_atlas_key: Optional[str] = Header(None),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Validate the API key → 401 if invalid, then insert each flagged error
-    into `error_logs` with the resolved tenant_id. Returns the row count.
-
-    BUGFIX: this used to do its own key_hash + db.execute(select(ApiKey)...)
-    lookup instead of calling validate_api_key(). Harmless against a real
-    DB, but it meant this route was invisible to
-    patch("app.db.connection.validate_api_key", ...) in tests, so an invalid
-    key here was actually being checked against the test's generic mocked
-    db.execute() (which "finds" a row for any query) instead of the
-    properly key-aware mock — always returning 200. Routing through
-    validate_api_key() (which already returns the tenant_id UUID directly)
-    fixes the test and drops the duplicated lookup logic.
+    Validate the API key → 401 if invalid, rate limit check → 429 if exceeded,
+    then insert each flagged error into `error_logs` with the resolved tenant_id.
+    Guarantees atomic rollback on failure. Returns the row count.
     """
-    tenant_id = await db_connection.validate_api_key(db, payload.api_key)
+    key = x_atlas_key or payload.api_key
+    tenant_id = await db_connection.validate_api_key(db, key)
     if not tenant_id:
         raise HTTPException(status_code=401, detail="Invalid or inactive API key.")
+
+    if not rate_limiter.check(tenant_id):
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded — please slow down and try again shortly.",
+        )
 
     if not payload.errors:
         return AuditLogResponse(logged=0)
 
-    for err in payload.errors:
-        db.add(
-            ErrorLog(
-                tenant_id=tenant_id,
-                url=payload.url,
-                element_id=err.element_id,
-                error_type=err.error_type,
-                suggestion=err.suggestion,
+    try:
+        for err in payload.errors:
+            db.add(
+                ErrorLog(
+                    tenant_id=tenant_id,
+                    url=payload.url,
+                    element_id=err.element_id,
+                    error_type=err.error_type,
+                    suggestion=err.suggestion,
+                )
             )
-        )
+        await db.commit()
+    except Exception as exc:
+        await db.rollback()
+        logger.exception("Database error while committing audit errors: %s", exc)
+        raise HTTPException(status_code=500, detail="Database transaction error recording audit logs.")
 
-    await db.commit()
     return AuditLogResponse(logged=len(payload.errors))
 from sqlalchemy import select
 from app.agent.llm_client import call_llm

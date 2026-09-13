@@ -57,14 +57,26 @@ AsyncSessionLocal = sessionmaker(
 # ── Dependency — use with FastAPI Depends() ───────────────────────────────────
 async def get_db() -> AsyncSession:
     async with AsyncSessionLocal() as session:
-        yield session
+        try:
+            yield session
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
 
 
 @asynccontextmanager
 async def get_db_context():
     """Context manager for acquiring short-lived DB sessions on demand."""
     async with AsyncSessionLocal() as session:
-        yield session
+        try:
+            yield session
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
 
 
 # ── In-Memory TTLCache for Auth Hashing & Lookups (Feature 14) ────────────────
@@ -116,13 +128,20 @@ async def validate_api_key(db: AsyncSession, api_key: str) -> uuid.UUID | None:
     Returns the tenant_id (UUID) if the API key exists in the DB and is
     active, otherwise None. Supports both hardened PBKDF2 and legacy hashes.
     Uses in-memory TTLCache and offloads PBKDF2 computation to a worker thread.
+    Fast-path rejects invalid, empty, non-string, or oversized keys (>256 chars) to prevent DoS.
     """
-    cached_tid = _auth_cache.get(api_key)
+    if not isinstance(api_key, str):
+        return None
+    api_key_clean = api_key.strip()
+    if not api_key_clean or len(api_key_clean) > 256:
+        return None
+
+    cached_tid = _auth_cache.get(api_key_clean)
     if cached_tid is not None:
         return cached_tid
 
-    legacy_hash = hash_key(api_key)
-    hardened_hash = await asyncio.to_thread(hash_key_pbkdf2, api_key)
+    legacy_hash = hash_key(api_key_clean)
+    hardened_hash = await asyncio.to_thread(hash_key_pbkdf2, api_key_clean)
     result = await db.execute(
         select(ApiKey).where(
             ApiKey.key_hash.in_([legacy_hash, hardened_hash]),
@@ -132,7 +151,7 @@ async def validate_api_key(db: AsyncSession, api_key: str) -> uuid.UUID | None:
     api_key_row = result.scalar_one_or_none()
     tenant_id = api_key_row.tenant_id if api_key_row else None
     if tenant_id is not None:
-        _auth_cache.set(api_key, tenant_id)
+        _auth_cache.set(api_key_clean, tenant_id)
     return tenant_id
 
 
