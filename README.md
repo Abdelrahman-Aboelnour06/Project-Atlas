@@ -80,26 +80,33 @@ Message sent **from browser → FastAPI**.
 
 ### Contract 2 — Action JSON Format
 Message sent **from FastAPI → browser** (for `type: "command"`).
+```json
 {
   "status":     "success | error",
-  "action":     "click | fill | scroll | focus | none",
+  "action":     "click | open | double_click | fill | scroll | focus",
   "element_id": "string",
   "value":      "string | null",
   "message":    "string"
 }
+```
 
 ### Contract 3 — DOM Map Node Structure
+```json
 {
-  "id":          "string",        // data-atlas-id ONLY
-  "tag":         "string",
-  "type":        "string | null",
-  "inner_text":  "string | null",
-  "placeholder": "string | null",
-  "aria_label":  "string | null",
-  "href":        "string | null",
-  "name":        "string | null",
-  "role":        "string | null"
+  "id":             "string",        // data-atlas-id ONLY
+  "tag":            "string",
+  "type":           "string | null",
+  "inner_text":     "string | null",
+  "placeholder":    "string | null",
+  "aria_label":     "string | null",
+  "href":           "string | null",
+  "name":           "string | null",
+  "role":           "string | null",
+  "sensitive":      "boolean | null",
+  "resolved_label": "string | null",
+  "group_label":    "string | null"
 }
+```
 
 ---
 
@@ -123,19 +130,37 @@ Message sent **from FastAPI → browser** (for `type: "command"`).
 11. **Frontend:** Task F (Demo Target Website).
 
 ### MVP Definition of Done
-* [ ] "Simplify" pipeline returns valid element lists.
-* [ ] `data-atlas-id` is the only ID used across the app.
-* [ ] Widget appears on demo site, sidebar auto-populates on load.
-* [ ] Clicking sidebar item highlights real element.
-* [ ] Voice commands transcribe and execute actions correctly.
-* [ ] Dashboard shows tenant API keys and mock sessions.
+* [x] "Simplify" pipeline returns valid element lists.
+* [x] `data-atlas-id` is the only ID used across the app.
+* [x] Widget appears on demo site, sidebar auto-populates on load.
+* [x] Clicking sidebar item highlights real element.
+* [x] Voice commands transcribe and execute actions correctly.
+* [x] Dashboard shows tenant API keys and mock sessions.
 
 ---
 
 ## 🛠️ PART 5: DEVELOPER CONVENTIONS
 
-* **Git Workflow:** Branch naming `team/task-id-desc` (e.g., `backend-a/task3-postgres`). Commits must be imperative.
-* **Python (Backend):** PEP 8, `black` formatter (88 chars), type hints everywhere. Use Pydantic models for I/O (no raw dicts).
-* **JavaScript (Frontend):** ES6+, 80 chars, kebab-case file names. Strict module boundaries (Serializer owns DOM read, Executor owns DOM write).
-* **Next.js:** TypeScript, Tailwind CSS, Server Components/useEffect for data fetching.
-* **SQL:** Plural snake_case for tables. Every table must have `id UUID PRIMARY KEY DEFAULT gen_random_uuid()` and `created_at`.
+* **The Prime Directive**: 100% universal across all websites. No domain checks or bespoke site hacks (`AGENTS.md` / `GEMINI.md`).
+* **Git Workflow:** Branch naming `team/task-id-desc`. Commits must be imperative.
+* **Python (Backend):** PEP 8, type hints everywhere. Use Pydantic models for I/O.
+* **JavaScript (Frontend):** ES6+, kebab-case file names. Strict module boundaries (Serializer owns DOM read, Executor owns DOM write).
+* **Next.js:** TypeScript, Tailwind CSS.
+
+---
+
+## 🧪 PART 6: TESTING & VERIFICATION
+
+Atlas features an automated multi-tier regression suite:
+
+```bash
+# Backend pytest suite (136 tests)
+cd backend && pytest tests/
+
+# Chrome Extension unit tests & security quality gates (66 tests)
+node client-script/test_extension.js
+
+# Full 4-Tier CI runner (Security, Unit, Module, System)
+powershell -ExecutionPolicy Bypass -File .\run_ci.ps1 -Stage all
+```
+

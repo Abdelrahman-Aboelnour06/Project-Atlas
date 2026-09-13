@@ -163,23 +163,25 @@
 }
 
 #atlas-sidebar-root .atlas-traffic-btn {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
+  border-radius: 6px;
   border: 1px solid rgba(0, 0, 0, 0.15);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 0;
   cursor: pointer;
-  outline: none;
   transition: filter 0.12s ease;
 }
 
 #atlas-sidebar-root .atlas-traffic-close {
+  min-width: 44px;
+  min-height: 44px;
+  width: 44px;
+  height: 44px;
   background: #ff5f56;
   border-color: #e0443e;
   position: relative;
+  border-radius: 8px;
 }
 
 #atlas-sidebar-root .atlas-traffic-close:hover {
@@ -187,15 +189,17 @@
 }
 
 #atlas-sidebar-root .atlas-traffic-close-icon {
-  display: none;
-  font-size: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
   font-weight: 700;
   line-height: 1;
   color: #5c0000;
 }
 
 #atlas-sidebar-root .atlas-header:hover .atlas-traffic-close-icon {
-  display: block;
+  display: inline-flex;
 }
 
 
@@ -231,7 +235,6 @@
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
-  outline: none;
 }
 
 #atlas-sidebar-root .atlas-tab:hover {
@@ -342,7 +345,6 @@
   color: var(--atlas-label);
   cursor: pointer;
   transition: all 0.15s ease;
-  outline: none;
 }
 
 #atlas-sidebar-root .atlas-chip-btn:hover {
@@ -351,13 +353,13 @@
 }
 
 #atlas-sidebar-root .atlas-chip-btn.atlas-chip-confirm {
-  background: #34c759;
-  border-color: #34c759;
+  background: #137333;
+  border-color: #137333;
   color: #ffffff;
 }
 
 #atlas-sidebar-root .atlas-chip-btn.atlas-chip-confirm:hover {
-  background: #2db34f;
+  background: #0d5a27;
 }
 
 #atlas-sidebar-root .atlas-chip-btn.atlas-chip-cancel {
@@ -447,7 +449,6 @@
   gap: 5px;
   transition: all 0.15s ease;
   line-height: 1;
-  outline: none;
   user-select: none;
 }
 
@@ -504,7 +505,6 @@
   color: var(--atlas-label);
   padding: 8px 13px;
   font-size: 13px;
-  outline: none;
   transition: border-color 0.15s ease, background 0.15s ease;
 }
 
@@ -527,7 +527,6 @@
   cursor: pointer;
   flex-shrink: 0;
   transition: all 0.15s ease;
-  outline: none;
 }
 
 #atlas-sidebar-root .atlas-mode-btn:hover {
@@ -563,7 +562,6 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  outline: none;
   transition: all 0.15s ease;
 }
 
@@ -601,7 +599,6 @@
   color: var(--atlas-label);
   padding: 7px 11px;
   font-size: 13px;
-  outline: none;
   transition: border-color 0.15s ease, background 0.15s ease;
 }
 
@@ -819,3 +816,10 @@
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
+
+/* ── Universal Accessible Focus Indicators (WCAG 2.4.7) ── */
+#atlas-sidebar-root :focus-visible {
+  outline: 3px solid var(--atlas-accent) !important;
+  outline-offset: 2px !important;
+}
+

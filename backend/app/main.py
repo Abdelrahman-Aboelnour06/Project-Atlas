@@ -24,11 +24,8 @@ app = FastAPI(
     description="Atlas Agentic AI — accessibility platform backend.",
 )
 
-# CORS — restricted to the extension origin(s), not "*".
-# ALLOWED_ORIGINS is a comma-separated env var so each dev's unpacked
-# extension ID (chrome-extension://<id>) can be added without editing code.
-# Wildcard "*" + allow_credentials=True is rejected by browsers anyway, so
-# this was never actually working permissively — just silently broken.
+# CORS — restricted to explicitly allowed origins and Chrome extension origins.
+# ALLOWED_ORIGINS is a comma-separated env var for trusted frontends.
 _default_origins = (
     "http://localhost:3000,http://127.0.0.1:3000,"
     "http://localhost:8000,http://127.0.0.1:8000,"
@@ -40,17 +37,26 @@ allowed_origins = [
     if o.strip()
 ]
 
-# Allow requests from the extension, localhost on any port, or any host webpage where content scripts run
-allow_origin_regex = os.getenv("ALLOW_ORIGIN_REGEX", r".*")
+# Allow requests only from Chrome extension schemes or local network dev hosts
+allow_origin_regex = os.getenv("ALLOW_ORIGIN_REGEX", r"^chrome-extension://[a-z]{32}$")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
     allow_origin_regex=allow_origin_regex,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
 
 app.include_router(health.router)                # GET  /health
 app.include_router(session.router, prefix="/v1") # POST /v1/session/start

@@ -54,6 +54,18 @@ async def ping_llm(timeout: float = 5.0) -> bool:
         return False
 
 async def call_llm(prompt: str) -> str:
+    """
+    Invokes the configured AI provider (NVIDIA NIM or local Ollama) with retry logic.
+
+    Args:
+        prompt (str): Prompt text to send to the LLM.
+
+    Returns:
+        str: Raw completion or response text from the model.
+
+    Raises:
+        LLMError: If connection times out, returns HTTP errors, or unexpected failures occur.
+    """
     max_retries = 2
     
     for attempt in range(max_retries + 1):

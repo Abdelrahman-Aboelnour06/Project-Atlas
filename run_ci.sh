@@ -33,6 +33,14 @@ run_step() {
     echo ""
 }
 
+# 0. SECURITY TESTING
+if [ "$STAGE" = "all" ] || [ "$STAGE" = "security" ]; then
+    echo "── TIER 0: SECURITY QUALITY GATE ───────────────────────"
+    run_step "Security: Ensure No .env Files Tracked in Git" bash -c '! git ls-files | grep -E "(^|/)\.env($|\.)"'
+    run_step "Security: Extension Security Quality Gates and AST Audit" node "$CLIENT_DIR/test_extension.js"
+    (cd "$BACKEND_DIR" && run_step "Security: Security & Resilience Tests" "$PYTHON" -m pytest tests/test_security_resilience.py -v --tb=short)
+fi
+
 # 1. UNIT TESTING
 if [ "$STAGE" = "all" ] || [ "$STAGE" = "unit" ]; then
     echo "── TIER 1: UNIT TESTS ──────────────────────────────────"

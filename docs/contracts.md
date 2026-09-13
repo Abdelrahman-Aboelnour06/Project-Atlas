@@ -61,7 +61,7 @@ Message sent **from FastAPI backend → browser snippet**, in response to a `typ
 ```json
 {
   "status":     "success | error",
-  "action":     "click | fill | scroll | focus",
+  "action":     "click | open | double_click | fill | scroll | focus",
   "element_id": "string",
   "value":      "string | null",
   "message":    "string"
@@ -71,7 +71,7 @@ Message sent **from FastAPI backend → browser snippet**, in response to a `typ
 | Field | Type | Description |
 |-------|------|-------------|
 | `status` | `"success" \| "error"` | Whether the AI found a valid action |
-| `action` | `"click" \| "fill" \| "scroll" \| "focus"` | The action type to execute |
+| `action` | `"click" \| "open" \| "double_click" \| "fill" \| "scroll" \| "focus"` | The action type to execute |
 | `element_id` | `string` | The `data-atlas-id` of the target DOM element (see Contract 3 — **not** the native HTML `id`) |
 | `value` | `string \| null` | Value to fill in (only for `fill` action, else `null`) |
 | `message` | `string` | Human-readable TTS feedback: e.g. `"Clicked Checkout button"` |
@@ -102,9 +102,11 @@ Each entry in the `dom_map` array follows this shape:
   "placeholder": "string | null",
   "aria_label":  "string | null",
   "href":        "string | null",
-  "name":        "string | null",
-  "role":        "string | null",
-  "sensitive":   "boolean | null"
+  "name":           "string | null",
+  "role":           "string | null",
+  "sensitive":      "boolean | null",
+  "resolved_label": "string | null",
+  "group_label":    "string | null"
 }
 ```
 
@@ -223,10 +225,164 @@ Response:
 
 ---
 
+## Contract 6 — WebSocket Handshake & Pre-Authentication (`/v1/agent`)
+
+Dedicated authentication handshake and Origin verification to protect against Cross-Site WebSocket Hijacking (CSWSH) and unthrottled brute-force attempts.
+
+### 6a. CSWSH Handshake
+- Browser WebSocket client transmits standard `Origin` header during HTTP upgrade.
+- Backend verifies Origin against trusted patterns:
+  - `chrome-extension://<id>`
+  - `moz-extension://<id>`
+  - `http://localhost:<port>` / `http://127.0.0.1:<port>`
+  - Omitted Origin (non-browser test clients)
+- Untrusted origins are rejected immediately with WS close code `1008` (Policy Violation).
+
+### 6b. Authentication Message
+Client sends an explicit `auth` message before issuing operational commands:
+```json
+{
+  "type": "auth",
+  "api_key": "atlas_...",
+  "correlation_id": "atlas_1726000000000_abc123"
+}
+```
+Response:
+```json
+{
+  "status": "ok",
+  "message": "Authenticated",
+  "correlation_id": "atlas_1726000000000_abc123"
+}
+```
+If authentication fails:
+- Error response returned: `{"status": "error", "message": "Invalid or inactive API key."}`
+- After **3 consecutive failed authentication attempts**, backend closes the connection with code `1008`.
+
+---
+
+## Contract 7 — Conversational QA (`POST /v1/chat`)
+
+Conversational question-answering and multi-step action planning endpoint with context injection and prompt-injection fencing.
+
+Request:
+```json
+{
+  "messages": [
+    { "role": "user", "content": "How do I purchase items?" }
+  ],
+  "context": {
+    "page_text": "Extracted page text capped to 3000 chars",
+    "dom_summary": "Extracted interactive DOM summary"
+  }
+}
+```
+Headers:
+- `X-Atlas-Key`: API key string
+- `Content-Type`: `application/json`
+
+Response:
+```json
+{
+  "reply": "You can click on any item in the list and select checkout.",
+  "plan": {
+    "type": "plan | conversation | confirmation",
+    "steps": [
+      {
+        "action": "click",
+        "element_id": "atlas-001",
+        "description": "Click checkout"
+      }
+    ],
+    "requires_confirmation": false
+  }
+}
+```
+
+---
+
+## Contract 8 — Page Summarization (`POST /v1/summary`)
+
+Fast page summarization endpoint providing executive summaries of web pages for older adults.
+
+Request:
+```json
+{
+  "url": "https://example.com/article",
+  "page_text": "Clean textual content extracted from page body"
+}
+```
+Headers:
+- `X-Atlas-Key`: API key string
+
+Response:
+```json
+{
+  "summary": "This page provides information on prescription renewals...",
+  "key_points": [
+    "Step 1: Fill out the patient ID",
+    "Step 2: Submit the renewal request"
+  ]
+}
+```
+
+---
+
+## Contract 9 — Accessibility Fixes (`POST /v1/fixes`)
+
+Heuristic accessibility fixes endpoint generating automated remedial suggestions for web elements.
+
+Request:
+```json
+{
+  "url": "https://example.com",
+  "issues": [
+    {
+      "element_id": "atlas-001",
+      "issue_type": "missing_alt",
+      "tag": "img",
+      "context": "Hero banner header"
+    }
+  ]
+}
+```
+Headers:
+- `X-Atlas-Key`: API key string
+
+Response:
+```json
+{
+  "fixes": [
+    {
+      "element_id": "atlas-001",
+      "suggested_fix": "Add alt=\"Company logo with tagline\"",
+      "code_snippet": "alt=\"Company logo with tagline\""
+    }
+  ]
+}
+```
+
+---
+
+## Contract 10 — Extension Internal Runtime Messaging
+
+Chrome runtime message schema between content scripts, options page, and background service worker.
+
+| Message Type | Direction | Payload | Description |
+|--------------|-----------|---------|-------------|
+| `ATLAS_TOGGLE` | SW → Content | `{ type: "ATLAS_TOGGLE" }` | Toggles the Atlas accessibility sidebar |
+| `ATLAS_SOCKET_CONNECT` | Content → SW | `{ type: "ATLAS_SOCKET_CONNECT", baseUrl, apiKey }` | Connects/authenticates background WebSocket |
+| `ATLAS_SOCKET_SEND` | Content → SW | `{ type: "ATLAS_SOCKET_SEND", payload, correlation_id }` | Transmits WebSocket payload and returns response mapped by correlation ID |
+| `ATLAS_CHAT` | Content → SW | `{ type: "ATLAS_CHAT", baseUrl, apiKey, payload }` | Invokes `/v1/chat` REST endpoint via service worker |
+| `ATLAS_OPEN_OPTIONS` | Content → SW | `{ type: "ATLAS_OPEN_OPTIONS" }` | Opens extension options page |
+
+---
+
 ## Versioning
 
 | Version | Date | Change |
 |---------|------|--------|
 | v1.0 | Day 1 — Hour 1 | Initial contracts locked |
 | v1.1 | Day 2 — Hour 0 | `id` = synthetic `data-atlas-id`, not native `id`; added `type` field to Contract 1; added Contract 5 (simplify response + audit log) |
-| v1.2 | Day 2 — Hour 4 | `type` corrected to **required, no default** (matches `AgentMessage`); WS error-handling defined — invalid/malformed messages and bad API keys return a JSON error and keep the connection open, they don't close the socket. |
+| v1.2 | Day 2 — Hour 4 | `type` corrected to **required, no default**; WS error-handling defined. |
+| v1.3 | Remediation Pass | Added `open` and `double_click` to Contract 2 action types; added `resolved_label` and `group_label` to Contract 3; added Contracts 6–10 (CSWSH handshake, Chat, Summary, Fixes, and Extension internal messaging). |

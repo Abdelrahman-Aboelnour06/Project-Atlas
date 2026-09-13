@@ -2,6 +2,8 @@ import type { UsageLog } from '@/lib/mock-data'
 
 const actionLabel: Record<string, string> = {
   click: 'Click',
+  open: 'Open',
+  double_click: 'Double Click',
   fill: 'Fill',
   scroll: 'Scroll',
   focus: 'Focus',

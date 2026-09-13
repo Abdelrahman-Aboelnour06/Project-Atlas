@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   run_ci.ps1 — Atlas CI/CD Pipeline Local Runner
   Executes Unit, Module, and System tests locally to ensure code remains stable.
@@ -11,7 +11,7 @@
 #>
 
 param(
-    [ValidateSet("all", "unit", "module", "system")]
+    [ValidateSet("all", "security", "unit", "module", "system")]
     [string]$Stage = "all"
 )
 
@@ -53,13 +53,44 @@ function Run-Step ($stepName, [scriptblock]$action) {
 Write-Banner "Atlas CI/CD Pipeline — Stage: $Stage"
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 0. SECURITY QUALITY GATE TIER
+# ─────────────────────────────────────────────────────────────────────────────
+if ($Stage -eq "all" -or $Stage -eq "security") {
+    Write-Host "── TIER 0: SECURITY QUALITY GATE ───────────────────────" -ForegroundColor Red
+
+    # Git tracked .env check
+    Run-Step "Security: Ensure No .env Files Tracked in Git" {
+        $trackedEnv = git ls-files | Select-String -Pattern '(\.env$|\.env\.)'
+        if ($trackedEnv) {
+            throw "Security Gate Failure: Tracked .env files detected in repository: $trackedEnv"
+        }
+        Write-Host "    [OK] No .env secrets files tracked in repository" -ForegroundColor Green
+    }
+
+    # Extension security quality gates (no hardcoded keys, no eval, XSS escaping)
+    Run-Step "Security: Extension Security Quality Gates and AST Audit" {
+        node (Join-Path $ClientScriptDir "test_extension.js")
+    }
+
+    # Security and resilience automated regression tests
+    Run-Step "Security: Automated Security and Resilience Regression Tests" {
+        Push-Location $BackendDir
+        try {
+            & $VenvPython -m pytest tests/test_security_resilience.py -v --tb=short
+        } finally {
+            Pop-Location
+        }
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
 # 1. UNIT TESTING TIER
 # ─────────────────────────────────────────────────────────────────────────────
 if ($Stage -eq "all" -or $Stage -eq "unit") {
     Write-Host "── TIER 1: UNIT TESTS ──────────────────────────────────" -ForegroundColor Magenta
 
     # Extension code syntax and manifest validation
-    Run-Step "Unit: Extension Script Syntax & Manifest Integrity" {
+    Run-Step "Unit: Extension Script Syntax and Manifest Integrity" {
         node (Join-Path $ClientScriptDir "test_extension.js")
     }
 
@@ -74,7 +105,7 @@ if ($Stage -eq "all" -or $Stage -eq "unit") {
     }
 
     # Action parser & prompt building
-    Run-Step "Unit: Action & Simplify Parsers (LLM response extraction & sanitization)" {
+    Run-Step "Unit: Action and Simplify Parsers (LLM response extraction and sanitization)" {
         Push-Location $BackendDir
         try {
             & $VenvPython -m pytest tests/test_action_parser.py -v --tb=short
@@ -84,7 +115,7 @@ if ($Stage -eq "all" -or $Stage -eq "unit") {
     }
 
     # Rate limiter unit logic
-    Run-Step "Unit: Rate Limiter (sliding window & tenant isolation)" {
+    Run-Step "Unit: Rate Limiter (sliding window and tenant isolation)" {
         Push-Location $BackendDir
         try {
             & $VenvPython -m pytest tests/test_rate_limiter.py -v --tb=short
@@ -101,7 +132,7 @@ if ($Stage -eq "all" -or $Stage -eq "module") {
     Write-Host "── TIER 2: MODULE TESTS ────────────────────────────────" -ForegroundColor Magenta
 
     # Database connection & hashing utilities
-    Run-Step "Module: DB Utilities & Key Hashing" {
+    Run-Step "Module: DB Utilities and Key Hashing" {
         Push-Location $BackendDir
         try {
             & $VenvPython -m pytest tests/test_db_utils.py -v --tb=short
@@ -111,7 +142,7 @@ if ($Stage -eq "all" -or $Stage -eq "module") {
     }
 
     # REST routes module (/health, /v1/session/start, /v1/audit/log)
-    Run-Step "Module: REST API Endpoints & Auth Handshake" {
+    Run-Step "Module: REST API Endpoints and Auth Handshake" {
         Push-Location $BackendDir
         try {
             & $VenvPython -m pytest tests/test_routes_rest.py -v --tb=short
@@ -122,7 +153,7 @@ if ($Stage -eq "all" -or $Stage -eq "module") {
 
     # Dashboard module compilation (if dependencies are present)
     if (Test-Path (Join-Path $DashboardDir "node_modules")) {
-        Run-Step "Module: Dashboard Next.js Type Check & Compilation" {
+        Run-Step "Module: Dashboard Next.js Type Check and Compilation" {
             Push-Location $DashboardDir
             try {
                 npm run build

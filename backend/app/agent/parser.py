@@ -21,7 +21,7 @@ from app.models.action import ActionResponse
 
 logger = logging.getLogger(__name__)
 
-VALID_ACTIONS = {"click", "fill", "scroll", "focus"}
+VALID_ACTIONS = {"click", "open", "double_click", "fill", "scroll", "focus"}
 
 
 # ── Exceptions ────────────────────────────────────────────────────────────────

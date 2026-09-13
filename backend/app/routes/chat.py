@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.connection import get_db
 from app.db import connection as db_connection
-from app.agent import llm_client, agentic_planner, summary_prompt
+from app.agent import llm_client, agentic_planner, summary_prompt, rate_limiter
 from app.agent.agentic_planner import AgenticPlan
 from app.agent.llm_client import LLMError
 
@@ -50,6 +50,12 @@ async def summary_endpoint(
     tenant_id = await db_connection.validate_api_key(db, key)
     if not tenant_id:
         raise HTTPException(status_code=401, detail="Invalid API key")
+
+    if not rate_limiter.check(tenant_id):
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded — please slow down and try again shortly.",
+        )
 
     prompt = summary_prompt.build_summary_prompt(
         page_text=payload.page_text or "",
@@ -97,6 +103,12 @@ async def chat_endpoint(
     tenant_id = await db_connection.validate_api_key(db, key)
     if not tenant_id:
         raise HTTPException(status_code=401, detail="Invalid API key")
+
+    if not rate_limiter.check(tenant_id):
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded — please slow down and try again shortly.",
+        )
 
     # If DOM map is provided, invoke the multi-step agentic planner
     if payload.dom_map and len(payload.dom_map) > 0:

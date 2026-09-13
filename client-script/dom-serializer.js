@@ -57,14 +57,6 @@ const isSensitiveField = (el) => {
 // language pickers, cookie banners, price/filter widgets, etc.
 const NOISE_SELECTORS = [
   "#atlas-sidebar-root", // never scan ourselves
-  // Amazon-specific nav/utility chrome
-  "#nav-global-location-popover-link",
-  "#nav-link-accountList",
-  "#icp-nav-flyout",
-  "#nav-flyout-icp-anchor",
-  '[data-csa-c-type="widget"][data-csa-c-slot-id*="language"]',
-  "#languageDropdown",
-  ".icp-nav-link",
   // Price / filter / facet widgets
   '[id*="price-filter"]',
   '[id*="priceRefinements"]',
@@ -75,7 +67,6 @@ const NOISE_SELECTORS = [
   '[id*="refinement"]',
   '[class*="refinement"]',
   // Cookie / GDPR banners
-  "#sp-cc",
   "#cookie-banner",
   '[id*="cookie"]',
   '[class*="cookie"]',
@@ -90,9 +81,6 @@ const NOISE_SELECTORS = [
   '[aria-label*="currency" i]',
   '[aria-label*="region" i]',
   '[aria-label*="breadcrumb" i]',
-  // Google / internal dismiss chrome
-  "[data-ogsr-up]",
-  '[jsaction*="dismiss"]',
 ];
 
 const NOISE_TEXT_PATTERNS = [
@@ -101,8 +89,6 @@ const NOISE_TEXT_PATTERNS = [
   /^\$[\d,]+(\.\d+)?\s*[-–]\s*\$[\d,]+/, // price ranges like "$10 - $50"
   /^filter by/i,
   /^sort by/i,
-  /^all departments/i,
-  /^returns & orders/i,
   /^back to top/i,
   /^skip to (main|content|nav)/i,
 ];
@@ -345,45 +331,85 @@ const NOISE_TEXT_PATTERNS = [
   let idCounter = 0;
   const nextAtlasId = () => `atlas-${Date.now()}-${idCounter++}`;
 
-  const serializeNode = (el, label) => {
-    let atlasId = el.getAttribute(ATLAS_ID_ATTR);
-    if (!atlasId) {
-      atlasId = nextAtlasId();
-      el.setAttribute(ATLAS_ID_ATTR, atlasId);
-    }
-    const sensitive = isSensitiveField(el);
-    return {
-      id: atlasId,
-      tag: el.tagName.toLowerCase(),
-      type: el.getAttribute("type") || null,
-      inner_text: sensitive ? null : truncate(el.innerText || el.textContent),
-      placeholder: el.getAttribute("placeholder") || null,
-      aria_label: el.getAttribute("aria-label") || null,
-      href: el.getAttribute("href") || null,
-      name: el.getAttribute("name") || null,
-      role: el.getAttribute("role") || null,
-      sensitive: sensitive,
-      resolved_label: label,
-      group_label: detectGroupLabel(el),
-    };
-  };
-
-  // ── Main serialize ────────────────────────────────────────────────────────────
+  // ── Two-Phase Layout-Safe Serializer (Feature 16) ─────────────────────────────
+  // Phase 1: Read all DOM & layout properties without modifying the DOM.
+  // Phase 2: Batch-write data-atlas-id attributes to newly identified elements.
+  // Phase 3: Construct the final clean payload array.
   const serialize = () => {
     seenLabels.clear(); // reset duplicate tracker on each scan
 
-    return Array.from(document.querySelectorAll(INTERACTIVE_SELECTOR))
-      .filter(isVisible)
-      .filter((el) => !el.disabled)
-      .filter((el) => !isStructuralNoise(el))
-      .filter((el) => !isMachineLabel(el))
-      .filter((el) => !isBareIconButton(el))
-      .filter((el) => hasMeaningfulLabel(el))
-      .map((el) => ({ el, label: resolveLabel(el) }))
-      .filter(({ label }) => label !== null) // must have a resolved label
-      .filter(({ label }) => !isTextNoise(label)) // label must not be noise text
-      .filter(({ label }) => !isDuplicate(label)) // no duplicate labels
-      .map(({ el, label }) => serializeNode(el, label));
+    // Phase 1: All DOM Reads
+    const candidates = Array.from(document.querySelectorAll(INTERACTIVE_SELECTOR));
+    const passedElements = [];
+
+    for (let i = 0; i < candidates.length; i++) {
+      const el = candidates[i];
+      if (el.disabled) continue;
+      if (!isVisible(el)) continue;
+      if (isStructuralNoise(el)) continue;
+      if (isMachineLabel(el)) continue;
+      if (isBareIconButton(el)) continue;
+      if (!hasMeaningfulLabel(el)) continue;
+
+      const label = resolveLabel(el);
+      if (!label) continue;
+      if (isTextNoise(label)) continue;
+      if (isDuplicate(label)) continue;
+
+      const sensitive = isSensitiveField(el);
+      const groupLabel = detectGroupLabel(el);
+      const tag = el.tagName.toLowerCase();
+      const type = el.getAttribute("type") || null;
+      const innerText = sensitive ? null : truncate(el.innerText || el.textContent);
+      const placeholder = el.getAttribute("placeholder") || null;
+      const ariaLabel = el.getAttribute("aria-label") || null;
+      const href = el.getAttribute("href") || null;
+      const name = el.getAttribute("name") || null;
+      const role = el.getAttribute("role") || null;
+      const existingAtlasId = el.getAttribute(ATLAS_ID_ATTR);
+
+      passedElements.push({
+        el,
+        existingAtlasId,
+        tag,
+        type,
+        inner_text: innerText,
+        placeholder,
+        aria_label: ariaLabel,
+        href,
+        name,
+        role,
+        sensitive,
+        resolved_label: label,
+        group_label: groupLabel,
+      });
+    }
+
+    // Phase 2: DOM Writes (Batch data-atlas-id writes only)
+    for (let i = 0; i < passedElements.length; i++) {
+      const item = passedElements[i];
+      if (!item.existingAtlasId) {
+        const newId = nextAtlasId();
+        item.existingAtlasId = newId;
+        item.el.setAttribute(ATLAS_ID_ATTR, newId);
+      }
+    }
+
+    // Phase 3: Output Assembly
+    return passedElements.map((item) => ({
+      id: item.existingAtlasId,
+      tag: item.tag,
+      type: item.type,
+      inner_text: item.inner_text,
+      placeholder: item.placeholder,
+      aria_label: item.aria_label,
+      href: item.href,
+      name: item.name,
+      role: item.role,
+      sensitive: item.sensitive,
+      resolved_label: item.resolved_label,
+      group_label: item.group_label,
+    }));
   };
 
   const getElementByAtlasId = (atlasId) =>

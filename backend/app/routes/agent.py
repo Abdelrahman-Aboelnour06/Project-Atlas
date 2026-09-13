@@ -33,11 +33,9 @@ name that was already bound at import time via `from x import y`.
 import json
 import logging
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 from pydantic import ValidationError
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.connection import get_db
 from app.db import connection as db_connection
 
 from app.agent import llm_client
@@ -62,11 +60,26 @@ def _simplify_error(message: str) -> dict:
 
 
 @router.websocket("/agent")
-async def websocket_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)):
+async def websocket_endpoint(websocket: WebSocket):
+    origin = websocket.headers.get("origin")
+    if origin is not None:
+        origin_lower = origin.lower()
+        is_allowed = (
+            origin_lower.startswith("chrome-extension://")
+            or origin_lower.startswith("moz-extension://")
+            or "localhost" in origin_lower
+            or "127.0.0.1" in origin_lower
+        )
+        if not is_allowed:
+            await websocket.accept()
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Untrusted origin")
+            return
+
     await websocket.accept()
 
     authenticated = False
     tenant_id = None  # set after auth handshake
+    auth_failures = 0
 
     try:
         while True:
@@ -79,35 +92,49 @@ async def websocket_endpoint(websocket: WebSocket, db: AsyncSession = Depends(ge
                 await websocket.send_json({"status": "error", "message": "Invalid JSON payload."})
                 continue
 
+            correlation_id = data.get("correlation_id")
+            base_extra = {"correlation_id": correlation_id} if correlation_id else {}
+
             # 2. Handle authentication message (once per connection)
             if data.get("type") == "auth":
                 if authenticated:
-                    await websocket.send_json({"status": "error", "message": "Already authenticated."})
+                    await websocket.send_json({**base_extra, "status": "error", "message": "Already authenticated."})
                     continue
                 api_key = data.get("api_key")
                 if not api_key:
-                    await websocket.send_json({"status": "error", "message": "Missing api_key in auth message."})
+                    auth_failures += 1
+                    if auth_failures >= 3:
+                        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Too many authentication failures.")
+                        return
+                    await websocket.send_json({**base_extra, "status": "error", "message": "Missing api_key in auth message."})
                     continue
-                tid = await db_connection.validate_api_key(db, api_key)
+                async with db_connection.get_db_context() as session:
+                    tid = await db_connection.validate_api_key(session, api_key)
                 if not tid:
-                    await websocket.send_json({"status": "error", "message": "Invalid or inactive API key."})
+                    auth_failures += 1
+                    if auth_failures >= 3:
+                        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Too many authentication failures.")
+                        return
+                    await websocket.send_json({**base_extra, "status": "error", "message": "Invalid or inactive API key."})
                     continue
                 authenticated = True
+                auth_failures = 0
                 tenant_id = tid
-                await websocket.send_json({"status": "ok"})
+                await websocket.send_json({**base_extra, "status": "ok", "message": "Authenticated"})
                 continue
 
             # 3. For any other message type, authenticate per-message or require pre-auth
             msg_api_key = data.get("api_key")
             if msg_api_key:
-                tid = await db_connection.validate_api_key(db, msg_api_key)
+                async with db_connection.get_db_context() as session:
+                    tid = await db_connection.validate_api_key(session, msg_api_key)
                 if not tid:
-                    await websocket.send_json({"status": "error", "message": "Invalid or inactive API key."})
+                    await websocket.send_json({**base_extra, "status": "error", "message": "Invalid or inactive API key."})
                     continue
                 authenticated = True
                 tenant_id = tid
             elif not authenticated:
-                await websocket.send_json({"status": "error", "message": "Not authenticated. Send auth message first."})
+                await websocket.send_json({**base_extra, "status": "error", "message": "Not authenticated. Send auth message first."})
                 continue
 
             # 4. Validate message shape against Contract 1 (type, dom_map, command, ...)
@@ -168,13 +195,14 @@ async def websocket_endpoint(websocket: WebSocket, db: AsyncSession = Depends(ge
 
                     # 8. Log ONLY safe, minimal data to PostgreSQL for commands
                     log_details = trim_log_payload(message.command, final_response)
-                    await db_connection._log_usage(
-                        db=db,
-                        session_id=message.session_id,
-                        tenant_id=tenant_id,
-                        log_details=log_details,
-                        url=message.url,
-                    )
+                    async with db_connection.get_db_context() as session:
+                        await db_connection._log_usage(
+                            db=session,
+                            session_id=message.session_id,
+                            tenant_id=tenant_id,
+                            log_details=log_details,
+                            url=message.url,
+                        )
 
             # Catch LLM connection/timeout failures gracefully — parse_action and
             # parse_simplify_response never raise, so this is the only pipeline
@@ -189,6 +217,8 @@ async def websocket_endpoint(websocket: WebSocket, db: AsyncSession = Depends(ge
                     ).model_dump()
 
             # 9. Send the final JSON payload back to the frontend extension
+            if correlation_id and isinstance(final_response, dict):
+                final_response["correlation_id"] = correlation_id
             await websocket.send_json(final_response)
 
     except WebSocketDisconnect:

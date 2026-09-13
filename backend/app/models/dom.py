@@ -14,5 +14,7 @@ class DomNode(BaseModel):
     aria_label:  str | None
     href:        str | None
     name:        str | None
-    role:        str | None
-    sensitive:   bool | None = False
+    role:           str | None = None
+    sensitive:      bool | None = False
+    resolved_label: str | None = None
+    group_label:    str | None = None

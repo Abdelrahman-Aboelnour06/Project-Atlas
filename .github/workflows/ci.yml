@@ -7,8 +7,75 @@ on:
     branches: [ main, master ]
 
 jobs:
+  security-audit:
+    name: "Tier 0: Security & Secret Audit Quality Gate"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify No Tracked .env Files in Git
+        run: |
+          if git ls-files | grep -E '(^|/)\.env($|\.)'; then
+            echo "::error::Tracked .env file detected in repository!"
+            exit 1
+          fi
+          echo "No .env files are tracked in git."
+
+      - name: Static Secret Pattern Scan
+        run: |
+          # Scan tracked files for committed secrets
+          if git grep -EI "nvapi-[a-zA-Z0-9_-]{30,}|npg_[a-zA-Z0-9_-]{12,}|sk_live_[a-zA-Z0-9]{24,}" -- ':!backend/tests/' ':!*.md' ':!scratch/'; then
+            echo "::error::Potential live cloud API key or DB secret found in tracked source files!"
+            exit 1
+          fi
+          echo "No hardcoded high-entropy secrets found in tracked source code."
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        working-directory: ./backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install pip-audit
+          pip install -r requirements.txt
+          pip install -r tests/requirements-test.txt
+
+      - name: Dependency Vulnerability Audit (pip-audit)
+        working-directory: ./backend
+        run: |
+          pip-audit -r requirements.txt --desc on
+
+      - name: Verify PyPI Dependencies Legitimacy (Anti-Slopsquatting)
+        working-directory: ./backend
+        run: |
+          python -c "
+          import urllib.request, json
+          with open('requirements.txt') as f:
+              for line in f:
+                  line = line.strip().split('#')[0].split(';')[0]
+                  if not line or line.startswith('-'): continue
+                  pkg = line.split('==')[0].split('>=')[0].split('<=')[0].split('[')[0].strip()
+                  try:
+                      url = f'https://pypi.org/pypi/{pkg}/json'
+                      req = urllib.request.Request(url, headers={'User-Agent': 'Atlas-Security-Audit/1.0'})
+                      with urllib.request.urlopen(req, timeout=5) as r:
+                          assert r.status == 200
+                      print(f'[OK] {pkg} verified on PyPI')
+                  except Exception as e:
+                      print(f'[FAIL] Failed to verify {pkg} on PyPI: {e}')
+                      exit(1)
+          "
+
   unit-tests:
     name: "Tier 1: Unit Tests"
+    needs: [security-audit]
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -74,6 +141,10 @@ jobs:
       - name: Run REST Routes Module Tests
         working-directory: ./backend
         run: pytest tests/test_routes_rest.py -v --tb=short
+
+      - name: Run Security & Resilience Regression Tests
+        working-directory: ./backend
+        run: pytest tests/test_security_resilience.py -v --tb=short
 
       - name: Set up Node.js for Dashboard
         uses: actions/setup-node@v4

@@ -2,9 +2,12 @@ from typing import Literal
 from pydantic import BaseModel
 
 
+ActionType = Literal["click", "open", "double_click", "fill", "scroll", "focus"]
+
+
 class ActionResponse(BaseModel):
     status:     Literal["success", "error"]
-    action:     Literal["click", "fill", "scroll", "focus"] | None
+    action:     ActionType | None
     element_id: str | None
     value:      str | None
     message:    str

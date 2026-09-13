@@ -39,8 +39,7 @@ def strip_pii_from_dom(dom_map: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             
             # Note: We LEAVE the 'placeholder' and 'aria_label' alone 
             # because the LLM needs those to know what the button/field actually does.
-            # Defensive length cap on all text fields to limit injection payload size
-        for field in ('inner_text', 'placeholder', 'aria_label'):
+        for field in ('inner_text', 'placeholder', 'aria_label', 'resolved_label', 'group_label'):
             if field in node and isinstance(node[field], str):
                 node[field] = node[field][:MAX_TEXT_LENGTH]
 

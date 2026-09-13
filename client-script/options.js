@@ -19,13 +19,11 @@ const setStatus = (text, kind = 'info') => {
   statusEl.dataset.kind = kind
 }
 
-const DEFAULT_DEV_KEY = 'atlas_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6'
-
 const load = () => {
   chrome.storage.local.get(
     [API_KEY_STORAGE_KEY, BASE_URL_STORAGE_KEY],
     (result) => {
-      apiKeyInput.value = result[API_KEY_STORAGE_KEY] || DEFAULT_DEV_KEY
+      apiKeyInput.value = result[API_KEY_STORAGE_KEY] || ''
       baseUrlInput.value = result[BASE_URL_STORAGE_KEY] || DEFAULT_BASE_URL
     }
   )
@@ -53,6 +51,9 @@ form.addEventListener('submit', (e) => {
 })
 
 clearBtn.addEventListener('click', () => {
+  if (!confirm('Are you sure you want to clear your stored Atlas API key?')) {
+    return
+  }
   chrome.storage.local.remove([API_KEY_STORAGE_KEY], () => {
     apiKeyInput.value = ''
     setStatus('API key cleared. You will be prompted again on next activation.', 'ok')

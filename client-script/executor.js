@@ -47,6 +47,12 @@ const glow = (el) => {
     glowTimers.set(el, timer)
 }
 
+const scrollToElement = (el) => {
+    if (el?.scrollIntoView) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+    }
+};
+
 const dispatchMouseSequence = (el, detail = 1) => {
     const rect = el.getBoundingClientRect();
     const clientX = rect.left + rect.width / 2;
@@ -203,11 +209,25 @@ function requestConfirmation(el, action, value) {
             ? `Atlas wants to fill this field: “${value || 'value'}”.`
             : `Atlas wants to click this element.`
 
-        banner.innerHTML = `
-            <span><strong>Confirm action:</strong> ${label}</span>
-            <button id="atlas-confirm-yes" style="background:#22c55e;color:#fff;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;">Confirm (Tap)</button>
-            <button id="atlas-confirm-no" style="background:#ef4444;color:#fff;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;">Cancel</button>
-        `
+        const textSpan = document.createElement('span')
+        const strongPrefix = document.createElement('strong')
+        strongPrefix.textContent = 'Confirm action: '
+        textSpan.appendChild(strongPrefix)
+        textSpan.appendChild(document.createTextNode(label))
+
+        const yesBtn = document.createElement('button')
+        yesBtn.id = 'atlas-confirm-yes'
+        yesBtn.style.cssText = 'background:#22c55e;color:#fff;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;'
+        yesBtn.textContent = 'Confirm (Tap)'
+
+        const noBtn = document.createElement('button')
+        noBtn.id = 'atlas-confirm-no'
+        noBtn.style.cssText = 'background:#ef4444;color:#fff;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;'
+        noBtn.textContent = 'Cancel'
+
+        banner.appendChild(textSpan)
+        banner.appendChild(yesBtn)
+        banner.appendChild(noBtn)
         document.body.appendChild(banner)
 
         const cleanup = (result) => {
@@ -216,8 +236,8 @@ function requestConfirmation(el, action, value) {
             resolve(result)
         }
 
-        document.getElementById('atlas-confirm-yes').onclick = () => cleanup(true)
-        document.getElementById('atlas-confirm-no').onclick = () => cleanup(false)
+        yesBtn.onclick = () => cleanup(true)
+        noBtn.onclick = () => cleanup(false)
     })
 }
 

@@ -22,6 +22,17 @@
   // Drag state cleanup ref
   let cleanUpDrag = null;
 
+  // ── HTML Sanitizer Utility (Universal XSS Defense) ───────────────────────────
+  const escapeHtml = (str) => {
+    if (!str) return "";
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  };
+
   // ── Dynamic Semantic Category System ──────────────────────────────────────────
   const DEFAULT_CATEGORIES = {
     files: { label: "Files & Folders", emoji: "📁", priority: 1 },
@@ -51,10 +62,10 @@
     const role = (node.role || "").toLowerCase();
     const type = (node.type || "").toLowerCase();
 
-    // 1. Files, Folders & Documents (Google Drive, Cloud storage, attachments, file lists)
+    // 1. Files, Folders & Documents (Cloud storage, attachments, file lists)
     if (
       /\.(pdf|docx?|pptx?|xlsx?|csv|zip|rar|tar|gz|7z|txt|png|jpe?g|gif|svg|mp[34]|avi|mkv|json|py|js|html|epub)\b/i.test(rawLabel) ||
-      ((role === "row" || role === "treeitem" || role === "gridcell") && !/^(home|activity|my drive|shared|trash|starred|recent|spam|storage)\b/i.test(l)) ||
+      ((role === "row" || role === "treeitem" || role === "gridcell") && !/^(home|activity|drive|shared|trash|starred|recent|spam|storage)\b/i.test(l)) ||
       (/\b(folder|file|document|spreadsheet|presentation|slide|archive|pdf|download|drive)\b/i.test(l) && !/^(new|create|upload|add)\b/i.test(l))
     ) {
       return { category: "files", label: "Files & Folders", emoji: "📁" };
@@ -83,7 +94,7 @@
       tag === "a" ||
       role === "tab" ||
       role === "link" ||
-      /\b(home|activity|workspaces|my drive|shared with me|recent|starred|spam|trash|storage|computers|dashboard|explore|subscriptions|library|overview|menu|back|forward|next|previous|page)\b/i.test(l)
+      /\b(home|activity|workspaces|recent|starred|spam|trash|storage|dashboard|explore|subscriptions|library|overview|menu|back|forward|next|previous|page)\b/i.test(l)
     ) {
       return { category: "navigation", label: "Navigation & Sections", emoji: "🧭" };
     }
@@ -280,9 +291,12 @@
       </div>
     </div>
 
+    <!-- Hoisted Status Bar (Visible & Accessible Across All Tabs) -->
+    <div class="atlas-status" aria-live="polite"></div>
+
     <!-- CHAT TAB PANE -->
     <div class="atlas-pane" id="atlas-pane-chat">
-      <div class="atlas-chat-log" id="atlas-chat-log"></div>
+      <div class="atlas-chat-log" id="atlas-chat-log" role="log" aria-live="polite"></div>
       <div class="atlas-chat-input-bar">
         <button class="atlas-mode-btn" id="atlas-mode-toggle" aria-label="Toggle Voice Mode" title="Switch between Chat and Voice Mode">
           <span class="atlas-mode-icon">💬</span>
@@ -299,7 +313,6 @@
       <div class="atlas-search-bar">
         <input class="atlas-search" type="text" placeholder="Search buttons, inputs, links..." />
       </div>
-      <div class="atlas-status" aria-live="polite"></div>
       <div class="atlas-list" role="list"></div>
     </div>
   `;
@@ -389,29 +402,32 @@
     const msg = document.createElement("div");
     msg.className = `atlas-msg atlas-msg-${role}`;
 
-    let actionsHtml = "";
+    let actionsEl = null;
     if (options && Array.isArray(options.actions) && options.actions.length > 0) {
-      actionsHtml = `
-        <div class="atlas-chat-actions">
-          ${options.actions
-            .map((act, idx) => {
-              const label = typeof act === "string" ? act : act.label;
-              const isConfirm = /yes|proceed|place|confirm|ok/i.test(label);
-              const isCancel = /no|cancel|stop/i.test(label);
-              const extraClass = isConfirm ? "atlas-chip-confirm" : (isCancel ? "atlas-chip-cancel" : "");
-              return `<button class="atlas-chip-btn ${extraClass}" data-chip-idx="${idx}">${label}</button>`;
-            })
-            .join("")}
-        </div>
-      `;
+      actionsEl = document.createElement("div");
+      actionsEl.className = "atlas-chat-actions";
+      actionsEl.innerHTML = options.actions
+        .map((act, idx) => {
+          const rawLabel = typeof act === "string" ? act : (act.label || "");
+          const label = escapeHtml(rawLabel);
+          const isConfirm = /yes|proceed|place|confirm|ok/i.test(rawLabel);
+          const isCancel = /no|cancel|stop/i.test(rawLabel);
+          const extraClass = isConfirm ? "atlas-chip-confirm" : (isCancel ? "atlas-chip-cancel" : "");
+          return `<button class="atlas-chip-btn ${extraClass}" data-chip-idx="${idx}">${label}</button>`;
+        })
+        .join("");
     }
 
-    msg.innerHTML = `
-      <div class="atlas-msg-bubble">
-        <div class="atlas-msg-text">${text}</div>
-        ${actionsHtml}
-      </div>
-    `;
+    const bubble = document.createElement("div");
+    bubble.className = "atlas-msg-bubble";
+    const textNode = document.createElement("div");
+    textNode.className = "atlas-msg-text";
+    textNode.textContent = text;
+    bubble.appendChild(textNode);
+    if (actionsEl) {
+      bubble.appendChild(actionsEl);
+    }
+    msg.appendChild(bubble);
 
     if (options && Array.isArray(options.actions)) {
       msg.querySelectorAll(".atlas-chip-btn").forEach((btn) => {
@@ -553,8 +569,8 @@
       header.setAttribute("aria-expanded", String(isOpen));
       header.innerHTML = `
         <span class="atlas-group-title">
-          <span class="atlas-group-emoji">${cat.emoji}</span>
-          ${cat.label}
+          <span class="atlas-group-emoji">${escapeHtml(cat.emoji)}</span>
+          ${escapeHtml(cat.label)}
           <span class="atlas-group-count">${filteredItems.length}</span>
         </span>
         <span class="atlas-group-chevron">${isOpen ? "▲" : "▼"}</span>
@@ -586,7 +602,7 @@
 
     if (totalVisible === 0) {
       listEl.innerHTML = query
-        ? `<div class="atlas-empty">No elements match "<strong>${query}</strong>"</div>`
+        ? `<div class="atlas-empty">No elements match "<strong>${escapeHtml(query)}</strong>"</div>`
         : '<div class="atlas-empty">No interactive elements found on this page.</div>';
     }
   };
@@ -595,13 +611,29 @@
     const el = document.createElement("button");
     el.className = "atlas-item";
     el.setAttribute("role", "listitem");
-    const labelHtml = query
-      ? item.label.replace(
-          new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi"),
-          '<mark class="atlas-highlight">$1</mark>',
+
+    const labelSpan = document.createElement("span");
+    labelSpan.className = "atlas-item-label";
+
+    const rawLabel = String(item.label || "");
+    const trimmedQuery = (query || "").trim();
+
+    if (trimmedQuery && rawLabel.toLowerCase().includes(trimmedQuery.toLowerCase())) {
+      const escapedQuery = trimmedQuery.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const regex = new RegExp(`(${escapedQuery})`, "gi");
+      const parts = rawLabel.split(regex);
+      labelSpan.innerHTML = parts
+        .map((part) =>
+          regex.test(part)
+            ? `<mark class="atlas-highlight">${escapeHtml(part)}</mark>`
+            : escapeHtml(part)
         )
-      : item.label;
-    el.innerHTML = `<span class="atlas-item-label">${labelHtml}</span>`;
+        .join("");
+    } else {
+      labelSpan.textContent = rawLabel;
+    }
+
+    el.appendChild(labelSpan);
     el.addEventListener("click", () => handlers.onElementClick?.(item.id));
     return el;
   };

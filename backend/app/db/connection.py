@@ -1,7 +1,11 @@
+import asyncio
 import hashlib
 import logging
 import os
+import time
 import uuid
+from collections import OrderedDict
+from contextlib import asynccontextmanager
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -56,34 +60,80 @@ async def get_db() -> AsyncSession:
         yield session
 
 
+@asynccontextmanager
+async def get_db_context():
+    """Context manager for acquiring short-lived DB sessions on demand."""
+    async with AsyncSessionLocal() as session:
+        yield session
+
+
+# ── In-Memory TTLCache for Auth Hashing & Lookups (Feature 14) ────────────────
+class TTLCache:
+    """Thread-safe, high-performance in-memory cache with monotonic TTL expiration."""
+    def __init__(self, maxsize: int = 2048, ttl: float = 300.0):
+        self.maxsize = maxsize
+        self.ttl = ttl
+        self._cache: OrderedDict[str, tuple[uuid.UUID, float]] = OrderedDict()
+
+    def get(self, key: str) -> uuid.UUID | None:
+        now = time.monotonic()
+        if key in self._cache:
+            val, exp = self._cache[key]
+            if now < exp:
+                self._cache.move_to_end(key)
+                return val
+            del self._cache[key]
+        return None
+
+    def set(self, key: str, val: uuid.UUID) -> None:
+        now = time.monotonic()
+        if key in self._cache:
+            del self._cache[key]
+        elif len(self._cache) >= self.maxsize:
+            self._cache.popitem(last=False)
+        self._cache[key] = (val, now + self.ttl)
+
+    def clear(self) -> None:
+        self._cache.clear()
+
+
+_auth_cache = TTLCache(maxsize=2048, ttl=300.0)
+
+
 # ── API Key Utilities ─────────────────────────────────────────────────────────
+def hash_key_pbkdf2(api_key: str, salt: bytes = b"atlas_salt_v1_secure") -> str:
+    """Hardened key hash using PBKDF2-HMAC-SHA256 (100,000 iterations) -> 64 hex characters."""
+    return hashlib.pbkdf2_hmac("sha256", api_key.encode(), salt, 100_000).hex()
+
+
 def hash_key(api_key: str) -> str:
-    """SHA-256 hash of the raw API key — this is what we store in the DB."""
+    """SHA-256 hash of the raw API key (retained for backward-compatibility with seeded DBs)."""
     return hashlib.sha256(api_key.encode()).hexdigest()
 
 
 async def validate_api_key(db: AsyncSession, api_key: str) -> uuid.UUID | None:
     """
     Returns the tenant_id (UUID) if the API key exists in the DB and is
-    active, otherwise None.
-
-    BUGFIX (blocker #3, ATLAS_PROGRESS_2.md): this used to return a plain
-    bool. agent.py does `tenant_id = await validate_api_key(...)` and then
-    passes that straight into `_log_usage(tenant_id=tenant_id, ...)`, and
-    UsageLog.tenant_id is a UUID foreign key — `True` would fail that
-    insert against a real Postgres DB. Returning the actual tenant UUID (or
-    None) fixes that; callers can still do a plain `if not tenant_id`
-    truthiness check for the auth gate exactly as before.
+    active, otherwise None. Supports both hardened PBKDF2 and legacy hashes.
+    Uses in-memory TTLCache and offloads PBKDF2 computation to a worker thread.
     """
-    key_hash = hash_key(api_key)
+    cached_tid = _auth_cache.get(api_key)
+    if cached_tid is not None:
+        return cached_tid
+
+    legacy_hash = hash_key(api_key)
+    hardened_hash = await asyncio.to_thread(hash_key_pbkdf2, api_key)
     result = await db.execute(
         select(ApiKey).where(
-            ApiKey.key_hash == key_hash,
+            ApiKey.key_hash.in_([legacy_hash, hardened_hash]),
             ApiKey.is_active == True,  # noqa: E712
         )
     )
     api_key_row = result.scalar_one_or_none()
-    return api_key_row.tenant_id if api_key_row else None
+    tenant_id = api_key_row.tenant_id if api_key_row else None
+    if tenant_id is not None:
+        _auth_cache.set(api_key, tenant_id)
+    return tenant_id
 
 
 # ── Usage Logging (Task 6/7 requirement) ──────────────────────────────────────

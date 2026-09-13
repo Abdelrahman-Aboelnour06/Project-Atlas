@@ -16,7 +16,7 @@ export type UsageLog = {
   sessionId: string
   url: string
   command: string | null
-  action: 'click' | 'fill' | 'scroll' | 'focus' | null
+  action: 'click' | 'open' | 'double_click' | 'fill' | 'scroll' | 'focus' | null
   elementId: string | null
   timestamp: string
 }

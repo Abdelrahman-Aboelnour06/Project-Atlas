@@ -10,25 +10,13 @@
   let stopUrlWatcher = null;
   let lastUrl = location.href;
 
-  const DEFAULT_DEV_KEY = "atlas_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6";
-
   const getStoredSettings = () =>
     new Promise((resolve) => {
       chrome.storage.local.get(
         [API_KEY_STORAGE_KEY, BASE_URL_STORAGE_KEY],
         (result) => {
-          let apiKey = result[API_KEY_STORAGE_KEY] || null;
+          const apiKey = result[API_KEY_STORAGE_KEY] || null;
           const baseUrl = result[BASE_URL_STORAGE_KEY] || DEFAULT_BASE_URL;
-
-          // Auto-seed dev API key if not configured and connecting to localhost
-          if (
-            !apiKey &&
-            (baseUrl.includes("localhost:8000") || baseUrl.includes("127.0.0.1:8000"))
-          ) {
-            apiKey = DEFAULT_DEV_KEY;
-            chrome.storage.local.set({ [API_KEY_STORAGE_KEY]: apiKey });
-          }
-
           resolve({ apiKey, baseUrl });
         },
       );
@@ -36,14 +24,39 @@
 
   // ── Page text extraction (for chat questions about site content) ──────────────
   const getPageText = () => {
-    const clone = document.body.cloneNode(true);
-    clone
-      .querySelectorAll("#atlas-sidebar-root, script, style, noscript")
-      .forEach((el) => el.remove());
-    return (clone.innerText || clone.textContent || "")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 3000); // cap to avoid huge LLM prompts
+    if (!document.body) return "";
+    const walker = document.createTreeWalker(
+      document.body,
+      NodeFilter.SHOW_TEXT,
+      {
+        acceptNode: (node) => {
+          const parent = node.parentElement;
+          if (!parent) return NodeFilter.FILTER_REJECT;
+          const tag = parent.tagName.toLowerCase();
+          if (
+            tag === "script" ||
+            tag === "style" ||
+            tag === "noscript" ||
+            tag === "template" ||
+            parent.closest("#atlas-sidebar-root")
+          ) {
+            return NodeFilter.FILTER_REJECT;
+          }
+          return NodeFilter.FILTER_ACCEPT;
+        },
+      }
+    );
+
+    let text = "";
+    let currentNode = walker.nextNode();
+    while (currentNode && text.length < 3000) {
+      const val = currentNode.nodeValue.trim();
+      if (val) {
+        text += (text ? " " : "") + val;
+      }
+      currentNode = walker.nextNode();
+    }
+    return text.slice(0, 3000);
   };
 
   let conversationHistory = [];

@@ -48,7 +48,10 @@ let bgSessionId = null;
 let bgApiKey = null;
 let bgBaseUrl = "http://localhost:8000";
 let bgAuthenticated = false;
-let bgPendingQueue = [];
+const bgPendingMap = new Map();
+
+const generateCorrelationId = () =>
+  `atlas_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
 const bgWsUrl = () => `${bgBaseUrl.replace(/^http/, "ws")}/v1/agent`;
 
@@ -88,12 +91,23 @@ function bgOpenSocket() {
     };
 
     bgSocket.onmessage = (event) => {
-      const next = bgPendingQueue.shift();
-      if (!next) return;
       try {
-        next.resolve(JSON.parse(event.data));
+        const parsed = JSON.parse(event.data);
+        const cid = parsed.correlation_id;
+        if (cid && bgPendingMap.has(cid)) {
+          const handler = bgPendingMap.get(cid);
+          bgPendingMap.delete(cid);
+          handler.resolve(parsed);
+          return;
+        }
+        if (bgPendingMap.size > 0) {
+          const firstKey = bgPendingMap.keys().next().value;
+          const handler = bgPendingMap.get(firstKey);
+          bgPendingMap.delete(firstKey);
+          handler.resolve(parsed);
+        }
       } catch (err) {
-        next.reject(err);
+        console.error("Atlas background: Failed to parse WS message", err);
       }
     };
 
@@ -103,8 +117,10 @@ function bgOpenSocket() {
     };
 
     bgSocket.onclose = () => {
-      bgPendingQueue.forEach((p) => p.reject(new Error("Socket closed")));
-      bgPendingQueue = [];
+      for (const handler of bgPendingMap.values()) {
+        handler.reject(new Error("Socket closed"));
+      }
+      bgPendingMap.clear();
       bgAuthenticated = false;
       bgSocket = null;
     };
@@ -113,7 +129,8 @@ function bgOpenSocket() {
 
 function bgAuthenticate() {
   return new Promise((resolve, reject) => {
-    bgPendingQueue.push({
+    const correlationId = generateCorrelationId();
+    bgPendingMap.set(correlationId, {
       resolve: (data) => {
         if (data.status === "ok") {
           bgAuthenticated = true;
@@ -125,7 +142,7 @@ function bgAuthenticate() {
       },
       reject,
     });
-    bgSocket.send(JSON.stringify({ type: "auth", api_key: bgApiKey }));
+    bgSocket.send(JSON.stringify({ type: "auth", api_key: bgApiKey, correlation_id: correlationId }));
   });
 }
 
@@ -163,11 +180,13 @@ async function bgSendMessage(msg) {
   }
 
   return new Promise((resolve, reject) => {
-    bgPendingQueue.push({ resolve, reject });
+    const correlationId = msg.correlation_id || generateCorrelationId();
+    bgPendingMap.set(correlationId, { resolve, reject });
     bgSocket.send(
       JSON.stringify({
         session_id: bgSessionId,
         ...msg,
+        correlation_id: correlationId,
       }),
     );
   });
@@ -177,22 +196,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "ATLAS_OPEN_OPTIONS") {
     chrome.runtime.openOptionsPage();
     return;
-  }
-
-  if (message.type === "ATLAS_PROXY_FETCH") {
-    fetch(message.url, message.options || {})
-      .then(async (res) => {
-        const text = await res.text();
-        let json = null;
-        try {
-          json = JSON.parse(text);
-        } catch (_) {}
-        sendResponse({ ok: res.ok, status: res.status, data: json, text });
-      })
-      .catch((err) => {
-        sendResponse({ ok: false, status: 0, error: err.message });
-      });
-    return true;
   }
 
   if (message.type === "ATLAS_SOCKET_CONNECT") {

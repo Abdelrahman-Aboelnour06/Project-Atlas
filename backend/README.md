@@ -1,0 +1,57 @@
+# Project Atlas — Backend Service
+
+FastAPI-powered asynchronous backend providing real-time AI web automation, page simplification, and conversational assistance.
+
+## Architecture & Endpoints
+
+- **/v1/agent (WebSocket)**: Real-time dual-pipeline agent endpoint.
+  - Supports auth handshake with CSWSH protection and brute-force throttling (3 failed attempts -> WS 1008).
+  - Handles command actions (resolves natural language to DOM interactions).
+  - Handles simplify analysis (generates plain-language element summaries for older adults).
+  - Employs short-lived database connections via get_db_context() to prevent pool exhaustion.
+- **POST /v1/session/start**: Initializes unique session UUIDs. Requires X-Atlas-Key header.
+- **POST /v1/chat**: Multi-turn conversation and agentic multi-step planning with prompt-injection fences.
+- **POST /v1/summary**: High-level page summarization.
+- **POST /v1/fixes**: Heuristic accessibility fix generator.
+- **POST /v1/audit/log**: Records client-side accessibility audit findings.
+- **GET /health**: Health check reporting database and LLM connectivity status.
+
+## Environment Variables
+
+Configure in backend/.env:
+
+| Variable | Description | Default / Example |
+|----------|-------------|-------------------|
+| DATABASE_URL | PostgreSQL connection URL (asyncpg) | postgresql+asyncpg://postgres:postgres@localhost:5432/atlas |
+| LLM_PROVIDER | AI provider (nvidia_nim or ollama) | nvidia_nim |
+| LLM_BASE_URL | AI API base URL | https://integrate.api.nvidia.com/v1 |
+| LLM_MODEL | Target model identifier | meta/llama-3.2-11b-vision-instruct |
+| LLM_API_KEY | Provider API key | your_api_key_here |
+| API_KEY_HEADER | Header name for API key authentication | X-Atlas-Key |
+| ALLOWED_ORIGINS | Comma-separated list of allowed origins | http://localhost:3000,... |
+| ALLOW_ORIGIN_REGEX | Regex for allowed extension origins | ^chrome-extension://[a-z]{32}$ |
+
+## Setup & Running
+
+`ash
+# 1. Activate virtual environment
+cd backend
+python -m venv venv
+venv\Scripts\activate
+
+# 2. Install dependencies
+pip install -r requirements.txt
+
+# 3. Run development server
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+`
+
+## Running Tests
+
+`ash
+# Run all backend tests
+pytest tests/
+
+# Run security and resilience suite
+pytest tests/test_security_resilience.py -v
+`
