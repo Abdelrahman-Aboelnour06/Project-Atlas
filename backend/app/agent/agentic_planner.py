@@ -65,6 +65,67 @@ def _get_valid_element_ids(dom_map: List[Dict[str, Any]]) -> set:
     return ids
 
 
+def _normalize_text(s: str) -> str:
+    """Universal alphanumeric normalization (lowercased, punctuation removed)."""
+    return re.sub(r"[^a-z0-9]", "", s.lower())
+
+
+def find_heuristic_match(user_message: str, concise_dom: List[Dict[str, Any]]) -> tuple[Optional[Dict[str, Any]], float]:
+    """
+    Universal semantic heuristic matcher.
+    Matches user intent against interactive DOM element labels on any website
+    without domain-specific hardcoding.
+
+    Args:
+        user_message: Raw user command or query.
+        concise_dom: List of interactive DOM nodes on current page.
+
+    Returns:
+        tuple[Optional[Dict[str, Any]], float]: Best matching node and match score (0.0 to 1.0).
+    """
+    clean_user = _normalize_text(user_message)
+    # Universal intent & conversational stop words to strip
+    stop_words = {
+        "want", "to", "check", "show", "open", "click", "my", "the", "go",
+        "find", "navigate", "please", "see", "view", "take", "me", "look", "at",
+        "can", "you", "i", "need", "would", "like", "select", "press"
+    }
+    words = [w.lower() for w in re.findall(r"[a-zA-Z0-9]+", user_message) if w.lower() not in stop_words]
+    clean_keyword = "".join(words)
+
+    candidates = []
+    for node in concise_dom:
+        lbl = node.get("label") or ""
+        if not lbl or not isinstance(lbl, str):
+            continue
+        clean_lbl = _normalize_text(lbl)
+        if not clean_lbl:
+            continue
+
+        # 1. Exact match after normalization
+        if clean_user == clean_lbl or (clean_keyword and clean_keyword == clean_lbl):
+            return node, 1.0
+
+        # 2. Substring match
+        if clean_keyword and (clean_keyword in clean_lbl or clean_lbl in clean_keyword):
+            candidates.append((node, 0.85))
+            continue
+
+        # 3. Token-set overlap
+        token_matches = sum(1 for w in words if w in clean_lbl)
+        if words and token_matches == len(words):
+            candidates.append((node, 0.75))
+        elif token_matches > 0:
+            candidates.append((node, 0.45 * (token_matches / len(words))))
+
+    if candidates:
+        candidates.sort(key=lambda x: x[1], reverse=True)
+        if candidates[0][1] >= 0.5:
+            return candidates[0][0], candidates[0][1]
+
+    return None, 0.0
+
+
 SYSTEM_PROMPT = """You are Atlas, an intelligent, empathetic AI accessibility web agent.
 You help elderly, disabled, and everyday users navigate and perform tasks on ANY website naturally using speech or text.
 
@@ -284,6 +345,33 @@ JSON RESPONSE:"""
             return AgenticPlan(
                 type="conversation",
                 reply="No problem, I've cancelled that for you.",
+                steps=[]
+            )
+
+        # Universal heuristic intent matching fallback across all websites
+        matched_node, score = find_heuristic_match(user_message, concise_dom)
+        if matched_node and str(matched_node.get("id")) in valid_ids:
+            lbl = matched_node.get("label") or "the selected item"
+            action = "open" if matched_node.get("category") in {"folder", "file"} or matched_node.get("role") in {"row", "gridcell"} else "click"
+            return AgenticPlan(
+                type="plan",
+                thought=f"Universal heuristic matched '{user_message}' to element '{lbl}' (id={matched_node['id']}, score={score:.2f})",
+                reply=f"I found '{lbl}' on the page. Clicking it for you now!",
+                steps=[PlanStep(
+                    action=action,
+                    element_id=str(matched_node["id"]),
+                    description=f"Click '{lbl}'"
+                )],
+                requires_confirmation=False,
+                confirmation_success_message=f"Done! Clicked {lbl}."
+            )
+
+        # Informative feedback when no DOM element matched and LLM had an auth or connection failure
+        err_str = str(exc)
+        if "401" in err_str or "Unauthorized" in err_str or "LLM_API_KEY" in err_str:
+            return AgenticPlan(
+                type="conversation",
+                reply="The AI service returned an authentication error (401). Please configure your LLM_API_KEY in backend/.env. In the meantime, you can ask me to click or open buttons visible on this page (e.g. 'timetable', 'registration')!",
                 steps=[]
             )
 

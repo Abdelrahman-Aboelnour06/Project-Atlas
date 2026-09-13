@@ -310,3 +310,53 @@ class TestParseSimplifyResponse:
         result = self._parse(raw, sample_dom_map)
         assert result[0]["category"] == "other"
 
+
+# ── Universal Heuristic Matching & Agentic Planner Fallback ──────────────────
+
+class TestAgenticPlannerHeuristicsAndResilience:
+    @pytest.mark.asyncio
+    async def test_timetable_heuristic_resolves_when_llm_fails_401(self):
+        from unittest.mock import patch
+        from app.agent.agentic_planner import plan_agentic_action
+        from app.agent.llm_client import LLMError
+
+        sample_dom = [
+            {"id": "btn-cu-1", "tag": "a", "resolved_label": "Registration"},
+            {"id": "btn-cu-2", "tag": "a", "resolved_label": "Term Classwork"},
+            {"id": "btn-cu-3", "tag": "a", "resolved_label": "Quiz"},
+            {"id": "btn-cu-4", "tag": "a", "resolved_label": "My Time Table"},
+            {"id": "btn-cu-5", "tag": "a", "resolved_label": "Registration Status Report"},
+        ]
+
+        with patch("app.agent.llm_client.call_llm", side_effect=LLMError("LLM HTTP error: 401 - Unauthorized")):
+            # Conversational sentence
+            plan1 = await plan_agentic_action(sample_dom, "want to check my timetable")
+            assert plan1.type == "plan"
+            assert len(plan1.steps) == 1
+            assert plan1.steps[0].action == "click"
+            assert plan1.steps[0].element_id == "btn-cu-4"
+            assert "My Time Table" in plan1.reply
+
+            # Compressed keyword
+            plan2 = await plan_agentic_action(sample_dom, "mytimetable")
+            assert plan2.type == "plan"
+            assert len(plan2.steps) == 1
+            assert plan2.steps[0].element_id == "btn-cu-4"
+
+    @pytest.mark.asyncio
+    async def test_auth_error_notifies_user_when_no_dom_match(self):
+        from unittest.mock import patch
+        from app.agent.agentic_planner import plan_agentic_action
+        from app.agent.llm_client import LLMError
+
+        sample_dom = [
+            {"id": "btn-1", "tag": "button", "resolved_label": "Submit"},
+        ]
+
+        with patch("app.agent.llm_client.call_llm", side_effect=LLMError("LLM HTTP error: 401 - Unauthorized")):
+            plan = await plan_agentic_action(sample_dom, "tell me a random joke")
+            assert plan.type == "conversation"
+            assert len(plan.steps) == 0
+            assert "401" in plan.reply
+            assert "LLM_API_KEY" in plan.reply
+
