@@ -64,7 +64,7 @@ async def seed():
         await db.commit()
 
     await engine.dispose()
-    print("✅ Seed complete")
+    print("[OK] Seed complete")
     print(f"   Tenant:  Atlas Demo Corp (demo@atlas-saas.com)")
     print(f"   API Key: {DEMO_API_KEY}")
     print(f"   Key hash stored in DB: {key_hash[:16]}...")
