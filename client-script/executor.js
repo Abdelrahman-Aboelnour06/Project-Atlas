@@ -294,14 +294,19 @@ const execute = async (actionResponse, options = {}) => {
         return await requestNativeCredentials(el)
     }
 
-    // Voice Guardrail (§6): credential/sensitive fields ALWAYS require physical tap confirmation
-    const requiresPhysicalTap = isCredentialField(el)
-    const shouldConfirm = requiresPhysicalTap || (MUTATE_ACTIONS.has(action) && !options.skipConfirmation)
+    // Destructive action guardrail: high-consequence operations ALWAYS require user confirmation
+    const DESTRUCTIVE_PATTERN = /\b(delete|remove|pay|transfer|purchase|place order|checkout|empty trash|erase)\b/i;
+    const elLabel = (el.innerText || el.getAttribute('aria-label') || el.getAttribute('title') || el.getAttribute('value') || '');
+    const isDestructive = DESTRUCTIVE_PATTERN.test(elLabel);
+
+    // Guardrails: credential/sensitive fields and destructive mutations ALWAYS require confirmation
+    const requiresConfirmation = isCredentialField(el) || isDestructive;
+    const shouldConfirm = requiresConfirmation || (MUTATE_ACTIONS.has(action) && !options.skipConfirmation);
 
     if (shouldConfirm) {
-        const confirmed = await requestConfirmation(el, action, value)
+        const confirmed = await requestConfirmation(el, action, value);
         if (!confirmed) {
-            return { ok: false, message: 'Action cancelled by user.' }
+            return { ok: false, message: 'Action cancelled by user.' };
         }
     }
 

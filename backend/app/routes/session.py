@@ -29,7 +29,7 @@ async def start_session(
         tenant_id = await db_connection.validate_api_key(db, clean_key)
     except Exception as exc:
         logger.exception("Database error during session/start")
-        raise HTTPException(status_code=500, detail=f"Database connection error: {exc}")
+        raise HTTPException(status_code=500, detail="Database connection error")
 
     if not tenant_id:
         raise HTTPException(status_code=401, detail="Invalid API key")

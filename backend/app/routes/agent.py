@@ -59,17 +59,25 @@ def _simplify_error(message: str) -> dict:
     return {"status": "error", "elements": [], "message": message}
 
 
+import urllib.parse
+
 @router.websocket("/agent")
 async def websocket_endpoint(websocket: WebSocket):
     origin = websocket.headers.get("origin")
     if origin is not None:
         origin_lower = origin.lower()
-        is_allowed = (
-            origin_lower.startswith("chrome-extension://")
-            or origin_lower.startswith("moz-extension://")
-            or "localhost" in origin_lower
-            or "127.0.0.1" in origin_lower
-        )
+        is_allowed = False
+        if origin_lower.startswith("chrome-extension://") or origin_lower.startswith("moz-extension://"):
+            is_allowed = True
+        else:
+            try:
+                parsed = urllib.parse.urlparse(origin_lower)
+                hostname = (parsed.hostname or "").lower()
+                if hostname in ("localhost", "127.0.0.1", "::1"):
+                    is_allowed = True
+            except Exception:
+                is_allowed = False
+
         if not is_allowed:
             await websocket.accept()
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Untrusted origin")
@@ -133,11 +141,19 @@ async def websocket_endpoint(websocket: WebSocket):
                 async with db_connection.get_db_context() as session:
                     tid = await db_connection.validate_api_key(session, msg_api_key)
                 if not tid:
+                    auth_failures += 1
+                    if auth_failures >= 3:
+                        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Too many authentication failures.")
+                        return
                     await websocket.send_json({**base_extra, "status": "error", "message": "Invalid or inactive API key."})
                     continue
                 authenticated = True
                 tenant_id = tid
             elif not authenticated:
+                auth_failures += 1
+                if auth_failures >= 3:
+                    await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Too many authentication failures.")
+                    return
                 await websocket.send_json({**base_extra, "status": "error", "message": "Not authenticated. Send auth message first."})
                 continue
 
@@ -148,6 +164,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 first = exc.errors()[0]
                 field = ".".join(str(p) for p in first["loc"])
                 await websocket.send_json({
+                    **base_extra,
                     "status": "error",
                     "message": f"Invalid message ({field}): {first['msg']}",
                 })
@@ -157,13 +174,11 @@ async def websocket_endpoint(websocket: WebSocket):
             if not rate_limiter.check(tenant_id):
                 logger.warning("Rate limit exceeded for tenant_id=%s", tenant_id)
                 if message.type == "simplify":
-                    await websocket.send_json(_simplify_error(
-                        "Rate limit exceeded — please slow down and try again shortly."
-                    ))
+                    err = _simplify_error("Rate limit exceeded — please slow down and try again shortly.")
+                    await websocket.send_json({**base_extra, **err})
                 else:
-                    await websocket.send_json(ActionResponse.error(
-                        "Rate limit exceeded — please slow down and try again shortly."
-                    ).model_dump())
+                    err = ActionResponse.error("Rate limit exceeded — please slow down and try again shortly.").model_dump()
+                    await websocket.send_json({**base_extra, **err})
                 continue
 
             # 6. Shield the DOM map from PII before it reaches the LLM or gets logged
@@ -175,6 +190,7 @@ async def websocket_endpoint(websocket: WebSocket):
             if has_sensitive_leak:
                 logger.error("Security violation: incoming node marked sensitive contains non-null inner_text")
                 await websocket.send_json({
+                    **base_extra,
                     "status": "error",
                     "message": "Security violation: sensitive fields must not contain text values.",
                 })

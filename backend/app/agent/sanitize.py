@@ -129,8 +129,8 @@ def strip_pii_from_dom(dom_map: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     Creates a safe copy of the DOM map, completely masking sensitive user inputs
     before they are sent to the LLM or logged in the database.
     """
-    # Create a deep copy so we don't mutate the original incoming request data
-    safe_dom = copy.deepcopy(dom_map)
+    # Create a shallow copy per node so we don't freeze the event loop with deepcopy
+    safe_dom = [dict(node) for node in dom_map]
     
     # Define triggers that indicate a field is handling sensitive data
     sensitive_types = {'password', 'email', 'tel', 'number', 'credit-card'}
@@ -178,4 +178,4 @@ def trim_log_payload(command: str, action_response: dict) -> dict:
         "resolved_action": action_response.get("action") if isinstance(action_response, dict) else None,
         "target_element": action_response.get("element_id") if isinstance(action_response, dict) else None,
         "status": action_response.get("status") if isinstance(action_response, dict) else None
-    }
+    }

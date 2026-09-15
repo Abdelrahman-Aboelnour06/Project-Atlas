@@ -56,8 +56,26 @@ const generateCorrelationId = () =>
 
 const bgWsUrl = () => `${bgBaseUrl.replace(/^http/, "ws")}/v1/agent`;
 
+function sanitizeBaseUrl(url) {
+  const fallback = "http://localhost:8000";
+  if (!url || typeof url !== "string") return fallback;
+  try {
+    const parsed = new URL(url.trim());
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return fallback;
+    const host = parsed.hostname.toLowerCase();
+    // Block cloud metadata SSRF endpoints
+    if (host === "169.254.169.254" || host.startsWith("169.254.") || host.includes("metadata.google.internal")) {
+      return fallback;
+    }
+    return parsed.origin;
+  } catch (_) {
+    return fallback;
+  }
+}
+
 async function bgStartSession(baseUrl, apiKey) {
-  const res = await fetch(`${baseUrl}/v1/session/start`, {
+  const target = sanitizeBaseUrl(baseUrl);
+  const res = await fetch(`${target}/v1/session/start`, {
     method: "POST",
     headers: { "X-Atlas-Key": apiKey },
   });
@@ -74,6 +92,9 @@ async function bgStartSession(baseUrl, apiKey) {
     );
   }
   const data = await res.json();
+  if (!data || !data.session_id) {
+    throw new Error("Invalid session response from backend");
+  }
   return data.session_id;
 }
 
@@ -98,15 +119,11 @@ function bgOpenSocket() {
         if (cid && bgPendingMap.has(cid)) {
           const handler = bgPendingMap.get(cid);
           bgPendingMap.delete(cid);
+          if (handler.timer) clearTimeout(handler.timer);
           handler.resolve(parsed);
           return;
         }
-        if (bgPendingMap.size > 0) {
-          const firstKey = bgPendingMap.keys().next().value;
-          const handler = bgPendingMap.get(firstKey);
-          bgPendingMap.delete(firstKey);
-          handler.resolve(parsed);
-        }
+        console.warn("Atlas background: Discarding unmatched WS message", parsed);
       } catch (err) {
         console.error("Atlas background: Failed to parse WS message", err);
       }
@@ -119,6 +136,7 @@ function bgOpenSocket() {
 
     bgSocket.onclose = () => {
       for (const handler of bgPendingMap.values()) {
+        if (handler.timer) clearTimeout(handler.timer);
         handler.reject(new Error("Socket closed"));
       }
       bgPendingMap.clear();
@@ -131,24 +149,38 @@ function bgOpenSocket() {
 function bgAuthenticate() {
   return new Promise((resolve, reject) => {
     const correlationId = generateCorrelationId();
+    const timer = setTimeout(() => {
+      if (bgPendingMap.has(correlationId)) {
+        bgPendingMap.delete(correlationId);
+        reject(new Error("Authentication handshake timed out"));
+      }
+    }, 15000);
+
     bgPendingMap.set(correlationId, {
+      timer,
       resolve: (data) => {
         if (data.status === "ok") {
           bgAuthenticated = true;
-          resolve();
+          resolve(data);
         } else {
-          const msg = data.message || "Authentication failed";
-          reject(new Error(msg));
+          bgAuthenticated = false;
+          reject(new Error(data.message || "Authentication failed"));
         }
       },
       reject,
     });
-    bgSocket.send(JSON.stringify({ type: "auth", api_key: bgApiKey, correlation_id: correlationId }));
+    bgSocket.send(
+      JSON.stringify({
+        type: "auth",
+        api_key: bgApiKey,
+        correlation_id: correlationId,
+      }),
+    );
   });
 }
 
 async function bgConnect({ baseUrl, apiKey }) {
-  if (baseUrl) bgBaseUrl = baseUrl;
+  if (baseUrl) bgBaseUrl = sanitizeBaseUrl(baseUrl);
   if (apiKey) bgApiKey = apiKey;
   if (!bgApiKey) throw new Error("AtlasSocket.connect requires an apiKey");
 
@@ -161,6 +193,13 @@ async function bgConnect({ baseUrl, apiKey }) {
 async function bgEnsureConnected() {
   if (bgSocket && bgSocket.readyState === WebSocket.OPEN && bgAuthenticated) {
     return;
+  }
+  if (!bgApiKey) {
+    const stored = await new Promise((r) =>
+      chrome.storage.local.get(["atlasApiKey", "atlasBaseUrl"], r)
+    );
+    if (stored?.atlasApiKey) bgApiKey = stored.atlasApiKey;
+    if (stored?.atlasBaseUrl) bgBaseUrl = sanitizeBaseUrl(stored.atlasBaseUrl);
   }
   if (bgApiKey) {
     await bgConnect({ baseUrl: bgBaseUrl, apiKey: bgApiKey });
@@ -182,7 +221,14 @@ async function bgSendMessage(msg) {
 
   return new Promise((resolve, reject) => {
     const correlationId = msg.correlation_id || generateCorrelationId();
-    bgPendingMap.set(correlationId, { resolve, reject });
+    const timer = setTimeout(() => {
+      if (bgPendingMap.has(correlationId)) {
+        bgPendingMap.delete(correlationId);
+        reject(new Error("Request timed out after 30 seconds"));
+      }
+    }, 30000);
+
+    bgPendingMap.set(correlationId, { resolve, reject, timer });
     bgSocket.send(
       JSON.stringify({
         session_id: bgSessionId,
@@ -214,7 +260,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === "ATLAS_CHAT") {
-    const chatBase = message.baseUrl || "http://localhost:8000";
+    const chatBase = sanitizeBaseUrl(message.baseUrl || "http://localhost:8000");
     fetch(`${chatBase}/v1/chat`, {
       method: "POST",
       headers: {
@@ -235,7 +281,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === "ATLAS_SUMMARY") {
-    const summaryBase = message.baseUrl || "http://localhost:8000";
+    const summaryBase = sanitizeBaseUrl(message.baseUrl || "http://localhost:8000");
     fetch(`${summaryBase}/v1/summary`, {
       method: "POST",
       headers: {
