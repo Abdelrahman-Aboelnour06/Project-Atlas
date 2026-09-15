@@ -3,116 +3,152 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CareLink Pharmacy — Your Health, Simplified</title>
+    <title>CareLink Pharmacy &amp; Telehealth — Chronic Care &amp; Assistive Portal</title>
     <style>
-      *,
-      *::before,
-      *::after {
+      *, *::before, *::after {
         box-sizing: border-box;
         margin: 0;
         padding: 0;
       }
 
       :root {
-        --blue: #1a56a0;
-        --blue-lt: #e8f0fb;
-        --green: #1a7a4a;
-        --red: #c0392b;
-        --gray-1: #f7f8fa;
-        --gray-2: #e9ecef;
-        --gray-3: #adb5bd;
-        --gray-4: #495057;
-        --text: #1c1e21;
-        --white: #ffffff;
+        --primary: #1a56a0;
+        --primary-dark: #0e3d7a;
+        --primary-lt: #e8f0fb;
+        --secondary: #107040;
+        --secondary-dark: #0a4f2b;
+        --danger: #b91c1c;
+        --bg-page: #f8fafc;
+        --card-bg: #ffffff;
+        --border-color: #e2e8f0;
+        --border-dark: #cbd5e1;
+        --text-main: #0f172a;
+        --text-muted: #475569;
+        --text-sub: #64748b;
+        --radius: 10px;
+        --shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
+        --shadow-md: 0 4px 14px rgba(0,0,0,0.08);
       }
 
       body {
-        font-family: "Segoe UI", Arial, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
         font-size: 15px;
-        color: var(--text);
-        background: var(--gray-1);
+        color: var(--text-main);
+        background: var(--bg-page);
         line-height: 1.5;
       }
 
-      /* ── Top bar ── */
+      /* Top emergency & accreditation bar */
       .topbar {
-        background: var(--blue);
-        color: #fff;
+        background: var(--primary-dark);
+        color: #f1f5f9;
         font-size: 13px;
-        text-align: center;
-        padding: 6px;
-        letter-spacing: 0.01em;
+        padding: 7px 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .topbar-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .topbar-links a {
+        color: #93c5fd;
+        text-decoration: none;
+        margin-left: 14px;
+        font-weight: 500;
+      }
+      .topbar-links a:hover {
+        text-decoration: underline;
       }
 
-      /* ── Header ── */
+      /* Header */
       header {
-        background: var(--white);
-        border-bottom: 2px solid var(--blue);
-        padding: 0 24px;
+        background: var(--card-bg);
+        border-bottom: 2px solid var(--primary);
+        padding: 12px 24px;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 16px;
-        min-height: 68px;
+        gap: 20px;
         position: sticky;
         top: 0;
         z-index: 100;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+        box-shadow: var(--shadow-sm);
       }
 
-      .logo {
+      .logo-group {
         display: flex;
         align-items: center;
-        gap: 10px;
-        font-size: 22px;
-        font-weight: 800;
-        color: var(--blue);
-        white-space: nowrap;
+        gap: 12px;
         text-decoration: none;
       }
-      .logo-cross {
-        width: 32px;
-        height: 32px;
-        background: var(--blue);
-        border-radius: 6px;
+      .logo-badge {
+        width: 38px;
+        height: 38px;
+        background: linear-gradient(135deg, var(--primary) 0%, #2563eb 100%);
+        color: white;
+        border-radius: 8px;
         display: flex;
         align-items: center;
         justify-content: center;
-        color: white;
-        font-size: 20px;
+        font-size: 22px;
         font-weight: 900;
+        box-shadow: 0 2px 6px rgba(37,99,235,0.3);
+      }
+      .logo-text h1 {
+        font-size: 20px;
+        font-weight: 800;
+        color: var(--primary-dark);
+        letter-spacing: -0.02em;
+        line-height: 1.1;
+      }
+      .logo-text span {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--secondary);
       }
 
       .header-search {
         flex: 1;
-        max-width: 500px;
+        max-width: 540px;
         display: flex;
-        gap: 0;
+        position: relative;
       }
       .header-search input {
-        flex: 1;
-        border: 2px solid var(--blue);
+        width: 100%;
+        border: 2px solid var(--primary);
         border-right: none;
         border-radius: 8px 0 0 8px;
-        padding: 10px 14px;
+        padding: 11px 16px;
         font-size: 15px;
         outline: none;
+        background: #ffffff;
       }
       .header-search input:focus {
-        border-color: #0e3d7a;
+        box-shadow: 0 0 0 3px rgba(26,86,160,0.15);
       }
       .header-search button {
-        background: var(--blue);
+        background: var(--primary);
         color: white;
         border: none;
         border-radius: 0 8px 8px 0;
-        padding: 10px 18px;
+        padding: 0 22px;
         font-size: 15px;
-        cursor: pointer;
         font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        transition: background 0.15s;
       }
       .header-search button:hover {
-        background: #0e3d7a;
+        background: var(--primary-dark);
       }
 
       .header-actions {
@@ -120,199 +156,280 @@
         align-items: center;
         gap: 12px;
       }
-      .header-actions a {
-        color: var(--blue);
+      .btn-nav-action {
+        color: var(--primary);
         text-decoration: none;
         font-size: 13px;
         font-weight: 600;
-        padding: 8px 12px;
+        padding: 8px 14px;
         border-radius: 6px;
-        white-space: nowrap;
-      }
-      .header-actions a:hover {
-        background: var(--blue-lt);
-      }
-      .cart-btn {
-        background: var(--green);
-        color: white !important;
-        border-radius: 8px !important;
-        display: flex;
+        border: 1px solid var(--border-color);
+        transition: all 0.15s;
+        display: inline-flex;
         align-items: center;
         gap: 6px;
       }
+      .btn-nav-action:hover {
+        background: var(--primary-lt);
+        border-color: var(--primary);
+      }
+      .cart-btn {
+        background: var(--secondary);
+        color: white !important;
+        border: none !important;
+        font-weight: 700 !important;
+        padding: 9px 18px !important;
+        box-shadow: 0 2px 6px rgba(16,112,64,0.25);
+      }
       .cart-btn:hover {
-        background: #155c38 !important;
+        background: var(--secondary-dark) !important;
       }
 
-      /* ── Nav ── */
+      /* Navigation bar */
       nav {
-        background: var(--blue);
+        background: var(--primary);
         padding: 0 24px;
         display: flex;
-        gap: 0;
+        gap: 2px;
+        overflow-x: auto;
       }
       nav a {
-        color: rgba(255, 255, 255, 0.88);
+        color: rgba(255, 255, 255, 0.9);
         text-decoration: none;
         padding: 12px 16px;
         font-size: 13px;
         font-weight: 600;
-        display: block;
+        white-space: nowrap;
         transition: background 0.15s;
       }
-      nav a:hover,
-      nav a.active {
-        background: rgba(255, 255, 255, 0.15);
-        color: white;
+      nav a:hover, nav a.active {
+        background: rgba(255, 255, 255, 0.18);
+        color: #ffffff;
       }
 
-      /* ── Alert banner ── */
-      .alert-banner {
-        background: #fff3cd;
-        border-left: 4px solid #f0ad4e;
-        padding: 10px 24px;
+      /* Warning Notice */
+      .notice-strip {
+        background: #fffbeb;
+        border-bottom: 1px solid #fef3c7;
+        padding: 9px 24px;
         font-size: 13px;
+        color: #92400e;
         display: flex;
         align-items: center;
-        gap: 10px;
+        justify-content: space-between;
       }
 
-      /* ── Layout ── */
+      /* Hero Telehealth Banner */
+      .telehealth-hero {
+        background: linear-gradient(135deg, #1e3a8a 0%, #1a56a0 100%);
+        color: white;
+        border-radius: 12px;
+        padding: 24px;
+        margin-bottom: 24px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 20px;
+        box-shadow: var(--shadow-sm);
+      }
+      .telehealth-content h2 {
+        font-size: 20px;
+        font-weight: 800;
+        margin-bottom: 6px;
+      }
+      .telehealth-content p {
+        font-size: 14px;
+        color: #bfdbfe;
+        max-width: 620px;
+      }
+      .btn-telehealth {
+        background: #10b981;
+        color: #064e3b;
+        font-weight: 700;
+        border: none;
+        border-radius: 8px;
+        padding: 12px 24px;
+        font-size: 14px;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: background 0.15s;
+      }
+      .btn-telehealth:hover {
+        background: #34d399;
+      }
+
+      /* Main Layout Grid */
       .page-wrap {
-        max-width: 1100px;
+        max-width: 1280px;
         margin: 0 auto;
         padding: 24px 20px;
         display: grid;
-        grid-template-columns: 220px 1fr;
+        grid-template-columns: 260px 1fr;
         gap: 24px;
       }
 
-      /* ── Sidebar filters ── */
+      /* Sidebar Filters */
       .filters {
         display: flex;
         flex-direction: column;
         gap: 16px;
       }
       .filter-card {
-        background: var(--white);
-        border: 1px solid var(--gray-2);
-        border-radius: 10px;
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius);
         padding: 16px;
+        box-shadow: var(--shadow-sm);
       }
       .filter-card h3 {
         font-size: 13px;
         text-transform: uppercase;
         letter-spacing: 0.06em;
-        color: var(--gray-4);
+        color: var(--text-sub);
         margin-bottom: 12px;
         font-weight: 700;
       }
       .filter-option {
         display: flex;
         align-items: center;
-        gap: 8px;
-        padding: 5px 0;
+        justify-content: space-between;
+        padding: 6px 0;
         font-size: 14px;
         cursor: pointer;
+        color: var(--text-muted);
+      }
+      .filter-option:hover {
+        color: var(--text-main);
       }
       .filter-option input[type="checkbox"] {
+        margin-right: 8px;
         cursor: pointer;
       }
-      .filter-apply {
+      .badge-count {
+        background: #f1f5f9;
+        color: #64748b;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 2px 6px;
+        border-radius: 4px;
+      }
+      .btn-apply-filters {
         width: 100%;
-        background: var(--blue);
+        background: var(--primary);
         color: white;
         border: none;
         border-radius: 7px;
-        padding: 9px;
+        padding: 10px;
         font-size: 14px;
         font-weight: 600;
         cursor: pointer;
-        margin-top: 10px;
+        margin-top: 12px;
+        transition: background 0.15s;
       }
-      .filter-apply:hover {
-        background: #0e3d7a;
-      }
-      .price-range {
-        display: flex;
-        gap: 8px;
-        align-items: center;
-        font-size: 13px;
-      }
-      .price-range input {
-        width: 70px;
-        border: 1px solid var(--gray-2);
-        border-radius: 5px;
-        padding: 5px 8px;
-        font-size: 13px;
+      .btn-apply-filters:hover {
+        background: var(--primary-dark);
       }
 
-      /* ── Main content ── */
+      /* Main Column */
       .main-col {
         display: flex;
         flex-direction: column;
         gap: 20px;
       }
-
       .section-header {
         display: flex;
         align-items: center;
         justify-content: space-between;
         flex-wrap: wrap;
-        gap: 10px;
+        gap: 12px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--border-color);
       }
       .section-header h2 {
         font-size: 20px;
-        font-weight: 700;
-        color: var(--text);
+        font-weight: 800;
+        color: var(--text-main);
       }
-      .sort-row {
+      .sort-controls {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 10px;
         font-size: 13px;
+        color: var(--text-sub);
       }
-      .sort-row label {
-        color: var(--gray-4);
-      }
-      .sort-row select {
-        border: 1px solid var(--gray-2);
+      .sort-controls select {
+        border: 1px solid var(--border-dark);
         border-radius: 6px;
-        padding: 6px 10px;
+        padding: 6px 12px;
         font-size: 13px;
         background: white;
         cursor: pointer;
+        outline: none;
       }
 
-      /* ── Product grid ── */
+      /* Product Grid */
       .product-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-        gap: 16px;
+        grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+        gap: 18px;
       }
-
       .product-card {
-        background: var(--white);
-        border: 1px solid var(--gray-2);
-        border-radius: 12px;
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius);
         overflow: hidden;
         display: flex;
         flex-direction: column;
-        transition: box-shadow 0.2s;
+        transition: transform 0.15s, box-shadow 0.15s;
+        box-shadow: var(--shadow-sm);
       }
       .product-card:hover {
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-md);
+      }
+      .product-badge-bar {
+        padding: 8px 12px 0 12px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .badge-rx {
+        font-size: 10px;
+        font-weight: 700;
+        background: #fef3c7;
+        color: #92400e;
+        border: 1px solid #fde68a;
+        padding: 2px 6px;
+        border-radius: 4px;
+        letter-spacing: 0.04em;
+      }
+      .badge-otc {
+        font-size: 10px;
+        font-weight: 700;
+        background: #ecfdf5;
+        color: #065f46;
+        border: 1px solid #a7f3d0;
+        padding: 2px 6px;
+        border-radius: 4px;
+      }
+      .badge-device {
+        font-size: 10px;
+        font-weight: 700;
+        background: #eff6ff;
+        color: #1e40af;
+        border: 1px solid #bfdbfe;
+        padding: 2px 6px;
+        border-radius: 4px;
       }
 
-      .product-img {
-        width: 100%;
+      .product-img-wrap {
         height: 120px;
-        background: linear-gradient(135deg, #e8f0fb 0%, #d0e4f7 100%);
+        background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 42px;
-        border-bottom: 1px solid var(--gray-2);
+        font-size: 46px;
+        user-select: none;
       }
 
       .product-body {
@@ -320,791 +437,844 @@
         flex: 1;
         display: flex;
         flex-direction: column;
-        gap: 8px;
+        gap: 6px;
       }
       .product-name {
         font-weight: 700;
         font-size: 15px;
+        color: var(--text-main);
         line-height: 1.3;
       }
       .product-desc {
-        font-size: 13px;
-        color: var(--gray-4);
+        font-size: 12px;
+        color: var(--text-muted);
         line-height: 1.4;
+        min-height: 34px;
       }
-      .product-meta {
+      .product-pricing {
         display: flex;
-        align-items: center;
-        justify-content: space-between;
+        align-items: baseline;
+        gap: 8px;
         margin-top: auto;
         padding-top: 8px;
       }
-      .product-price {
+      .price-current {
         font-size: 18px;
         font-weight: 800;
-        color: var(--red);
+        color: var(--danger);
       }
-      .product-price-old {
+      .price-original {
         font-size: 12px;
-        color: var(--gray-3);
+        color: var(--text-sub);
         text-decoration: line-through;
       }
-      .rx-badge {
-        font-size: 10px;
-        font-weight: 700;
-        background: #fff3cd;
-        color: #856404;
-        border: 1px solid #f0ad4e;
-        border-radius: 4px;
-        padding: 2px 6px;
-        letter-spacing: 0.04em;
-      }
-      .otc-badge {
-        font-size: 10px;
-        font-weight: 700;
-        background: #d1fae5;
-        color: #065f46;
-        border: 1px solid #6ee7b7;
-        border-radius: 4px;
-        padding: 2px 6px;
-      }
 
-      .add-btn {
+      .btn-add-cart {
         width: 100%;
-        background: var(--blue);
+        background: var(--primary);
         color: white;
         border: none;
-        border-radius: 8px;
+        border-radius: 7px;
         padding: 10px;
         font-size: 14px;
-        font-weight: 600;
-        cursor: pointer;
-        margin-top: 4px;
-        transition: background 0.15s;
-      }
-      .add-btn:hover {
-        background: #0e3d7a;
-      }
-      .add-btn.rx-btn {
-        background: #6c757d;
-      }
-      .add-btn.rx-btn:hover {
-        background: #5a6268;
-      }
-
-      /* ── Prescription section ── */
-      .rx-section {
-        background: var(--white);
-        border: 1px solid var(--gray-2);
-        border-radius: 12px;
-        padding: 20px;
-      }
-      .rx-section h2 {
-        font-size: 18px;
         font-weight: 700;
-        margin-bottom: 6px;
+        cursor: pointer;
+        margin-top: 6px;
+        transition: background 0.15s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
       }
-      .rx-section p {
-        font-size: 14px;
-        color: var(--gray-4);
-        margin-bottom: 16px;
+      .btn-add-cart:hover {
+        background: var(--primary-dark);
+      }
+      .btn-add-cart.rx {
+        background: #475569;
+      }
+      .btn-add-cart.rx:hover {
+        background: #334155;
       }
 
-      .rx-form {
-        display: flex;
-        flex-direction: column;
+      /* Prescription Refill Section */
+      .rx-refill-panel {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius);
+        padding: 24px;
+        margin-top: 16px;
+        box-shadow: var(--shadow-sm);
+      }
+      .rx-refill-panel h2 {
+        font-size: 18px;
+        font-weight: 800;
+        color: var(--primary-dark);
+        margin-bottom: 4px;
+      }
+      .rx-refill-panel p {
+        font-size: 13px;
+        color: var(--text-muted);
+        margin-bottom: 18px;
+      }
+      .rx-form-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
         gap: 14px;
       }
-      .form-row {
+      .form-group {
         display: flex;
         flex-direction: column;
         gap: 4px;
       }
-      .form-row label {
+      .form-group.full-width {
+        grid-column: span 2;
+      }
+      .form-group label {
         font-size: 13px;
         font-weight: 600;
-        color: var(--gray-4);
+        color: var(--text-main);
       }
-      .form-row input,
-      .form-row select,
-      .form-row textarea {
-        border: 1.5px solid var(--gray-2);
-        border-radius: 8px;
-        padding: 10px 12px;
+      .form-group input, .form-group select, .form-group textarea {
+        border: 1.5px solid var(--border-dark);
+        border-radius: 7px;
+        padding: 9px 12px;
         font-size: 14px;
         outline: none;
-        transition: border-color 0.15s;
         font-family: inherit;
       }
-      .form-row input:focus,
-      .form-row select:focus,
-      .form-row textarea:focus {
-        border-color: var(--blue);
+      .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px rgba(26,86,160,0.12);
       }
-      .form-row textarea {
-        min-height: 80px;
-        resize: vertical;
-      }
-      .form-row-split {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 12px;
-      }
-
-      .submit-rx {
-        background: var(--green);
+      .btn-submit-rx {
+        background: var(--secondary);
         color: white;
         border: none;
         border-radius: 8px;
-        padding: 13px;
+        padding: 12px 24px;
         font-size: 15px;
         font-weight: 700;
         cursor: pointer;
         transition: background 0.15s;
+        margin-top: 6px;
       }
-      .submit-rx:hover {
-        background: #155c38;
+      .btn-submit-rx:hover {
+        background: var(--secondary-dark);
       }
 
-      /* ── Checkout bar ── */
-      .checkout-bar {
+      /* Sticky Checkout Bar */
+      .sticky-checkout {
         position: sticky;
         bottom: 0;
-        background: white;
-        border-top: 2px solid var(--blue);
-        padding: 14px 24px;
+        background: #ffffff;
+        border-top: 2px solid var(--primary);
+        padding: 14px 28px;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 16px;
-        box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.08);
+        gap: 20px;
+        box-shadow: 0 -4px 16px rgba(0,0,0,0.1);
         z-index: 99;
       }
-      .cart-summary {
+      .cart-details {
         font-size: 15px;
+        color: var(--text-main);
       }
-      .cart-summary strong {
-        color: var(--blue);
+      .cart-details strong {
+        color: var(--primary-dark);
       }
-      .checkout-actions {
+      .checkout-buttons {
         display: flex;
-        gap: 10px;
+        align-items: center;
+        gap: 12px;
       }
-      .view-cart-btn {
-        background: white;
-        color: var(--blue);
-        border: 2px solid var(--blue);
+      .btn-view-cart {
+        background: transparent;
+        color: var(--primary);
+        border: 2px solid var(--primary);
         border-radius: 8px;
         padding: 10px 20px;
-        font-size: 15px;
-        font-weight: 600;
-        cursor: pointer;
-      }
-      .proceed-btn {
-        background: var(--green);
-        color: white;
-        border: none;
-        border-radius: 8px;
-        padding: 10px 28px;
-        font-size: 15px;
+        font-size: 14px;
         font-weight: 700;
         cursor: pointer;
       }
-      .proceed-btn:hover {
-        background: #155c38;
-      }
-
-      /* ── Help widget ── */
-      .help-bubble {
-        position: fixed;
-        bottom: 80px;
-        left: 20px;
-        background: var(--blue);
+      .btn-checkout-now {
+        background: var(--secondary);
         color: white;
         border: none;
-        border-radius: 50px;
-        padding: 12px 20px;
-        font-size: 14px;
-        font-weight: 600;
+        border-radius: 8px;
+        padding: 11px 30px;
+        font-size: 15px;
+        font-weight: 800;
         cursor: pointer;
-        box-shadow: 0 4px 16px rgba(26, 86, 160, 0.4);
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        z-index: 98;
+        box-shadow: 0 2px 6px rgba(16,112,64,0.3);
       }
-      .help-bubble:hover {
-        background: #0e3d7a;
+      .btn-checkout-now:hover {
+        background: var(--secondary-dark);
       }
 
-      footer {
-        text-align: center;
-        padding: 24px 20px;
-        font-size: 12px;
-        color: var(--gray-3);
-        border-top: 1px solid var(--gray-2);
-        margin-top: 32px;
-      }
-      footer a {
-        color: var(--gray-3);
-        text-decoration: underline;
-      }
-
-      /* ── Confirmation modal ── */
-      .modal-overlay {
+      /* Modal Dialog */
+      .modal-backdrop {
         display: none;
         position: fixed;
         inset: 0;
-        background: rgba(0, 0, 0, 0.5);
+        background: rgba(15, 23, 42, 0.6);
         z-index: 200;
         align-items: center;
         justify-content: center;
       }
-      .modal-overlay.open {
+      .modal-backdrop.open {
         display: flex;
       }
-      .modal {
+      .modal-box {
         background: white;
-        border-radius: 16px;
-        padding: 32px;
-        max-width: 440px;
+        border-radius: 14px;
+        padding: 30px;
+        max-width: 480px;
         width: 90%;
         text-align: center;
-        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+        box-shadow: 0 20px 50px rgba(0,0,0,0.25);
       }
-      .modal h2 {
-        color: var(--green);
+      .modal-icon {
+        font-size: 48px;
+        margin-bottom: 12px;
+      }
+      .modal-box h3 {
+        font-size: 20px;
+        color: var(--primary-dark);
         margin-bottom: 8px;
       }
-      .modal p {
-        color: var(--gray-4);
+      .modal-box p {
         font-size: 14px;
+        color: var(--text-muted);
         margin-bottom: 20px;
       }
-      .modal button {
-        background: var(--blue);
+      .btn-modal-close {
+        background: var(--primary);
         color: white;
         border: none;
-        border-radius: 8px;
-        padding: 12px 32px;
-        font-size: 15px;
-        font-weight: 600;
+        border-radius: 7px;
+        padding: 10px 28px;
+        font-size: 14px;
+        font-weight: 700;
         cursor: pointer;
+      }
+
+      /* Footer */
+      footer {
+        background: #0f172a;
+        color: #94a3b8;
+        padding: 32px 24px;
+        font-size: 13px;
+        margin-top: 40px;
+        border-top: 1px solid #1e293b;
+      }
+      .footer-inner {
+        max-width: 1280px;
+        margin: 0 auto;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 16px;
+      }
+      .footer-inner a {
+        color: #cbd5e1;
+        text-decoration: none;
+        margin-left: 16px;
       }
     </style>
   </head>
   <body>
+    <!-- Top Emergency & Accreditation Bar -->
     <div class="topbar">
-      🔒 Verified Canadian Pharmacy — Licensed &amp; Accredited &nbsp;|&nbsp;
-      Free shipping on orders over $40 &nbsp;|&nbsp; 24/7 Pharmacist Chat
+      <div class="topbar-badge">
+        <span>🔒 <strong>CareLink National Healthcare Portal</strong> &mdash; Ministry of Health Accredited Chronic Care Provider</span>
+      </div>
+      <div class="topbar-links">
+        <span>24/7 Pharmacist Hotline: <strong>19820</strong></span>
+        <a href="#telehealth-section">Telehealth Clinic</a>
+        <a href="#rx-refill">Prescription Refills</a>
+      </div>
     </div>
 
+    <!-- Header -->
     <header>
-      <a href="#" class="logo">
-        <div class="logo-cross">+</div>
-        CareLink Pharmacy
+      <a href="#" class="logo-group">
+        <div class="logo-badge">+</div>
+        <div class="logo-text">
+          <h1>CareLink Pharmacy</h1>
+          <span>Healthcare &amp; Chronic Care Portal</span>
+        </div>
       </a>
 
       <div class="header-search">
         <input
           id="site-search"
           type="text"
-          placeholder="Search medications, vitamins, health products..."
-          aria-label="Search medications and products"
+          placeholder="Search medications, diabetes supplies, monitors..."
+          aria-label="Search medications, diabetes supplies, monitors"
         />
-        <button aria-label="Submit search">Search</button>
+        <button id="search-btn" aria-label="Submit search">
+          <span>Search</span>
+        </button>
       </div>
 
       <div class="header-actions">
-        <a href="#rx-section" aria-label="Upload your prescription"
-          >Upload Rx</a
-        >
-        <a href="#" aria-label="Sign in to your account">Sign In</a>
-        <a
-          href="#"
-          class="cart-btn"
-          id="cart-link"
-          aria-label="View cart, 0 items"
-          >🛒 Cart (0)</a
-        >
+        <a href="#rx-refill" class="btn-nav-action" aria-label="Upload Prescription">📋 Upload Rx</a>
+        <a href="#telehealth-section" class="btn-nav-action" aria-label="Doctor Consultation">👨‍⚕️ Telehealth</a>
+        <a href="#" class="btn-nav-action cart-btn" id="cart-link" aria-label="View Shopping Cart, 0 items">
+          🛒 Cart (<span id="cart-count-badge">0</span>)
+        </a>
       </div>
     </header>
 
+    <!-- Navigation Bar -->
     <nav>
-      <a href="#" class="active">All Products</a>
-      <a href="#rx-section">Prescriptions</a>
-      <a href="#">Vitamins &amp; Supplements</a>
-      <a href="#">Diabetes Care</a>
-      <a href="#">Heart Health</a>
-      <a href="#">Pain Relief</a>
-      <a href="#">Contact a Pharmacist</a>
+      <a href="#" class="active" data-cat="all">All Products</a>
+      <a href="#" data-cat="diabetes">Diabetes &amp; Blood Sugar</a>
+      <a href="#" data-cat="heart">Heart Health &amp; BP</a>
+      <a href="#" data-cat="mobility">Mobility &amp; Arthritis</a>
+      <a href="#" data-cat="devices">Home Medical Devices</a>
+      <a href="#" data-cat="otc">Over-the-Counter</a>
+      <a href="#rx-refill">Prescription Refill</a>
     </nav>
 
-    <div class="alert-banner">
-      ⚠️ <strong>Medication reminder:</strong> Always consult your doctor before
-      changing dosages. Never share prescription medications.
+    <!-- Safety Banner -->
+    <div class="notice-strip">
+      <span>⚠️ <strong>Medical Advisory:</strong> Seniors 65+ qualify for automated recurring chronic delivery and free in-home vitals checks.</span>
+      <span>Accredited ISO-9001 Pharmacy &bull; Egyptian Drug Authority</span>
     </div>
 
+    <!-- Main Page Layout -->
     <div class="page-wrap">
-      <!-- Sidebar filters -->
+      <!-- Sidebar Filters -->
       <aside class="filters">
         <div class="filter-card">
-          <h3>Category</h3>
-          <label class="filter-option"
-            ><input type="checkbox" checked /> Over-the-counter</label
-          >
-          <label class="filter-option"
-            ><input type="checkbox" /> Prescription (Rx)</label
-          >
-          <label class="filter-option"
-            ><input type="checkbox" /> Vitamins</label
-          >
-          <label class="filter-option"><input type="checkbox" /> Devices</label>
-          <label class="filter-option"
-            ><input type="checkbox" /> Diabetic supplies</label
-          >
+          <h3>Healthcare Category</h3>
+          <label class="filter-option">
+            <span><input type="checkbox" checked value="all" id="chk-all" /> All Categories</span>
+            <span class="badge-count" id="total-count-badge">12</span>
+          </label>
+          <label class="filter-option">
+            <span><input type="checkbox" value="diabetes" class="cat-filter" /> Diabetes Care</span>
+            <span class="badge-count">4</span>
+          </label>
+          <label class="filter-option">
+            <span><input type="checkbox" value="heart" class="cat-filter" /> Heart &amp; BP</span>
+            <span class="badge-count">3</span>
+          </label>
+          <label class="filter-option">
+            <span><input type="checkbox" value="mobility" class="cat-filter" /> Arthritis &amp; Mobility</span>
+            <span class="badge-count">2</span>
+          </label>
+          <label class="filter-option">
+            <span><input type="checkbox" value="devices" class="cat-filter" /> Medical Devices</span>
+            <span class="badge-count">3</span>
+          </label>
         </div>
 
         <div class="filter-card">
-          <h3>Price Range</h3>
-          <div class="price-range">
-            <input
-              type="number"
-              placeholder="Min"
-              aria-label="Minimum price"
-              min="0"
-            />
-            <span>–</span>
-            <input
-              type="number"
-              placeholder="Max"
-              aria-label="Maximum price"
-              min="0"
-            />
-          </div>
-          <button class="filter-apply" aria-label="Apply price filter">
-            Apply Filter
-          </button>
+          <h3>Prescription Type</h3>
+          <label class="filter-option">
+            <span><input type="checkbox" checked id="rx-filter-rx" /> Prescription (Rx)</span>
+          </label>
+          <label class="filter-option">
+            <span><input type="checkbox" checked id="rx-filter-otc" /> Over-The-Counter</span>
+          </label>
         </div>
 
-        <div class="filter-card">
-          <h3>Brand</h3>
-          <label class="filter-option"><input type="checkbox" /> Generic</label>
-          <label class="filter-option"><input type="checkbox" /> Tylenol</label>
-          <label class="filter-option"><input type="checkbox" /> Advil</label>
-          <label class="filter-option"><input type="checkbox" /> Lipitor</label>
-          <label class="filter-option"
-            ><input type="checkbox" /> Metformin</label
-          >
-        </div>
-
-        <div class="filter-card">
-          <h3>Need help?</h3>
-          <p style="font-size: 13px; color: #495057; margin-bottom: 10px">
-            Our pharmacists are standing by to answer questions.
+        <div class="filter-card" style="background: #f0fdf4; border-color: #bbf7d0;">
+          <h3 style="color: #166534;">Senior Caregiver Hotline</h3>
+          <p style="font-size: 13px; color: #15803d; margin-bottom: 12px;">
+            Need help ordering for an elderly relative? Speak directly with our clinical pharmacist.
           </p>
-          <button
-            class="filter-apply"
-            style="background: #1a7a4a"
-            aria-label="Chat with a pharmacist now"
-          >
-            💬 Chat Now
+          <button class="btn-apply-filters" style="background: #15803d;" aria-label="Chat with a clinical pharmacist now">
+            💬 Speak to Pharmacist
           </button>
         </div>
       </aside>
 
-      <!-- Main content -->
+      <!-- Main Column Content -->
       <main class="main-col">
+        <!-- Telehealth Clinic Banner -->
+        <section class="telehealth-hero" id="telehealth-section">
+          <div class="telehealth-content">
+            <h2>Need a Doctor's Prescription or Consultation?</h2>
+            <p>
+              Connect with <strong>Dr. Tarek El-Kabbani</strong> (Senior Consultant Diabetologist &amp; Endocrinologist, Cairo University Hospitals) for an immediate video telehealth review.
+            </p>
+          </div>
+          <button class="btn-telehealth" id="btn-telehealth-book" aria-label="Book Video Telehealth Consultation">
+            Book Video Visit (150 EGP)
+          </button>
+        </section>
+
+        <!-- Product Section Header -->
         <div class="section-header">
-          <h2>Common Medications</h2>
-          <div class="sort-row">
+          <div>
+            <h2>Essential Medications &amp; Assistive Devices</h2>
+            <span style="font-size: 13px; color: #64748b;" id="products-status-text">Showing 12 clinically verified health products</span>
+          </div>
+          <div class="sort-controls">
             <label for="sort-select">Sort by:</label>
-            <select id="sort-select" aria-label="Sort products">
-              <option>Most Popular</option>
-              <option>Price: Low to High</option>
-              <option>Price: High to Low</option>
-              <option>Newest</option>
+            <select id="sort-select" aria-label="Sort health products">
+              <option value="popular">Most Frequently Prescribed</option>
+              <option value="price-asc">Price: Low to High</option>
+              <option value="price-desc">Price: High to Low</option>
+              <option value="name-asc">Name: A to Z</option>
             </select>
           </div>
         </div>
 
-        <div class="product-grid">
-          <div class="product-card">
-            <div class="product-img" role="img" aria-label="Metformin tablets">
-              💊
+        <!-- Product Grid -->
+        <div class="product-grid" id="products-grid">
+          <!-- 1. Metformin 500mg -->
+          <div class="product-card" data-category="diabetes" data-rx="true" data-name="Metformin HCl 500mg" data-price="12.99">
+            <div class="product-badge-bar">
+              <span class="badge-rx">Rx Required</span>
+              <span style="font-size: 11px; color: #64748b;">60 Tablets</span>
             </div>
+            <div class="product-img-wrap" role="img" aria-label="Metformin 500mg tablets">💊</div>
             <div class="product-body">
-              <div class="product-name">Metformin 500mg</div>
-              <div class="product-desc">
-                Type 2 diabetes management. Take with meals to reduce stomach
-                upset.
+              <div class="product-name">Metformin HCl 500mg</div>
+              <div class="product-desc">First-line Type 2 diabetes management. Regulates fasting blood glucose levels.</div>
+              <div class="product-pricing">
+                <span class="price-current">$12.99</span>
+                <span class="price-original">$22.00</span>
               </div>
-              <div><span class="rx-badge">Rx Required</span></div>
-              <div class="product-meta">
-                <div>
-                  <div class="product-price">$12.99</div>
-                  <div class="product-price-old">$22.00</div>
-                </div>
-              </div>
-              <button
-                class="add-btn rx-btn"
-                aria-label="Add Metformin 500mg to cart — prescription required"
-                data-product="metformin"
-                data-price="12.99"
-              >
+              <button class="btn-add-cart rx" data-product="Metformin HCl 500mg" data-price="12.99" aria-label="Add Metformin HCl 500mg to cart — prescription required">
                 Add to Cart (Rx)
               </button>
             </div>
           </div>
 
-          <div class="product-card">
-            <div class="product-img" role="img" aria-label="Lisinopril tablets">
-              🫀
+          <!-- 2. Glucophage XR 1000mg -->
+          <div class="product-card" data-category="diabetes" data-rx="true" data-name="Glucophage XR 1000mg" data-price="16.50">
+            <div class="product-badge-bar">
+              <span class="badge-rx">Rx Required</span>
+              <span style="font-size: 11px; color: #64748b;">30 Tablets</span>
             </div>
+            <div class="product-img-wrap" role="img" aria-label="Glucophage XR 1000mg">🩺</div>
+            <div class="product-body">
+              <div class="product-name">Glucophage XR 1000mg</div>
+              <div class="product-desc">Extended release formula gentle on stomach for older adults. Once daily dose.</div>
+              <div class="product-pricing">
+                <span class="price-current">$16.50</span>
+                <span class="price-original">$24.00</span>
+              </div>
+              <button class="btn-add-cart rx" data-product="Glucophage XR 1000mg" data-price="16.50" aria-label="Add Glucophage XR 1000mg to cart — prescription required">
+                Add to Cart (Rx)
+              </button>
+            </div>
+          </div>
+
+          <!-- 3. Lisinopril 10mg -->
+          <div class="product-card" data-category="heart" data-rx="true" data-name="Lisinopril 10mg" data-price="9.49">
+            <div class="product-badge-bar">
+              <span class="badge-rx">Rx Required</span>
+              <span style="font-size: 11px; color: #64748b;">30 Tablets</span>
+            </div>
+            <div class="product-img-wrap" role="img" aria-label="Lisinopril 10mg tablets">🫀</div>
             <div class="product-body">
               <div class="product-name">Lisinopril 10mg</div>
-              <div class="product-desc">
-                Blood pressure control. Take once daily, same time each day.
+              <div class="product-desc">Daily ACE inhibitor for blood pressure control and cardiovascular health.</div>
+              <div class="product-pricing">
+                <span class="price-current">$9.49</span>
+                <span class="price-original">$18.00</span>
               </div>
-              <div><span class="rx-badge">Rx Required</span></div>
-              <div class="product-meta">
-                <div>
-                  <div class="product-price">$9.49</div>
-                  <div class="product-price-old">$18.00</div>
-                </div>
-              </div>
-              <button
-                class="add-btn rx-btn"
-                aria-label="Add Lisinopril 10mg to cart — prescription required"
-                data-product="lisinopril"
-                data-price="9.49"
-              >
+              <button class="btn-add-cart rx" data-product="Lisinopril 10mg" data-price="9.49" aria-label="Add Lisinopril 10mg to cart — prescription required">
                 Add to Cart (Rx)
               </button>
             </div>
           </div>
 
-          <div class="product-card">
-            <div
-              class="product-img"
-              role="img"
-              aria-label="Atorvastatin tablets"
-            >
-              💙
+          <!-- 4. Concor 5mg -->
+          <div class="product-card" data-category="heart" data-rx="true" data-name="Concor 5mg (Bisoprolol)" data-price="11.20">
+            <div class="product-badge-bar">
+              <span class="badge-rx">Rx Required</span>
+              <span style="font-size: 11px; color: #64748b;">30 Tablets</span>
             </div>
+            <div class="product-img-wrap" role="img" aria-label="Concor 5mg Bisoprolol">💓</div>
+            <div class="product-body">
+              <div class="product-name">Concor 5mg (Bisoprolol)</div>
+              <div class="product-desc">Cardioselective beta-blocker for hypertension and stable chronic angina.</div>
+              <div class="product-pricing">
+                <span class="price-current">$11.20</span>
+                <span class="price-original">$19.50</span>
+              </div>
+              <button class="btn-add-cart rx" data-product="Concor 5mg (Bisoprolol)" data-price="11.20" aria-label="Add Concor 5mg to cart — prescription required">
+                Add to Cart (Rx)
+              </button>
+            </div>
+          </div>
+
+          <!-- 5. Atorvastatin 20mg -->
+          <div class="product-card" data-category="heart" data-rx="true" data-name="Atorvastatin 20mg" data-price="15.99">
+            <div class="product-badge-bar">
+              <span class="badge-rx">Rx Required</span>
+              <span style="font-size: 11px; color: #64748b;">30 Tablets</span>
+            </div>
+            <div class="product-img-wrap" role="img" aria-label="Atorvastatin 20mg tablets">💙</div>
             <div class="product-body">
               <div class="product-name">Atorvastatin 20mg</div>
-              <div class="product-desc">
-                Cholesterol management. Take at the same time each day.
+              <div class="product-desc">Cholesterol lowering statin medication reducing cardiovascular event risk.</div>
+              <div class="product-pricing">
+                <span class="price-current">$15.99</span>
+                <span class="price-original">$28.00</span>
               </div>
-              <div><span class="rx-badge">Rx Required</span></div>
-              <div class="product-meta">
-                <div>
-                  <div class="product-price">$15.99</div>
-                  <div class="product-price-old">$28.00</div>
-                </div>
-              </div>
-              <button
-                class="add-btn rx-btn"
-                aria-label="Add Atorvastatin 20mg to cart — prescription required"
-                data-product="atorvastatin"
-                data-price="15.99"
-              >
+              <button class="btn-add-cart rx" data-product="Atorvastatin 20mg" data-price="15.99" aria-label="Add Atorvastatin 20mg to cart — prescription required">
                 Add to Cart (Rx)
               </button>
             </div>
           </div>
 
-          <div class="product-card">
-            <div
-              class="product-img"
-              role="img"
-              aria-label="Paracetamol tablets"
-            >
-              🟡
+          <!-- 6. Accu-Chek Instant Glucometer Kit -->
+          <div class="product-card" data-category="diabetes" data-rx="false" data-name="Accu-Chek Instant Glucometer" data-price="29.99">
+            <div class="product-badge-bar">
+              <span class="badge-device">Device Kit</span>
+              <span class="badge-otc">OTC</span>
             </div>
+            <div class="product-img-wrap" role="img" aria-label="Accu-Chek Instant Glucose Meter">🩸</div>
             <div class="product-body">
-              <div class="product-name">Paracetamol 500mg</div>
-              <div class="product-desc">
-                Pain and fever relief. Max 8 tablets per day. Do not exceed
-                stated dose.
+              <div class="product-name">Accu-Chek Instant Meter</div>
+              <div class="product-desc">Blood glucose monitoring kit with 50 test strips, large high-contrast display.</div>
+              <div class="product-pricing">
+                <span class="price-current">$29.99</span>
+                <span class="price-original">$45.00</span>
               </div>
-              <div><span class="otc-badge">Over the Counter</span></div>
-              <div class="product-meta">
-                <div>
-                  <div class="product-price">$4.99</div>
-                </div>
-              </div>
-              <button
-                class="add-btn"
-                aria-label="Add Paracetamol 500mg to cart"
-                data-product="paracetamol"
-                data-price="4.99"
-              >
+              <button class="btn-add-cart" data-product="Accu-Chek Instant Meter" data-price="29.99" aria-label="Add Accu-Chek Instant Glucose Meter to cart">
                 Add to Cart
               </button>
             </div>
           </div>
 
-          <div class="product-card">
-            <div
-              class="product-img"
-              role="img"
-              aria-label="Blood pressure monitor"
-            >
-              📟
+          <!-- 7. Omron Upper Arm BP Monitor -->
+          <div class="product-card" data-category="heart" data-rx="false" data-name="Omron Blood Pressure Monitor" data-price="54.99">
+            <div class="product-badge-bar">
+              <span class="badge-device">Device</span>
+              <span class="badge-otc">OTC</span>
             </div>
+            <div class="product-img-wrap" role="img" aria-label="Omron Blood pressure monitor">📟</div>
             <div class="product-body">
-              <div class="product-name">Omron BP Monitor</div>
-              <div class="product-desc">
-                Accurate home blood pressure monitoring. Large display, easy to
-                read.
+              <div class="product-name">Omron BP Monitor M3</div>
+              <div class="product-desc">Clinically validated automatic blood pressure monitor with easy-cuff guide.</div>
+              <div class="product-pricing">
+                <span class="price-current">$54.99</span>
+                <span class="price-original">$79.99</span>
               </div>
-              <div><span class="otc-badge">Over the Counter</span></div>
-              <div class="product-meta">
-                <div>
-                  <div class="product-price">$54.99</div>
-                  <div class="product-price-old">$79.99</div>
-                </div>
-              </div>
-              <button
-                class="add-btn"
-                aria-label="Add Omron Blood Pressure Monitor to cart"
-                data-product="bp-monitor"
-                data-price="54.99"
-              >
+              <button class="btn-add-cart" data-product="Omron BP Monitor M3" data-price="54.99" aria-label="Add Omron Blood Pressure Monitor to cart">
                 Add to Cart
               </button>
             </div>
           </div>
 
-          <div class="product-card">
-            <div
-              class="product-img"
-              role="img"
-              aria-label="Vitamin D supplements"
-            >
-              ☀️
+          <!-- 8. Voltaren Emulgel for Arthritis -->
+          <div class="product-card" data-category="mobility" data-rx="false" data-name="Voltaren Emulgel 1%" data-price="14.99">
+            <div class="product-badge-bar">
+              <span class="badge-otc">Over the Counter</span>
+              <span style="font-size: 11px; color: #64748b;">100g Tube</span>
             </div>
+            <div class="product-img-wrap" role="img" aria-label="Voltaren Arthritis Relief Gel">🧴</div>
             <div class="product-body">
-              <div class="product-name">Vitamin D3 1000IU</div>
-              <div class="product-desc">
-                Supports bone health and immune function. 90 softgels per
-                bottle.
+              <div class="product-name">Voltaren Emulgel 1%</div>
+              <div class="product-desc">Targeted topical relief for osteoarthritic joint pain, knees, and finger stiffness.</div>
+              <div class="product-pricing">
+                <span class="price-current">$14.99</span>
               </div>
-              <div><span class="otc-badge">Over the Counter</span></div>
-              <div class="product-meta">
-                <div>
-                  <div class="product-price">$11.49</div>
-                </div>
+              <button class="btn-add-cart" data-product="Voltaren Emulgel 1%" data-price="14.99" aria-label="Add Voltaren Emulgel 1% to cart">
+                Add to Cart
+              </button>
+            </div>
+          </div>
+
+          <!-- 9. Digital Pulse Oximeter -->
+          <div class="product-card" data-category="devices" data-rx="false" data-name="Digital Fingertip Oximeter" data-price="19.99">
+            <div class="product-badge-bar">
+              <span class="badge-device">Device</span>
+              <span class="badge-otc">OTC</span>
+            </div>
+            <div class="product-img-wrap" role="img" aria-label="Digital Fingertip Pulse Oximeter">💡</div>
+            <div class="product-body">
+              <div class="product-name">Fingertip Pulse Oximeter</div>
+              <div class="product-desc">Instant SpO2 oxygen saturation and heart pulse rate monitor with OLED screen.</div>
+              <div class="product-pricing">
+                <span class="price-current">$19.99</span>
+                <span class="price-original">$32.00</span>
               </div>
-              <button
-                class="add-btn"
-                aria-label="Add Vitamin D3 1000IU to cart"
-                data-product="vitamin-d"
-                data-price="11.49"
-              >
+              <button class="btn-add-cart" data-product="Fingertip Pulse Oximeter" data-price="19.99" aria-label="Add Digital Fingertip Pulse Oximeter to cart">
+                Add to Cart
+              </button>
+            </div>
+          </div>
+
+          <!-- 10. Weekly AM/PM Push-Button Pill Organizer -->
+          <div class="product-card" data-category="mobility" data-rx="false" data-name="Push-Button Pill Organizer" data-price="8.99">
+            <div class="product-badge-bar">
+              <span class="badge-device">Assistive Aid</span>
+              <span class="badge-otc">OTC</span>
+            </div>
+            <div class="product-img-wrap" role="img" aria-label="7-Day Weekly Push-Button Pill Organizer">📅</div>
+            <div class="product-body">
+              <div class="product-name">7-Day Push Pill Box</div>
+              <div class="product-desc">Arthritis-friendly push-button compartments with giant readable day labels.</div>
+              <div class="product-pricing">
+                <span class="price-current">$8.99</span>
+                <span class="price-original">$14.00</span>
+              </div>
+              <button class="btn-add-cart" data-product="7-Day Push Pill Box" data-price="8.99" aria-label="Add 7-Day Push Pill Box to cart">
+                Add to Cart
+              </button>
+            </div>
+          </div>
+
+          <!-- 11. Vitamin D3 5000 IU -->
+          <div class="product-card" data-category="devices" data-rx="false" data-name="Vitamin D3 5000 IU" data-price="12.49">
+            <div class="product-badge-bar">
+              <span class="badge-otc">Supplements</span>
+              <span style="font-size: 11px; color: #64748b;">90 Softgels</span>
+            </div>
+            <div class="product-img-wrap" role="img" aria-label="Vitamin D3 5000 IU Supplements">☀️</div>
+            <div class="product-body">
+              <div class="product-name">Vitamin D3 5000 IU</div>
+              <div class="product-desc">Supports bone density, calcium absorption, and healthy immune resistance.</div>
+              <div class="product-pricing">
+                <span class="price-current">$12.49</span>
+              </div>
+              <button class="btn-add-cart" data-product="Vitamin D3 5000 IU" data-price="12.49" aria-label="Add Vitamin D3 5000 IU to cart">
+                Add to Cart
+              </button>
+            </div>
+          </div>
+
+          <!-- 12. Paracetamol Extra 500mg -->
+          <div class="product-card" data-category="otc" data-rx="false" data-name="Paracetamol Extra 500mg" data-price="4.99">
+            <div class="product-badge-bar">
+              <span class="badge-otc">Over the Counter</span>
+              <span style="font-size: 11px; color: #64748b;">24 Caplets</span>
+            </div>
+            <div class="product-img-wrap" role="img" aria-label="Paracetamol 500mg tablets">🟡</div>
+            <div class="product-body">
+              <div class="product-name">Paracetamol Extra 500mg</div>
+              <div class="product-desc">Fast relief for headaches, dental aches, and mild fever. Gentle on stomach.</div>
+              <div class="product-pricing">
+                <span class="price-current">$4.99</span>
+              </div>
+              <button class="btn-add-cart" data-product="Paracetamol Extra 500mg" data-price="4.99" aria-label="Add Paracetamol Extra 500mg to cart">
                 Add to Cart
               </button>
             </div>
           </div>
         </div>
 
-        <!-- Prescription upload section -->
-        <section class="rx-section" id="rx-section">
-          <h2>📋 Submit a Prescription</h2>
+        <!-- Prescription Refill Section -->
+        <section class="rx-refill-panel" id="rx-refill">
+          <h2>📋 Submit or Refill a Chronic Prescription</h2>
           <p>
-            Fill in your details below and a pharmacist will review and dispense
-            your medication within 24 hours. All information is encrypted and
-            private.
+            Upload your prescription document or provide your doctor's name. A licensed clinical pharmacist will review and verify your refills within 2 hours.
           </p>
 
-          <form class="rx-form" id="rx-form">
-            <div class="form-row-split">
-              <div class="form-row">
-                <label for="patient-first">First name</label>
-                <input
-                  id="patient-first"
-                  name="first-name"
-                  type="text"
-                  placeholder="e.g. Hassan"
-                  autocomplete="given-name"
-                />
+          <form id="rx-form">
+            <div class="rx-form-grid">
+              <div class="form-group">
+                <label for="patient-name">Patient Full Name</label>
+                <input id="patient-name" name="patient_name" type="text" placeholder="e.g. Ahmed Mahmoud" required />
               </div>
-              <div class="form-row">
-                <label for="patient-last">Last name</label>
-                <input
-                  id="patient-last"
-                  name="last-name"
-                  type="text"
-                  placeholder="e.g. Al-Rashid"
-                  autocomplete="family-name"
-                />
+              <div class="form-group">
+                <label for="patient-phone">Phone / WhatsApp Number</label>
+                <input id="patient-phone" name="patient_phone" type="tel" placeholder="+20 10 1234 5678" required />
+              </div>
+              <div class="form-group">
+                <label for="medication-select">Medication to Refill</label>
+                <select id="medication-select" name="medication_select" aria-label="Select Medication to Refill">
+                  <option value="Metformin 500mg">Metformin HCl 500mg (60 Tablets)</option>
+                  <option value="Glucophage XR 1000mg">Glucophage XR 1000mg (30 Tablets)</option>
+                  <option value="Lisinopril 10mg">Lisinopril 10mg (30 Tablets)</option>
+                  <option value="Concor 5mg">Concor 5mg (30 Tablets)</option>
+                  <option value="Atorvastatin 20mg">Atorvastatin 20mg (30 Tablets)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="doctor-name">Prescribing Physician</label>
+                <input id="doctor-name" name="doctor_name" type="text" placeholder="Dr. Mostafa Kamel (Internal Medicine)" />
+              </div>
+              <div class="form-group full-width">
+                <label for="delivery-address">Home Delivery Address</label>
+                <input id="delivery-address" name="delivery_address" type="text" placeholder="Street, Building, Flat, District (e.g. Dokki, Giza)" required />
               </div>
             </div>
 
-            <div class="form-row">
-              <label for="patient-dob">Date of birth</label>
-              <input id="patient-dob" name="dob" type="date" />
-            </div>
-
-            <div class="form-row">
-              <label for="patient-email">Email address</label>
-              <input
-                id="patient-email"
-                name="email"
-                type="email"
-                placeholder="your@email.com"
-                autocomplete="email"
-              />
-            </div>
-
-            <div class="form-row">
-              <label for="patient-phone">Phone number</label>
-              <input
-                id="patient-phone"
-                name="phone"
-                type="tel"
-                placeholder="+20 10 0000 0000"
-                autocomplete="tel"
-              />
-            </div>
-
-            <div class="form-row">
-              <label for="medication-name">Medication name &amp; dosage</label>
-              <input
-                id="medication-name"
-                name="medication"
-                type="text"
-                placeholder="e.g. Metformin 500mg, twice daily"
-              />
-            </div>
-
-            <div class="form-row">
-              <label for="doctor-name">Prescribing doctor</label>
-              <input
-                id="doctor-name"
-                name="doctor"
-                type="text"
-                placeholder="Dr. Ahmed Nasser"
-              />
-            </div>
-
-            <div class="form-row">
-              <label for="patient-notes"
-                >Additional notes for the pharmacist</label
-              >
-              <textarea
-                id="patient-notes"
-                name="notes"
-                placeholder="Any allergies, special instructions, or questions..."
-              ></textarea>
-            </div>
-
-            <button
-              type="submit"
-              class="submit-rx"
-              aria-label="Submit prescription to pharmacist"
-            >
-              Submit Prescription
+            <button type="submit" class="btn-submit-rx" style="margin-top: 14px;" aria-label="Submit Prescription Refill Order">
+              Submit Prescription Refill Order
             </button>
           </form>
         </section>
       </main>
     </div>
 
-    <div class="checkout-bar">
-      <div class="cart-summary">
-        Cart: <strong id="cart-count-text">0 items</strong> &nbsp;|&nbsp; Total:
+    <!-- Sticky Checkout Bar -->
+    <div class="sticky-checkout">
+      <div class="cart-details">
+        Current Order: <strong id="cart-count-text">0 items</strong> &nbsp;&bull;&nbsp; Total:
         <strong id="cart-total-text">$0.00</strong>
       </div>
-      <div class="checkout-actions">
-        <button class="view-cart-btn" aria-label="View all items in cart">
-          View Cart
-        </button>
-        <button
-          class="proceed-btn"
-          id="checkout-btn"
-          aria-label="Proceed to checkout and payment"
-        >
+      <div class="checkout-buttons">
+        <button class="btn-view-cart" id="btn-view-cart" aria-label="Review Cart Items">View Cart</button>
+        <button class="btn-checkout-now" id="checkout-btn" aria-label="Proceed to Checkout and Payment">
           Proceed to Checkout
         </button>
       </div>
     </div>
 
-    <button class="help-bubble" aria-label="Get help from a pharmacist">
-      💬 Need help?
-    </button>
-
-    <!-- Confirmation modal -->
-    <div
-      class="modal-overlay"
-      id="modal"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="modal-title"
-    >
-      <div class="modal">
-        <div style="font-size: 48px; margin-bottom: 12px">✅</div>
-        <h2 id="modal-title">Prescription Submitted</h2>
-        <p id="modal-body">
-          Thank you. A licensed pharmacist will review your prescription and
-          contact you within 24 hours.
-        </p>
-        <button id="modal-close" aria-label="Close confirmation">Done</button>
+    <!-- Confirmation Modal Dialog -->
+    <div class="modal-backdrop" id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="modal-box">
+        <div class="modal-icon">✅</div>
+        <h3 id="modal-title">Order Placed Successfully!</h3>
+        <p id="modal-body">Your order has been recorded and transmitted to our clinical dispensary. Delivery dispatched within 2 hours.</p>
+        <button class="btn-modal-close" id="modal-close" aria-label="Close confirmation dialog">Done</button>
       </div>
     </div>
 
+    <!-- Footer -->
     <footer>
-      <p>
-        &copy; 2026 CareLink Pharmacy &mdash; Demo site for Atlas accessibility
-        testing.
-      </p>
-      <p style="margin-top: 4px">
-        <a href="#">Privacy Policy</a> &nbsp;·&nbsp;
-        <a href="#">Terms of Service</a> &nbsp;·&nbsp;
-        <a href="#">Accessibility Statement</a>
-      </p>
+      <div class="footer-inner">
+        <div>
+          <strong>CareLink National Healthcare Platform</strong> &copy; 2026. Certified for Accessibility Testing &amp; Atlas Agentic AI.
+        </div>
+        <div>
+          <a href="#">Privacy Policy</a>
+          <a href="#">Terms of Care</a>
+          <a href="#">Accessibility Compliance (WCAG 2.2 AA)</a>
+        </div>
+      </div>
     </footer>
 
+    <!-- Interactive Client JavaScript -->
     <script>
-      let cartItems = 0;
-      let cartTotal = 0;
+      let cartCount = 0;
+      let cartTotal = 0.0;
+      const cartBadge = document.getElementById("cart-count-badge");
+      const cartCountText = document.getElementById("cart-count-text");
+      const cartTotalText = document.getElementById("cart-total-text");
+      const searchInput = document.getElementById("site-search");
+      const searchBtn = document.getElementById("search-btn");
+      const productCards = document.querySelectorAll(".product-card");
+      const statusText = document.getElementById("products-status-text");
+      const sortSelect = document.getElementById("sort-select");
 
-      document.querySelectorAll("[data-product]").forEach((btn) => {
+      // 1. Add to Cart Handler
+      document.querySelectorAll(".btn-add-cart").forEach(btn => {
         btn.addEventListener("click", () => {
           const price = parseFloat(btn.dataset.price || "0");
-          cartItems++;
+          cartCount++;
           cartTotal += price;
-          const cartLink = document.getElementById("cart-link");
-          cartLink.textContent = `🛒 Cart (${cartItems})`;
-          cartLink.setAttribute("aria-label", `View cart, ${cartItems} items`);
-          document.getElementById("cart-count-text").textContent =
-            `${cartItems} item${cartItems !== 1 ? "s" : ""}`;
-          document.getElementById("cart-total-text").textContent =
-            `$${cartTotal.toFixed(2)}`;
+
+          cartBadge.textContent = cartCount;
+          cartCountText.textContent = `${cartCount} item${cartCount > 1 ? "s" : ""}`;
+          cartTotalText.textContent = `$${cartTotal.toFixed(2)}`;
+
+          const originalText = btn.innerHTML;
+          btn.innerHTML = "✓ Added!";
+          btn.style.background = "#15803d";
+          setTimeout(() => {
+            btn.innerHTML = originalText;
+            btn.style.background = "";
+          }, 1200);
         });
       });
 
+      // 2. Live Real-Time Search Filter
+      function filterProducts() {
+        const query = searchInput.value.toLowerCase().trim();
+        let visibleCount = 0;
+
+        productCards.forEach(card => {
+          const name = card.dataset.name.toLowerCase();
+          const desc = card.querySelector(".product-desc").textContent.toLowerCase();
+          const matchesSearch = name.includes(query) || desc.includes(query);
+
+          if (matchesSearch) {
+            card.style.display = "flex";
+            visibleCount++;
+          } else {
+            card.style.display = "none";
+          }
+        });
+
+        statusText.textContent = `Showing ${visibleCount} products ${query ? `matching "${query}"` : ""}`;
+      }
+
+      searchInput.addEventListener("input", filterProducts);
+      searchBtn.addEventListener("click", filterProducts);
+
+      // 3. Category Navigation Filter
+      document.querySelectorAll("nav a[data-cat]").forEach(link => {
+        link.addEventListener("click", (e) => {
+          e.preventDefault();
+          document.querySelectorAll("nav a").forEach(l => l.classList.remove("active"));
+          link.classList.add("active");
+          const cat = link.dataset.cat;
+
+          let count = 0;
+          productCards.forEach(card => {
+            if (cat === "all" || card.dataset.category === cat) {
+              card.style.display = "flex";
+              count++;
+            } else {
+              card.style.display = "none";
+            }
+          });
+          statusText.textContent = `Showing ${count} products in category: ${link.textContent}`;
+        });
+      });
+
+      // 4. Sort Products
+      sortSelect.addEventListener("change", () => {
+        const container = document.getElementById("products-grid");
+        const cardsArray = Array.from(productCards);
+
+        if (sortSelect.value === "price-asc") {
+          cardsArray.sort((a, b) => parseFloat(a.dataset.price) - parseFloat(b.dataset.price));
+        } else if (sortSelect.value === "price-desc") {
+          cardsArray.sort((a, b) => parseFloat(b.dataset.price) - parseFloat(a.dataset.price));
+        } else if (sortSelect.value === "name-asc") {
+          cardsArray.sort((a, b) => a.dataset.name.localeCompare(b.dataset.name));
+        }
+        cardsArray.forEach(c => container.appendChild(c));
+      });
+
+      // 5. Prescription Refill Submission
       document.getElementById("rx-form").addEventListener("submit", (e) => {
         e.preventDefault();
+        const pName = document.getElementById("patient-name").value;
+        const med = document.getElementById("medication-select").value;
+        document.getElementById("modal-title").textContent = "Prescription Refill Received!";
+        document.getElementById("modal-body").textContent =
+          `Thank you, ${pName}. Your refill order for ${med} has been transmitted to clinical pharmacy dispatch. Delivery in Giza within 2 hours.`;
         document.getElementById("modal").classList.add("open");
       });
 
-      document.getElementById("modal-close").addEventListener("click", () => {
-        document.getElementById("modal").classList.remove("open");
-        document.getElementById("rx-form").reset();
-      });
-
+      // 6. Checkout Button
       document.getElementById("checkout-btn").addEventListener("click", () => {
-        if (cartItems === 0) {
-          alert("Your cart is empty. Add some items first.");
+        if (cartCount === 0) {
+          alert("Your cart is empty. Please add medications or supplies first.");
           return;
         }
+        document.getElementById("modal-title").textContent = "Order Confirmed!";
         document.getElementById("modal-body").textContent =
-          `Your order of ${cartItems} item(s) totalling $${cartTotal.toFixed(2)} has been placed. You will receive a confirmation email shortly.`;
-        document.getElementById("modal-title").textContent = "Order Placed!";
+          `Your order of ${cartCount} items totalling $${cartTotal.toFixed(2)} is placed. Tracking link sent via SMS.`;
         document.getElementById("modal").classList.add("open");
+      });
+
+      // 7. Close Modal
+      document.getElementById("modal-close").addEventListener("click", () => {
+        document.getElementById("modal").classList.remove("open");
+      });
+
+      // 8. Telehealth Book
+      document.getElementById("btn-telehealth-book").addEventListener("click", () => {
+        alert("Telehealth appointment initiated with Dr. Tarek El-Kabbani. Atlas is preparing patient intake.");
       });
     </script>
   </body>

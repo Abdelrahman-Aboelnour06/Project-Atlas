@@ -137,6 +137,18 @@ const hasVendorSelector = domSerializerCode.includes('#nav-');
 const hasMyDriveString = /my drive/i.test(sidebarCode) || /my drive/i.test(domSerializerCode);
 assert(!hasVendorSelector && !hasMyDriveString, 'dom-serializer.js and sidebar.js contain zero hardcoded vendor strings (#nav-, my drive)');
 
+// 6. Floating Draggable Notch & Collapse/Expand Quality Gates
+console.log('\n[Unit: Floating Draggable Notch & Collapse/Expand]');
+assert(sidebarCode.includes('collapse') && sidebarCode.includes('expand'), 'sidebar.js implements collapse and expand methods');
+assert(sidebarCode.includes('SCROLLBAR_CLEARANCE'), 'sidebar.js implements scrollbar boundary clearance');
+assert(sidebarCode.includes('setPointerCapture'), 'sidebar.js utilizes Pointer Capture for glitch-proof dragging');
+assert(sidebarCode.includes('badgeHasMoved') && sidebarCode.includes('Math.hypot'), 'sidebar.js enforces Euclidean distance drag-vs-click discrimination');
+assert(sidebarCode.includes('atlas-header-collapse'), 'sidebar.js includes #atlas-header-collapse button in header');
+assert(sidebarCode.includes('atlas-collapsed-badge'), 'sidebar.js includes .atlas-collapsed-badge DOM element');
+assert(sidebarCss.includes('.atlas-collapsed'), 'sidebar.css styles .atlas-collapsed circular state');
+assert(sidebarCss.includes('.atlas-collapsed-badge'), 'sidebar.css styles .atlas-collapsed-badge');
+assert(sidebarCss.includes('.atlas-collapse-btn'), 'sidebar.css styles .atlas-collapse-btn');
+
 console.log(`\nExtension Tests Complete: ${passed} passed, ${failures} failed.\n`);
 process.exit(failures > 0 ? 1 : 0);
 

@@ -4,7 +4,9 @@
   const ROOT_ID = "atlas-sidebar-root";
   const DEFAULT_WIDTH = 348;
   const DEFAULT_HEIGHT = 520;
+  const COLLAPSED_SIZE = 52;
   const VIEWPORT_PADDING = 12;
+  const SCROLLBAR_CLEARANCE = 20;
 
   let rootEl = null;
   let listEl = null;
@@ -14,10 +16,13 @@
   let micBtn = null;
   let modeBtn = null;
   let chatLogEl = null;
+  let badgeEl = null;
+  let badgeStatusDot = null;
   let handlers = {};
   let currentItems = [];
   let groupOpenState = {};
   let currentMode = "chat"; // 'chat' | 'voice'
+  let isCollapsed = false;
 
   // Drag state cleanup ref
   let cleanUpDrag = null;
@@ -158,14 +163,15 @@
       };
     });
 
-  // ── Window Positioning & Dragging ─────────────────────────────────────────────
+  // ── Window Positioning, Edge-Clamping & Dragging ─────────────────────────────
   const clamp = (val, min, max) => Math.max(min, Math.min(val, max));
 
   const applyPosition = (x, y) => {
     if (!rootEl) return;
-    const width = rootEl.offsetWidth || DEFAULT_WIDTH;
-    const height = rootEl.offsetHeight || DEFAULT_HEIGHT;
-    const maxX = Math.max(VIEWPORT_PADDING, window.innerWidth - width - VIEWPORT_PADDING);
+    const width = isCollapsed ? COLLAPSED_SIZE : (rootEl.offsetWidth || DEFAULT_WIDTH);
+    const height = isCollapsed ? COLLAPSED_SIZE : (rootEl.offsetHeight || DEFAULT_HEIGHT);
+    // 20px clearance ensures floating badge never blocks host page vertical scrollbar
+    const maxX = Math.max(VIEWPORT_PADDING, window.innerWidth - width - SCROLLBAR_CLEARANCE);
     const maxY = Math.max(VIEWPORT_PADDING, window.innerHeight - height - VIEWPORT_PADDING);
     const clampedX = clamp(x, VIEWPORT_PADDING, maxX);
     const clampedY = clamp(y, VIEWPORT_PADDING, maxY);
@@ -175,17 +181,77 @@
     return { x: clampedX, y: clampedY };
   };
 
+  const resetPosition = () => {
+    if (!rootEl) return;
+    const width = isCollapsed ? COLLAPSED_SIZE : DEFAULT_WIDTH;
+    const height = isCollapsed ? COLLAPSED_SIZE : DEFAULT_HEIGHT;
+    const defaultX = Math.max(VIEWPORT_PADDING, window.innerWidth - width - 24);
+    const defaultY = Math.max(VIEWPORT_PADDING, window.innerHeight - height - 24);
+    const pos = applyPosition(defaultX, defaultY);
+    if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.set({ atlasWindowPos: pos });
+    }
+  };
+
+  const collapse = () => {
+    if (!rootEl || isCollapsed) return;
+    isCollapsed = true;
+    rootEl.classList.add("atlas-collapsed");
+    rootEl.setAttribute("aria-expanded", "false");
+
+    // Re-clamp position for circular notch dimensions
+    const rect = rootEl.getBoundingClientRect();
+    applyPosition(rect.left, rect.top);
+
+    if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.set({ atlasIsCollapsed: true });
+    }
+  };
+
+  const expand = () => {
+    if (!rootEl || !isCollapsed) return;
+    isCollapsed = false;
+    rootEl.classList.remove("atlas-collapsed");
+    rootEl.setAttribute("aria-expanded", "true");
+
+    // Overlap project edge case: Auto-adjust position if expanding pushes it past the right or bottom
+    const rect = rootEl.getBoundingClientRect();
+    const maxX = Math.max(VIEWPORT_PADDING, window.innerWidth - DEFAULT_WIDTH - SCROLLBAR_CLEARANCE);
+    const maxY = Math.max(VIEWPORT_PADDING, window.innerHeight - DEFAULT_HEIGHT - VIEWPORT_PADDING);
+    const targetX = clamp(rect.left, VIEWPORT_PADDING, maxX);
+    const targetY = clamp(rect.top, VIEWPORT_PADDING, maxY);
+    applyPosition(targetX, targetY);
+
+    if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.set({
+        atlasIsCollapsed: false,
+        atlasWindowPos: { x: targetX, y: targetY },
+      });
+    }
+  };
+
+  const toggleCollapse = () => {
+    if (isCollapsed) {
+      expand();
+    } else {
+      collapse();
+    }
+  };
+
   const initWindowPosition = () => {
     const defaultX = Math.max(VIEWPORT_PADDING, window.innerWidth - DEFAULT_WIDTH - 24);
     const defaultY = Math.max(VIEWPORT_PADDING, window.innerHeight - DEFAULT_HEIGHT - 24);
 
     if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
-      chrome.storage.local.get(["atlasWindowPos"], (result) => {
+      chrome.storage.local.get(["atlasWindowPos", "atlasIsCollapsed"], (result) => {
         const pos = result?.atlasWindowPos;
         if (pos && typeof pos.x === "number" && typeof pos.y === "number") {
           applyPosition(pos.x, pos.y);
         } else {
           applyPosition(defaultX, defaultY);
+        }
+        if (result?.atlasIsCollapsed) {
+          collapse();
         }
       });
     } else {
@@ -193,39 +259,45 @@
     }
   };
 
-  const setupDragging = (headerEl) => {
-    let isDragging = false;
-    let startX = 0;
-    let startY = 0;
-    let initialLeft = 0;
-    let initialTop = 0;
+  const setupDragging = (headerEl, badgeElement) => {
+    // Header drag (expanded window)
+    let isHeaderDragging = false;
+    let headerStartX = 0;
+    let headerStartY = 0;
+    let headerInitialLeft = 0;
+    let headerInitialTop = 0;
 
-    const onMouseDown = (e) => {
-      // Don't drag when interacting with controls
-      if (e.target.closest("button, input, [role='tab'], .atlas-tab, .atlas-traffic-btn")) {
+    const onHeaderPointerDown = (e) => {
+      if (e.target.closest("button, input, [role='tab'], .atlas-tab, .atlas-traffic-btn, .atlas-collapse-btn")) {
         return;
       }
-      isDragging = true;
-      startX = e.clientX;
-      startY = e.clientY;
+      isHeaderDragging = true;
+      headerStartX = e.clientX;
+      headerStartY = e.clientY;
       const rect = rootEl.getBoundingClientRect();
-      initialLeft = rect.left;
-      initialTop = rect.top;
+      headerInitialLeft = rect.left;
+      headerInitialTop = rect.top;
       rootEl.classList.add("atlas-dragging");
       document.body.style.userSelect = "none";
+      try {
+        headerEl.setPointerCapture(e.pointerId);
+      } catch (_) {}
       e.preventDefault();
     };
 
-    const onMouseMove = (e) => {
-      if (!isDragging) return;
-      const dx = e.clientX - startX;
-      const dy = e.clientY - startY;
-      applyPosition(initialLeft + dx, initialTop + dy);
+    const onHeaderPointerMove = (e) => {
+      if (!isHeaderDragging) return;
+      const dx = e.clientX - headerStartX;
+      const dy = e.clientY - headerStartY;
+      applyPosition(headerInitialLeft + dx, headerInitialTop + dy);
     };
 
-    const onMouseUp = () => {
-      if (!isDragging) return;
-      isDragging = false;
+    const onHeaderPointerUp = (e) => {
+      if (!isHeaderDragging) return;
+      isHeaderDragging = false;
+      try {
+        headerEl.releasePointerCapture(e.pointerId);
+      } catch (_) {}
       rootEl.classList.remove("atlas-dragging");
       document.body.style.userSelect = "";
       const rect = rootEl.getBoundingClientRect();
@@ -235,21 +307,128 @@
       }
     };
 
+    const onHeaderDblClick = (e) => {
+      if (e.target.closest("button, input, [role='tab'], .atlas-tab, .atlas-traffic-btn, .atlas-collapse-btn")) {
+        return;
+      }
+      resetPosition();
+    };
+
+    headerEl.addEventListener("pointerdown", onHeaderPointerDown);
+    headerEl.addEventListener("pointermove", onHeaderPointerMove);
+    headerEl.addEventListener("pointerup", onHeaderPointerUp);
+    headerEl.addEventListener("pointercancel", onHeaderPointerUp);
+    headerEl.addEventListener("dblclick", onHeaderDblClick);
+
+    // Collapsed Badge drag & click discrimination
+    let isBadgeDragging = false;
+    let badgeStartX = 0;
+    let badgeStartY = 0;
+    let badgeInitialLeft = 0;
+    let badgeInitialTop = 0;
+    let badgeHasMoved = false;
+
+    const onBadgePointerDown = (e) => {
+      isBadgeDragging = true;
+      badgeHasMoved = false;
+      badgeStartX = e.clientX;
+      badgeStartY = e.clientY;
+      const rect = rootEl.getBoundingClientRect();
+      badgeInitialLeft = rect.left;
+      badgeInitialTop = rect.top;
+      document.body.style.userSelect = "none";
+      try {
+        badgeElement.setPointerCapture(e.pointerId);
+      } catch (_) {}
+      e.preventDefault();
+    };
+
+    const onBadgePointerMove = (e) => {
+      if (!isBadgeDragging) return;
+      const dx = e.clientX - badgeStartX;
+      const dy = e.clientY - badgeStartY;
+      const dist = Math.hypot(dx, dy);
+      if (dist > 4) {
+        badgeHasMoved = true;
+        rootEl.classList.add("atlas-dragging");
+      }
+      applyPosition(badgeInitialLeft + dx, badgeInitialTop + dy);
+    };
+
+    const onBadgePointerUp = (e) => {
+      if (!isBadgeDragging) return;
+      isBadgeDragging = false;
+      try {
+        badgeElement.releasePointerCapture(e.pointerId);
+      } catch (_) {}
+      rootEl.classList.remove("atlas-dragging");
+      document.body.style.userSelect = "";
+
+      if (badgeHasMoved) {
+        const rect = rootEl.getBoundingClientRect();
+        const pos = { x: Math.round(rect.left), y: Math.round(rect.top) };
+        if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+          chrome.storage.local.set({ atlasWindowPos: pos });
+        }
+        setTimeout(() => {
+          badgeHasMoved = false;
+        }, 60);
+      }
+    };
+
+    const onBadgeClick = (e) => {
+      if (badgeHasMoved) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      expand();
+    };
+
+    const onBadgeDblClick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      resetPosition();
+    };
+
+    const onBadgeKeyDown = (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        expand();
+      }
+    };
+
+    badgeElement.addEventListener("pointerdown", onBadgePointerDown);
+    badgeElement.addEventListener("pointermove", onBadgePointerMove);
+    badgeElement.addEventListener("pointerup", onBadgePointerUp);
+    badgeElement.addEventListener("pointercancel", onBadgePointerUp);
+    badgeElement.addEventListener("click", onBadgeClick);
+    badgeElement.addEventListener("dblclick", onBadgeDblClick);
+    badgeElement.addEventListener("keydown", onBadgeKeyDown);
+
+    // Global resize listener
     const onResize = () => {
       if (!rootEl) return;
       const rect = rootEl.getBoundingClientRect();
       applyPosition(rect.left, rect.top);
     };
-
-    headerEl.addEventListener("mousedown", onMouseDown);
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
     window.addEventListener("resize", onResize);
 
     return () => {
-      headerEl.removeEventListener("mousedown", onMouseDown);
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
+      headerEl.removeEventListener("pointerdown", onHeaderPointerDown);
+      headerEl.removeEventListener("pointermove", onHeaderPointerMove);
+      headerEl.removeEventListener("pointerup", onHeaderPointerUp);
+      headerEl.removeEventListener("pointercancel", onHeaderPointerUp);
+      headerEl.removeEventListener("dblclick", onHeaderDblClick);
+
+      badgeElement.removeEventListener("pointerdown", onBadgePointerDown);
+      badgeElement.removeEventListener("pointermove", onBadgePointerMove);
+      badgeElement.removeEventListener("pointerup", onBadgePointerUp);
+      badgeElement.removeEventListener("pointercancel", onBadgePointerUp);
+      badgeElement.removeEventListener("click", onBadgeClick);
+      badgeElement.removeEventListener("dblclick", onBadgeDblClick);
+      badgeElement.removeEventListener("keydown", onBadgeKeyDown);
+
       window.removeEventListener("resize", onResize);
       document.body.style.userSelect = "";
     };
@@ -264,10 +443,13 @@
 
     rootEl.innerHTML = `
     <!-- macOS Window Titlebar / Header -->
-    <div class="atlas-header" title="Drag to move Atlas window">
+    <div class="atlas-header" title="Drag to move Atlas window (Double-click to reset)">
       <div class="atlas-traffic-lights">
         <button class="atlas-traffic-btn atlas-traffic-close" aria-label="Close Atlas window" title="Close">
           <span class="atlas-traffic-close-icon">✕</span>
+        </button>
+        <button class="atlas-traffic-btn atlas-traffic-minimize" aria-label="Minimize to notch" title="Collapse">
+          <span class="atlas-traffic-minimize-icon">−</span>
         </button>
       </div>
 
@@ -285,6 +467,11 @@
             <path d="M21 3v5h-5"/>
           </svg>
           <span class="atlas-refresh-label">Reload</span>
+        </button>
+        <button class="atlas-collapse-btn" id="atlas-header-collapse" aria-label="Collapse Atlas" title="Collapse">
+          <svg class="atlas-collapse-svg" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
         </button>
         <!-- Fallback close button for accessibility / test compatibility -->
         <button class="atlas-close" aria-label="Close Atlas sidebar">×</button>
@@ -315,6 +502,19 @@
       </div>
       <div class="atlas-list" role="list"></div>
     </div>
+
+    <!-- Collapsed Floating Notch / Circular Badge -->
+    <div class="atlas-collapsed-badge" role="button" tabindex="0" aria-label="Atlas Assistant — Click to expand, drag to move" title="Atlas (Click to expand, drag to move)">
+      <div class="atlas-badge-logo">
+        <svg class="atlas-logo-svg" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="24" cy="24" r="21" fill="#141416" stroke="rgba(255, 255, 255, 0.2)" stroke-width="2"/>
+          <polygon points="24,8 30,24 27,24 24,20 21,24 18,24" fill="#FFFFFF"/>
+          <polygon points="24,40 18,24 21,24 24,28 27,24 30,24" fill="#0A84FF"/>
+          <polygon points="24,20 27,24 24,28 21,24" fill="#141416"/>
+        </svg>
+      </div>
+      <div class="atlas-badge-status-dot" aria-hidden="true"></div>
+    </div>
   `;
 
     document.body.appendChild(rootEl);
@@ -326,10 +526,16 @@
     micBtn = rootEl.querySelector(".atlas-mic-btn");
     modeBtn = rootEl.querySelector("#atlas-mode-toggle");
     chatLogEl = rootEl.querySelector("#atlas-chat-log");
+    badgeEl = rootEl.querySelector(".atlas-collapsed-badge");
+    badgeStatusDot = rootEl.querySelector(".atlas-badge-status-dot");
 
     const headerEl = rootEl.querySelector(".atlas-header");
-    cleanUpDrag = setupDragging(headerEl);
+    cleanUpDrag = setupDragging(headerEl, badgeEl);
     initWindowPosition();
+
+    // Collapse handlers
+    rootEl.querySelector("#atlas-header-collapse")?.addEventListener("click", collapse);
+    rootEl.querySelector(".atlas-traffic-minimize")?.addEventListener("click", collapse);
 
     modeBtn?.addEventListener("click", () => {
       const nextMode = currentMode === "chat" ? "voice" : "chat";
@@ -651,14 +857,24 @@
     cleanUpDrag = null;
     rootEl?.remove();
     rootEl = null;
+    badgeEl = null;
+    badgeStatusDot = null;
     currentItems = [];
     groupOpenState = {};
+    isCollapsed = false;
   };
 
   const setStatus = (text, kind = "info") => {
-    if (!statusEl) return;
-    statusEl.textContent = text;
-    statusEl.className = `atlas-status atlas-status-${kind}`;
+    if (statusEl) {
+      statusEl.textContent = text;
+      statusEl.className = `atlas-status atlas-status-${kind}`;
+    }
+    if (badgeStatusDot) {
+      badgeStatusDot.className = `atlas-badge-status-dot atlas-badge-status-${kind}`;
+    }
+    if (badgeEl) {
+      badgeEl.setAttribute("title", `Atlas (${text}) — Click to expand, drag to move`);
+    }
   };
 
   const setListening = (isListening) => {
@@ -685,6 +901,10 @@
   window.AtlasSidebar = {
     mount,
     unmount,
+    collapse,
+    expand,
+    toggleCollapse,
+    isCollapsed: () => isCollapsed,
     renderElements,
     deriveDisplayItems,
     setStatus,
