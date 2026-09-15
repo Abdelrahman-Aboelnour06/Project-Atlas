@@ -130,3 +130,142 @@ button {
 
 #atlas-status[data-kind="ok"] { color: var(--atlas-ok); }
 #atlas-status[data-kind="error"] { color: var(--atlas-error); }
+
+/* Saved Secrets Management Styles */
+.atlas-secrets-section {
+  margin-top: 48px;
+  border-top: 1px solid var(--atlas-border);
+  padding-top: 32px;
+}
+
+.atlas-secrets-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.atlas-secrets-header h2 {
+  font-size: 20px;
+  margin: 0 0 4px;
+}
+
+.atlas-danger-btn {
+  color: var(--atlas-error);
+  border-color: var(--atlas-error);
+  padding: 8px 14px;
+  font-size: 14px;
+}
+
+.atlas-danger-btn:hover {
+  background: rgba(255, 138, 128, 0.1);
+}
+
+.atlas-secrets-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.atlas-origin-group {
+  background: var(--atlas-panel);
+  border: 1px solid var(--atlas-border);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.atlas-origin-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--atlas-border);
+  margin-bottom: 12px;
+}
+
+.atlas-origin-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--atlas-accent);
+  word-break: break-all;
+}
+
+.atlas-origin-items {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.atlas-secret-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 6px;
+}
+
+.atlas-secret-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.atlas-badge {
+  font-size: 12px;
+  font-family: monospace;
+  background: rgba(110, 168, 254, 0.15);
+  color: var(--atlas-accent);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.atlas-category-badge {
+  font-size: 12px;
+  text-transform: uppercase;
+  color: var(--atlas-muted);
+  letter-spacing: 0.5px;
+}
+
+.atlas-date {
+  font-size: 12px;
+  color: var(--atlas-muted);
+}
+
+.atlas-item-delete-btn {
+  padding: 4px 10px;
+  font-size: 13px;
+  background: transparent;
+  color: var(--atlas-error);
+  border: 1px solid var(--atlas-border);
+  border-radius: 4px;
+}
+
+.atlas-item-delete-btn:hover {
+  border-color: var(--atlas-error);
+  background: rgba(255, 138, 128, 0.08);
+}
+
+.atlas-empty-secrets {
+  color: var(--atlas-muted);
+  font-style: italic;
+  font-size: 14px;
+  margin: 0;
+}
+
+#secrets-status {
+  min-height: 20px;
+  margin-top: 16px;
+  font-size: 14px;
+}
+
+#secrets-status[data-kind="ok"] { color: var(--atlas-ok); }
+#secrets-status[data-kind="error"] { color: var(--atlas-error); }
+

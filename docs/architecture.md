@@ -76,14 +76,16 @@ flowchart TD
    - **`doFill(el, value)`**: Uses prototype-level value setters to trigger framework state synchronizations (`input`, `change` events).
    - **`doScroll(el)` & `doFocus(el)`**: Smoothly brings elements into view with visual accessibility glow animations.
 
-3. **`sidebar.js` (Accessible User Interface)**:
+3. **`secret-vault.js` (Local Secret Vault & Tokenizer)**: Provides persistent, origin-scoped AES-GCM encrypted client-side secret storage (`chrome.storage.local`) and Contract 11 token substitution/resolution (`{password}`, `{cc_number}`), ensuring plaintext credentials never cross the network.
+
+4. **`sidebar.js` (Accessible User Interface)**:
    - Floating, draggable, non-intrusive accessibility panel.
    - Dual-tab design: **Chat** (conversational commands and Q&A) and **Elements** (categorized accessible overview).
    - Accordion-style collapsible categories (collapsed by default on load for clean information architecture).
    - Vector SVG reload button for on-demand page re-indexing.
    - 3-dot wave typing indicator to provide clear feedback during LLM inference.
 
-4. **`content.js` (Extension Orchestrator)**:
+5. **`content.js` (Extension Orchestrator)**:
    - Manages lifecycle, mutation observers, SPA URL change detection, and event distribution.
    - Differentiates between informational queries and operational commands (`isQuestion()`).
    - Maps user clicks on categorized elements in the sidebar directly to universal `open` or `click` actions.

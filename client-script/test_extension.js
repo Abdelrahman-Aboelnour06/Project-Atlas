@@ -51,6 +51,7 @@ const jsFiles = [
   'dom-serializer.js',
   'executor.js',
   'options.js',
+  'secret-vault.js',
   'sidebar.js',
   'speech.js',
   'tts.js',

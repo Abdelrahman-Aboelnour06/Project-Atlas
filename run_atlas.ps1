@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
   run_atlas.ps1 - bring up the whole Atlas stack locally on Windows.
 
@@ -56,6 +56,14 @@ if ($Action -eq "stop") {
                 Log "Stopped $name (job $jobId)"
             }
             Remove-Item $jobFile -Force
+        }
+    }
+    foreach ($p in @($BackendPort, $DemoPort)) {
+        $conns = Get-NetTCPConnection -LocalPort $p -ErrorAction SilentlyContinue
+        foreach ($c in $conns) {
+            if ($c.OwningProcess -and $c.OwningProcess -ne 0) {
+                Stop-Process -Id $c.OwningProcess -Force -ErrorAction SilentlyContinue
+            }
         }
     }
     if (Get-Command docker -ErrorAction SilentlyContinue) {
@@ -139,7 +147,7 @@ if (-not (Test-Path $EnvFile)) {
     Log "No .env found - creating one from .env.example."
     Copy-Item ".env.example" ".env"
     Warn "backend\.env was just created from the template."
-    Warn "You MUST edit it and set LLM_API_KEY (from https://build.nvidia.com),"
+    Warn "You MUST edit it and set LLM_API_KEY (from https://console.groq.com or https://build.nvidia.com),"
     Warn "or switch LLM_PROVIDER to 'ollama' if you're running a local model."
     Warn "Re-run this script after editing .env."
     Pop-Location
@@ -186,8 +194,25 @@ Log "Seeding demo tenant + API key..."
 # -- 4. Start backend server ---------------------------------------------------
 $backendListening = Test-NetConnection -ComputerName localhost -Port $BackendPort -WarningAction SilentlyContinue -InformationLevel Quiet
 if ($backendListening) {
-    Warn "Something is already listening on port $BackendPort - assuming backend is up."
-} else {
+    try {
+        $check = Invoke-WebRequest -Uri "http://localhost:$BackendPort/health" -UseBasicParsing -TimeoutSec 3
+        if ($check.StatusCode -eq 200) {
+            Log "Backend is already running and healthy on port $BackendPort."
+        }
+    } catch {
+        Warn "Port $BackendPort is occupied by an unresponsive process. Terminating stale process..."
+        $conns = Get-NetTCPConnection -LocalPort $BackendPort -ErrorAction SilentlyContinue
+        foreach ($c in $conns) {
+            if ($c.OwningProcess -and $c.OwningProcess -ne 0) {
+                Stop-Process -Id $c.OwningProcess -Force -ErrorAction SilentlyContinue
+            }
+        }
+        Start-Sleep -Seconds 1
+        $backendListening = $false
+    }
+}
+
+if (-not $backendListening) {
     Log "Starting backend on http://localhost:$BackendPort ..."
     $job = Start-Job -ScriptBlock {
         param($uvicorn, $dir, $port)
@@ -202,7 +227,7 @@ Log "Health-checking backend..."
 $healthy = $false
 for ($i = 0; $i -lt 15; $i++) {
     try {
-        $resp = Invoke-WebRequest -Uri "http://localhost:$BackendPort/health" -UseBasicParsing -TimeoutSec 2
+        $resp = Invoke-WebRequest -Uri "http://localhost:$BackendPort/health" -UseBasicParsing -TimeoutSec 5
         if ($resp.StatusCode -eq 200) { $healthy = $true; break }
     } catch { Start-Sleep -Seconds 1 }
 }

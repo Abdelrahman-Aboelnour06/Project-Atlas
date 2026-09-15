@@ -25,14 +25,21 @@
 
 ## Confirm your `.env`
 
-Default provider is **NVIDIA NIM** (OpenAI-compatible) — `LLM_API_KEY` is
+Default provider is **Groq** (ultra-fast LPU inference) or **NVIDIA NIM** (OpenAI-compatible) — `LLM_API_KEY` is
 required unless you switch to Ollama:
 
 ```env
-LLM_PROVIDER=nvidia_nim
-LLM_MODEL=meta/llama-3.1-70b-instruct
-LLM_BASE_URL=https://integrate.api.nvidia.com/v1
-LLM_API_KEY=                    # required — get one from https://build.nvidia.com
+# Fast LPU Cloud Provider (Groq):
+LLM_PROVIDER=groq
+LLM_MODEL=llama-3.3-70b-versatile
+LLM_BASE_URL=https://api.groq.com/openai/v1
+LLM_API_KEY=                    # required — get one from https://console.groq.com
+
+# Or NVIDIA NIM (with Nemotron reasoning toggles):
+# LLM_PROVIDER=nvidia_nim
+# LLM_MODEL=nvidia/llama-3.3-nemotron-super-49b-v1.5
+# LLM_BASE_URL=https://integrate.api.nvidia.com/v1
+# LLM_API_KEY=                  # from https://build.nvidia.com
 
 # To use local Ollama instead:
 # LLM_PROVIDER=ollama

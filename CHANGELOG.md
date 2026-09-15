@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - Comprehensive Remediation Pass
 
+### Added (Goal-Directed Execution — Phase 1)
+- **Goal Contracts**: `Milestone`, `MilestoneStatus`, `VerifierResult`, `VerifierStatus`, `GoalState`, `GoalStepRequest`, `GoalStepResponse` Pydantic models in `backend/app/models/goal.py`.
+- **Navigator Agent** (`backend/app/agent/navigator.py`): Resolves milestones to DOM-validated `PlanStep`s with fuzzy-match recovery for hallucinated element IDs and keyword-based consequential-action gating.
+- **Verifier Agent** (`backend/app/agent/verifier.py`): 6-rule deterministic verification chain (client status, error banners, success toasts, URL transition, element disappearance) with LLM fallback for ambiguous cases.
+- **`POST /v1/chat/goal_step`** REST endpoint in `backend/app/routes/chat.py`: Orchestrates Navigator → execute → Verifier loop with `max_hops=8` safety ceiling and `requires_confirmation` human-in-the-loop gate.
+- **Mock LLM Provider** (`LLM_PROVIDER=mock`): Zero-network deterministic provider for CI and testing, with per-role model configuration (`PLANNER_LLM_MODEL`, `NAVIGATOR_LLM_MODEL`, `VERIFIER_LLM_MODEL`).
+- **203 new tests** across 6 test files covering contracts, stress/adversarial scenarios, pipeline integration, and mock LLM role resolution.
+- **CI Pipeline Fixes**: Added workflow-level `LLM_PROVIDER=mock` to `.github/workflows/ci.yml`; bumped `fastapi`, `python-dotenv`, `python-multipart` to clear known CVEs; wired all 6 goal-execution test files into Tier 2.
+
 ### Fixed
 - **P0 Blocker**: Defined missing `scrollToElement` helper in `client-script/executor.js`, fixing runtime `ReferenceError` on all automated element interactions.
 - **Security (XSS)**: Replaced unescaped `innerHTML` string interpolation in `requestConfirmation` (`client-script/executor.js`) with safe DOM node construction.
@@ -34,7 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Contracts & Architecture**:
   - Reconciled action vocabulary to include `open` and `double_click` across backend models, parsers, executor, and dashboard.
   - Added `resolved_label` and `group_label` to `DomNode` schema and sanitization pipeline.
-  - Documented Contracts 6�10 in `docs/contracts.md`.
+  - Documented Contracts 6–10 in `docs/contracts.md`.
 
 ## [0.1.0] - 2026-09-12
 

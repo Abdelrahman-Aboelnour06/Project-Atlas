@@ -18,11 +18,27 @@ is dropped and logged as a warning.
 """
 import json
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
 VALID_CATEGORIES = {"button", "link", "input", "select", "textarea", "form", "other"}
 DEFAULT_CATEGORY = "other"
+
+_THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL)
+
+
+def _strip_thinking(raw: str) -> str:
+    """
+    Strips Nemotron <think>...</think> chain-of-thought blocks.
+    If <think> appears with no closing tag (e.g. truncated by max_tokens),
+    strips from <think> onward so unparseable thinking is rejected as bad JSON.
+    """
+    text = _THINK_BLOCK.sub("", raw or "").strip()
+    if "<think>" in text and "</think>" not in text:
+        idx = text.find("<think>")
+        return text[:idx].strip()
+    return text
 
 
 def _strip_fences(raw: str) -> str:
@@ -62,7 +78,7 @@ def parse_simplify_response(raw: str, dom_map: list | None) -> list[dict]:
         sidebar, not a broken connection.
     """
     valid_ids = _valid_ids(dom_map)
-    cleaned = _strip_fences(raw)
+    cleaned = _strip_fences(_strip_thinking(raw))
 
     try:
         data = json.loads(cleaned)

@@ -23,13 +23,15 @@ Configure in backend/.env:
 | Variable | Description | Default / Example |
 |----------|-------------|-------------------|
 | DATABASE_URL | PostgreSQL connection URL (asyncpg) | postgresql+asyncpg://postgres:postgres@localhost:5432/atlas |
-| LLM_PROVIDER | AI provider (nvidia_nim or ollama) | nvidia_nim |
-| LLM_BASE_URL | AI API base URL | https://integrate.api.nvidia.com/v1 |
-| LLM_MODEL | Target model identifier | meta/llama-3.2-11b-vision-instruct |
-| LLM_API_KEY | Provider API key | your_api_key_here |
+| LLM_PROVIDER | AI provider (groq, nvidia_nim, or ollama) | groq |
+| LLM_BASE_URL | AI API base URL | https://api.groq.com/openai/v1 |
+| LLM_MODEL | Target model identifier | llama-3.3-70b-versatile |
+| LLM_API_KEY | Provider API key (e.g. from console.groq.com) | gsk_your_api_key_here |
 | API_KEY_HEADER | Header name for API key authentication | X-Atlas-Key |
 | ALLOWED_ORIGINS | Comma-separated list of allowed origins | http://localhost:3000,... |
 | ALLOW_ORIGIN_REGEX | Regex for allowed extension origins | ^chrome-extension://[a-z]{32}$ |
+
+*Note: Atlas supports Groq (ultra-low latency LPU inference with `llama-3.3-70b-versatile`), NVIDIA NIM (with Nemotron reasoning toggles `/think` vs `/no_think`), and local Ollama.*
 
 ## Setup & Running
 

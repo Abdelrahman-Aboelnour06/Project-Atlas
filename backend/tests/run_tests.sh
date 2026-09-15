@@ -27,6 +27,10 @@ echo "── Action Parser ─────────────────�
 pytest tests/test_action_parser.py -v
 
 echo ""
+echo "── LLM Client ───────────────────────────"
+pytest tests/test_llm_client.py -v
+
+echo ""
 echo "── REST Routes ──────────────────────────"
 pytest tests/test_routes_rest.py -v
 

@@ -10,8 +10,8 @@ Request lifecycle per message:
     -> rate_limiter.check(tenant_id) -> error (connection stays open) if exceeded
     -> strip_pii_from_dom
     -> dispatch by `type`:
-         "simplify" -> build_simplify_prompt -> call_llm -> parse_simplify_response
-         "command"  -> build_prompt          -> call_llm -> parse_action
+         "simplify" -> build_simplify_prompt -> call_llm(reasoning=True) -> parse_simplify_response
+         "command"  -> build_prompt          -> call_llm(reasoning=False) -> parse_action
     -> log usage (command pipeline only)
     -> send structured JSON response back to the client
 
@@ -45,7 +45,7 @@ from app.agent import parser as command_parser
 from app.agent import simplify_prompt
 from app.agent import simplify_parser
 from app.agent import rate_limiter
-from app.agent.sanitize import strip_pii_from_dom, trim_log_payload
+from app.agent.sanitize import strip_pii_from_dom, trim_log_payload, redact_raw_secrets
 
 from app.models.request import AgentMessage
 from app.models.action import ActionResponse
@@ -199,22 +199,48 @@ async def websocket_endpoint(websocket: WebSocket):
             raw_dom = [node.model_dump() for node in message.dom_map]
             safe_dom = strip_pii_from_dom(raw_dom)
 
+            # Defense-in-depth: Scan command string for untokenized raw secrets
+            # Client-side vault tokenizes first; any hit here is treated as a client bug.
+            safe_command, raw_secret_hits = redact_raw_secrets(message.command)
+            if raw_secret_hits:
+                logger.warning(
+                    "Security event: raw secret detected in incoming command for session_id=%s, categories=%s",
+                    message.session_id,
+                    [h["category"] for h in raw_secret_hits],
+                )
+                async with db_connection.get_db_context() as session:
+                    for hit in raw_secret_hits:
+                        await db_connection._record_security_event(
+                            db=session,
+                            session_id=message.session_id,
+                            category=hit["category"],
+                            tenant_id=tenant_id,
+                        )
+
             try:
                 # 7. Route to the correct pipeline
                 if message.type == "simplify":
-                    prompt_text = simplify_prompt.build_simplify_prompt(safe_dom)
-                    raw_llm = await llm_client.call_llm(prompt_text)
+                    sys_prompt, usr_prompt = simplify_prompt.build_simplify_prompt(safe_dom)
+                    raw_llm = await llm_client.call_llm(
+                        user_prompt=usr_prompt,
+                        system_prompt=sys_prompt,
+                        reasoning=True,
+                    )
                     elements = simplify_parser.parse_simplify_response(raw_llm, safe_dom)
                     final_response = {"status": "success", "elements": elements, "message": None}
 
                 else:  # "command"
-                    prompt_text = command_prompt.build_prompt(safe_dom, message.command)
-                    raw_llm = await llm_client.call_llm(prompt_text)
+                    sys_prompt, usr_prompt = command_prompt.build_prompt(safe_dom, safe_command)
+                    raw_llm = await llm_client.call_llm(
+                        user_prompt=usr_prompt,
+                        system_prompt=sys_prompt,
+                        reasoning=False,
+                    )
                     action_response = command_parser.parse_action(raw_llm, safe_dom)
                     final_response = action_response.model_dump()
 
                     # 8. Log ONLY safe, minimal data to PostgreSQL for commands
-                    log_details = trim_log_payload(message.command, final_response)
+                    log_details = trim_log_payload(safe_command, final_response)
                     async with db_connection.get_db_context() as session:
                         await db_connection._log_usage(
                             db=session,

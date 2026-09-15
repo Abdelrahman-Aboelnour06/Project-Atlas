@@ -24,7 +24,7 @@ try:
 except ImportError:
     _simplify_prompt_mock = MagicMock()
     _simplify_prompt_mock.build_simplify_prompt = MagicMock(
-        return_value="MOCK SIMPLIFY PROMPT"
+        return_value=("MOCK SIMPLIFY SYSTEM PROMPT", "MOCK SIMPLIFY USER PROMPT")
     )
     sys.modules["app.agent.simplify_prompt"] = _simplify_prompt_mock
 

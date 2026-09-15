@@ -23,6 +23,7 @@ chrome.action.onClicked.addListener(async (tab) => {
       files: [
         "dom-serializer.js",
         "websocket-client.js",
+        "secret-vault.js",
         "executor.js",
         "speech.js",
         "tts.js",

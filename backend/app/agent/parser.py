@@ -15,6 +15,7 @@ response without needing a try/except around this call.
 """
 import json
 import logging
+import re
 from typing import Any
 
 from app.models.action import ActionResponse
@@ -22,6 +23,21 @@ from app.models.action import ActionResponse
 logger = logging.getLogger(__name__)
 
 VALID_ACTIONS = {"click", "open", "double_click", "fill", "scroll", "focus"}
+
+_THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL)
+
+
+def _strip_thinking(raw: str) -> str:
+    """
+    Strips Nemotron <think>...</think> chain-of-thought blocks.
+    If <think> appears with no closing tag (e.g. truncated by max_tokens),
+    strips from <think> onward so unparseable thinking is rejected as bad JSON.
+    """
+    text = _THINK_BLOCK.sub("", raw or "").strip()
+    if "<think>" in text and "</think>" not in text:
+        idx = text.find("<think>")
+        return text[:idx].strip()
+    return text
 
 
 # ── Exceptions ────────────────────────────────────────────────────────────────
@@ -71,12 +87,13 @@ def parse_action(raw: str, dom_map: list | None = None) -> ActionResponse:
     Validates raw LLM output → ActionResponse.
 
     Validation pipeline:
-      1. Strip accidental markdown fences
-      2. Parse JSON
-      3. Validate action ∈ {click, fill, scroll, focus} (or "none" — no match)
-      4. Validate element_id is present AND actually exists in dom_map
+      1. Strip reasoning thinking blocks (<think>...</think>)
+      2. Strip accidental markdown fences
+      3. Parse JSON
+      4. Validate action ∈ {click, fill, scroll, focus} (or "none" — no match)
+      5. Validate element_id is present AND actually exists in dom_map
          (hallucination check)
-      5. Validate value is present for fill actions
+      6. Validate value is present for fill actions
 
     Args:
         raw: The raw string returned by call_llm().
@@ -87,7 +104,7 @@ def parse_action(raw: str, dom_map: list | None = None) -> ActionResponse:
         ActionResponse — status is always "success" or "error", per
         Contract 2. Never raises.
     """
-    cleaned = _strip_fences(raw)
+    cleaned = _strip_fences(_strip_thinking(raw))
 
     # ── Step 1: Parse JSON ────────────────────────────────────────────────
     try:

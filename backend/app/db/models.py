@@ -50,3 +50,14 @@ class ErrorLog(Base):
     error_type = Column(String(64), nullable=False)   # missing_alt | missing_aria | missing_label
     suggestion = Column(Text)
     flagged_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class SecurityEvent(Base):
+    __tablename__ = "security_events"
+
+    id         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id  = Column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=True)
+    session_id = Column(String(36), nullable=False)
+    category   = Column(String(64), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+

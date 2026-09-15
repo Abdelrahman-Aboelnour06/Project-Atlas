@@ -10,6 +10,7 @@
 
 const HIGHLIGHT_CLASS = 'atlas-glow-highlight'
 const HIGHLIGHT_DURATION_MS = 2000
+const TOKEN_REGEX = /^\{(password|cc_number|cc_cvv|cc_expiry|cc_name|ssn|otp|pin|secret)(_\d+)?\}$/
 
 // Tracks the pending "remove highlight" timeout per element so that
 // re-glowing the same element within the highlight window resets the
@@ -319,9 +320,21 @@ const execute = async (actionResponse, options = {}) => {
             case 'dblclick':
                 await doOpen(el);
                 break;
-            case 'fill':
-                doFill(el, value);
+            case 'fill': {
+                let fillValue = value;
+                if (typeof fillValue === 'string' && TOKEN_REGEX.test(fillValue.trim())) {
+                    const tokenToResolve = fillValue.trim();
+                    const vault = window.AtlasSecretVault || (typeof secretVault !== 'undefined' ? secretVault : null);
+                    const currentOrigin = (typeof location !== 'undefined' && location.origin) ? location.origin : '';
+                    const resolved = vault ? await vault.resolve(currentOrigin, tokenToResolve) : null;
+                    if (!resolved) {
+                        return { ok: false, message: "That value isn't saved — please say it again." };
+                    }
+                    fillValue = resolved;
+                }
+                doFill(el, fillValue);
                 break;
+            }
             case 'scroll':
                 doScroll(el);
                 break;
@@ -347,5 +360,11 @@ const executeStep = async (step) => {
     }, { skipConfirmation: true });
 };
 
-window.AtlasExecutor = { execute, executeStep, isCredentialField, requestNativeCredentials }
+const executorApi = { execute, executeStep, isCredentialField, requestNativeCredentials, TOKEN_REGEX };
+if (typeof window !== 'undefined') {
+    window.AtlasExecutor = executorApi;
+}
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = executorApi;
+}
 })();

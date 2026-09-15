@@ -472,11 +472,12 @@ DEBUG=true
 # IMPORTANT: must use ?ssl=require not ?sslmode=require (asyncpg requirement)
 DATABASE_URL=postgresql+asyncpg://username:password@host/dbname?ssl=require
 
-# LLM — get API key from https://build.nvidia.com
-LLM_PROVIDER=nvidia_nim
-LLM_BASE_URL=https://integrate.api.nvidia.com/v1
-LLM_MODEL=meta/llama-3.1-8b-instruct
-LLM_API_KEY=nvapi-xxxxxxxxxxxxxxxxxxxx
+# LLM — get API key from https://console.groq.com (or https://build.nvidia.com for NIM)
+LLM_PROVIDER=groq
+LLM_BASE_URL=https://api.groq.com/openai/v1
+LLM_MODEL=llama-3.3-70b-versatile
+LLM_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxx
+# For NVIDIA NIM: set LLM_PROVIDER=nvidia_nim, LLM_BASE_URL=https://integrate.api.nvidia.com/v1, LLM_MODEL=nvidia/llama-3.3-nemotron-super-49b-v1.5
 
 # Security
 API_KEY_HEADER=X-Atlas-Key

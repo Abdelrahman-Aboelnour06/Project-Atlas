@@ -310,3 +310,135 @@ class TestParseSimplifyResponse:
         result = self._parse(raw, sample_dom_map)
         assert result[0]["category"] == "other"
 
+
+# ── Universal Heuristic Matching & Agentic Planner Fallback ──────────────────
+
+class TestAgenticPlannerHeuristicsAndResilience:
+    @pytest.mark.asyncio
+    async def test_timetable_heuristic_resolves_when_llm_fails_401(self):
+        from unittest.mock import patch
+        from app.agent.agentic_planner import plan_agentic_action
+        from app.agent.llm_client import LLMError
+
+        sample_dom = [
+            {"id": "btn-cu-1", "tag": "a", "resolved_label": "Registration"},
+            {"id": "btn-cu-2", "tag": "a", "resolved_label": "Term Classwork"},
+            {"id": "btn-cu-3", "tag": "a", "resolved_label": "Quiz"},
+            {"id": "btn-cu-4", "tag": "a", "resolved_label": "My Time Table"},
+            {"id": "btn-cu-5", "tag": "a", "resolved_label": "Registration Status Report"},
+        ]
+
+        with patch("app.agent.llm_client.call_llm", side_effect=LLMError("LLM HTTP error: 401 - Unauthorized")):
+            # Conversational sentence
+            plan1 = await plan_agentic_action(sample_dom, "want to check my timetable")
+            assert plan1.type == "plan"
+            assert len(plan1.steps) == 1
+            assert plan1.steps[0].action == "click"
+            assert plan1.steps[0].element_id == "btn-cu-4"
+            assert "My Time Table" in plan1.reply
+
+            # Compressed keyword
+            plan2 = await plan_agentic_action(sample_dom, "mytimetable")
+            assert plan2.type == "plan"
+            assert len(plan2.steps) == 1
+            assert plan2.steps[0].element_id == "btn-cu-4"
+
+    @pytest.mark.asyncio
+    async def test_auth_error_notifies_user_when_no_dom_match(self):
+        from unittest.mock import patch
+        from app.agent.agentic_planner import plan_agentic_action
+        from app.agent.llm_client import LLMError
+
+        sample_dom = [
+            {"id": "btn-1", "tag": "button", "resolved_label": "Submit"},
+        ]
+
+        with patch("app.agent.llm_client.call_llm", side_effect=LLMError("LLM HTTP error: 401 - Unauthorized")):
+            plan = await plan_agentic_action(sample_dom, "tell me a random joke")
+            assert plan.type == "conversation"
+            assert len(plan.steps) == 0
+            assert "401" in plan.reply
+            assert "LLM_API_KEY" in plan.reply
+
+
+# ── Nemotron Reasoning <think> Block Stripping Tests ─────────────────────────
+
+class TestReasoningThinkBlockStripping:
+    def test_strip_thinking_removes_well_formed_block(self):
+        from app.agent.parser import _strip_thinking
+        raw = "<think>\nThinking about the user command...\nFound atlas-001\n</think>\n{\"action\": \"click\", \"element_id\": \"atlas-001\"}"
+        cleaned = _strip_thinking(raw)
+        assert "<think>" not in cleaned
+        assert "</think>" not in cleaned
+        assert cleaned == '{"action": "click", "element_id": "atlas-001"}'
+
+    def test_parse_action_with_thinking_block(self):
+        from app.agent.parser import parse_action
+        raw = "<think>\nNeed to click button\n</think>```json\n{\"action\": \"click\", \"element_id\": \"atlas-001\", \"value\": null}\n```"
+        result = parse_action(raw, [{"id": "atlas-001"}])
+        assert result.status == "success"
+        assert result.action == "click"
+        assert result.element_id == "atlas-001"
+
+    def test_parse_action_with_unterminated_thinking_block(self):
+        from app.agent.parser import parse_action
+        raw = "<think>\nCutoff mid-thought due to token limit..."
+        result = parse_action(raw, [{"id": "atlas-001"}])
+        assert result.status == "error"
+        assert "not valid JSON" in result.message
+
+    def test_parse_action_no_thinking_block_untouched(self):
+        from app.agent.parser import parse_action
+        raw = '{"action": "click", "element_id": "atlas-001", "value": null}'
+        result = parse_action(raw, [{"id": "atlas-001"}])
+        assert result.status == "success"
+        assert result.action == "click"
+
+    def test_parse_simplify_with_thinking_block(self, sample_dom_map):
+        from app.agent.simplify_parser import parse_simplify_response
+        raw = "<think>\nAnalyzing page elements...\n</think>\n[{\"element_id\": \"atlas-001\", \"label\": \"Checkout\", \"category\": \"button\"}]"
+        result = parse_simplify_response(raw, sample_dom_map)
+        assert len(result) == 1
+        assert result[0]["element_id"] == "atlas-001"
+
+    def test_parse_simplify_with_unterminated_thinking_block(self, sample_dom_map):
+        from app.agent.simplify_parser import parse_simplify_response
+        raw = "<think>\nTruncated thinking without closing tag..."
+        result = parse_simplify_response(raw, sample_dom_map)
+        assert result == []
+
+    def test_parse_simplify_no_thinking_block_untouched(self, sample_dom_map):
+        from app.agent.simplify_parser import parse_simplify_response
+        raw = '[{"element_id": "atlas-001", "label": "Checkout", "category": "button"}]'
+        result = parse_simplify_response(raw, sample_dom_map)
+        assert len(result) == 1
+        assert result[0]["element_id"] == "atlas-001"
+
+
+# ── Prompt Builder Tuple Split Tests ──────────────────────────────────────────
+
+class TestPromptBuilders:
+    def test_build_prompt_returns_tuple_split(self):
+        from app.agent.prompt import build_prompt
+        dom_map = [{"id": "btn-1", "tag": "button", "resolved_label": "Submit"}]
+        res = build_prompt(dom_map, "click submit")
+        assert isinstance(res, tuple)
+        assert len(res) == 2
+        sys_prompt, user_prompt = res
+        assert "CRITICAL SECURITY RULE" in sys_prompt
+        assert "Format: {\"action\":" in sys_prompt
+        assert "DOM MAP:" in user_prompt
+        assert "USER COMMAND: click submit" in user_prompt
+
+    def test_build_simplify_prompt_returns_tuple_split(self):
+        from app.agent.simplify_prompt import build_simplify_prompt
+        dom_map = [{"id": "btn-1", "tag": "button", "resolved_label": "Submit"}]
+        res = build_simplify_prompt(dom_map)
+        assert isinstance(res, tuple)
+        assert len(res) == 2
+        sys_prompt, user_prompt = res
+        assert "accessibility assistant" in sys_prompt
+        assert "CRITICAL SECURITY RULE" in sys_prompt
+        assert "INTERACTIVE ELEMENTS (1 total):" in user_prompt
+
+

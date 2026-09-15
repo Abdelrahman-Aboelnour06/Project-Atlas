@@ -109,7 +109,7 @@ if [[ ! -f .env ]]; then
   log "No .env found — creating one from .env.example."
   cp .env.example .env
   warn "backend/.env was just created from the template."
-  warn "You MUST edit it and set LLM_API_KEY (from https://build.nvidia.com),"
+  warn "You MUST edit it and set LLM_API_KEY (from https://console.groq.com or https://build.nvidia.com),"
   warn "or switch LLM_PROVIDER to 'ollama' if you're running a local model."
   warn "Re-run this script after editing .env."
   exit 1

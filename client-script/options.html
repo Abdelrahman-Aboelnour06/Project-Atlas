@@ -50,7 +50,23 @@
 
       <p id="atlas-status" role="status" aria-live="polite"></p>
     </form>
+
+    <section class="atlas-secrets-section" aria-labelledby="saved-secrets-heading">
+      <div class="atlas-secrets-header">
+        <div>
+          <h2 id="saved-secrets-heading">Saved Secrets</h2>
+          <p class="atlas-hint">Sensitive values are encrypted and stored only in your local browser.</p>
+        </div>
+        <button type="button" id="clear-all-secrets-btn" class="atlas-secondary atlas-danger-btn">
+          Clear everything
+        </button>
+      </div>
+
+      <div id="secrets-container" class="atlas-secrets-list"></div>
+      <p id="secrets-status" role="status" aria-live="polite"></p>
+    </section>
   </main>
+  <script src="secret-vault.js"></script>
   <script src="options.js"></script>
 </body>
 </html>
