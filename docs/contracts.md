@@ -415,6 +415,52 @@ Chrome runtime message schema between content scripts, options page, and backgro
 
 ---
 
+## Contract 11 — Client-Side Secret Tokens
+
+Sensitive values (passwords, card numbers, CVV, expiry, SSN, OTP, PIN) are
+never transmitted in plaintext. The extension substitutes a token in any
+outbound `command` string and in any `value` it received from a prior
+response that it needs to echo back. Tokens are opaque strings to the
+backend — it never decodes them, only passes them through.
+
+### Token grammar
+`{category}` or `{category_N}` (N = 2, 3, ... for the 2nd+ field of the same
+category on one page, e.g. a "confirm password" field).
+
+Categories: `password | cc_number | cc_cvv | cc_expiry | cc_name | ssn | otp
+| pin | secret` (`secret` is the generic fallback for anything the keyword
+regex flags but doesn't classify more specifically).
+
+Regex: `/^\{(password|cc_number|cc_cvv|cc_expiry|cc_name|ssn|otp|pin|secret)(_\d+)?\}$/`
+
+### Flow
+1. Client extracts a sensitive value from the transcribed command (or from a
+   typed value) and stores it in the local vault, keyed by
+   `(origin, token)`. Storage is persistent — it survives tab close, browser
+   restart, and Atlas re-activation, until the user explicitly deletes it.
+2. Client sends the tokenized command upstream instead of the raw text.
+3. Backend plans normally and may put the token verbatim into a `fill`
+   step's `value` field — it is just a string to the LLM/backend.
+4. Client's executor detects the token pattern in `value` before calling
+   `doFill`, resolves it against the local vault for the current origin, and
+   fills the real value.
+5. If a token can't be resolved (vault miss — the user deleted it, or it's a
+   fresh browser profile), the fill is aborted with a user-facing "please
+   re-enter this field" message — Atlas never falls back to asking the LLM
+   what the value was.
+6. The user manages saved values from the extension's options page: list
+   (by origin + category, never by value), delete one, or clear all.
+
+### Server-side defense in depth
+`backend/app/agent/sanitize.py` gains a second, independent guard that scans
+incoming `command` text for high-confidence raw-secret patterns (13–19 digit
+Luhn-valid sequences, SSN-shaped digits, etc.) even though the client should
+already have tokenized them. A hit is treated as a client bug: the field is
+redacted server-side before it reaches the LLM or any log line, and a
+`security_event` is recorded (element/category only, never the value).
+
+---
+
 ## Versioning
 
 | Version | Date | Change |
@@ -423,3 +469,4 @@ Chrome runtime message schema between content scripts, options page, and backgro
 | v1.1 | Day 2 — Hour 0 | `id` = synthetic `data-atlas-id`, not native `id`; added `type` field to Contract 1; added Contract 5 (simplify response + audit log) |
 | v1.2 | Day 2 — Hour 4 | `type` corrected to **required, no default**; WS error-handling defined. |
 | v1.3 | Remediation Pass | Added `open` and `double_click` to Contract 2 action types; added `resolved_label` and `group_label` to Contract 3; added Contracts 6–10 (CSWSH handshake, Chat, Summary, Fixes, and Extension internal messaging). |
+| v1.4 | Security Pass | Added Contract 11 (Client-Side Secret Tokens & Local Vault). |

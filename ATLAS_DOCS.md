@@ -475,7 +475,8 @@ DATABASE_URL=postgresql+asyncpg://username:password@host/dbname?ssl=require
 # LLM — get API key from https://build.nvidia.com
 LLM_PROVIDER=nvidia_nim
 LLM_BASE_URL=https://integrate.api.nvidia.com/v1
-LLM_MODEL=meta/llama-3.1-8b-instruct
+LLM_MODEL=nvidia/llama-3.3-nemotron-super-49b-v1.5
+# Note: Atlas automatically configures reasoning toggles (/think vs /no_think for Nemotron v1.5; see https://build.nvidia.com).
 LLM_API_KEY=nvapi-xxxxxxxxxxxxxxxxxxxx
 
 # Security

@@ -20,7 +20,7 @@ simplify_prompt.py already does it.)
 import json
 
 
-def build_prompt(dom_map: list, command: str) -> str:
+def build_prompt(dom_map: list, command: str) -> tuple[str, str]:
     """
     Builds the prompt for the "resolve one command" pipeline.
 
@@ -30,7 +30,7 @@ def build_prompt(dom_map: list, command: str) -> str:
         command: the raw user command, e.g. "click checkout".
 
     Returns:
-        The full prompt string to hand to call_llm().
+        tuple[str, str]: (system_prompt, user_prompt) to hand to call_llm().
     """
     dom_json = json.dumps(dom_map, indent=2)
 
@@ -45,4 +45,6 @@ def build_prompt(dom_map: list, command: str) -> str:
     if len(dom_map) < 3:
         fallback_hint = "\nHint: There are very few elements here. If the command does not match, return action 'none'."
 
-    return f"{system_prompt}{fallback_hint}\n\nDOM MAP:\n{dom_json}\n\nUSER COMMAND: {command}\n\nJSON response:"
+    sys_text = f"{system_prompt}{fallback_hint}".strip()
+    user_text = f"DOM MAP:\n{dom_json}\n\nUSER COMMAND: {command}\n\nJSON response:"
+    return sys_text, user_text

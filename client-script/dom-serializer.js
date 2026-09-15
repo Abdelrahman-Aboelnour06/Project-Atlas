@@ -41,15 +41,63 @@ const SENSITIVE_AUTOCOMPLETE_REGEX =
   /cc-|current-password|new-password|one-time-code|bday/i;
 
 const isSensitiveField = (el) => {
-  const type = (el.getAttribute("type") || "").toLowerCase();
+  if (!el) return false;
+  const type = (el.getAttribute?.("type") || el.type || "").toLowerCase();
   if (SENSITIVE_INPUT_TYPES.has(type)) return true;
-  const autocomplete = el.getAttribute("autocomplete") || "";
+  const autocomplete = (el.getAttribute?.("autocomplete") || el.autocomplete || "").toLowerCase();
   if (SENSITIVE_AUTOCOMPLETE_REGEX.test(autocomplete)) return true;
-  const name = el.getAttribute("name") || "";
-  const id = el.id || "";
-  const aria = el.getAttribute("aria-label") || "";
-  const placeholder = el.getAttribute("placeholder") || "";
+  const name = el.getAttribute?.("name") || el.name || "";
+  const id = el.id || el.getAttribute?.("id") || "";
+  const aria = el.getAttribute?.("aria-label") || "";
+  const placeholder = el.getAttribute?.("placeholder") || el.placeholder || "";
   return SENSITIVE_KEYWORD_REGEX.test(`${name} ${id} ${aria} ${placeholder}`);
+};
+
+const classifySensitiveField = (el) => {
+  if (!el) return null;
+  const type = (el.getAttribute?.("type") || el.type || "").toLowerCase();
+  const autocomplete = (el.getAttribute?.("autocomplete") || el.autocomplete || "").toLowerCase();
+  const name = (el.getAttribute?.("name") || el.name || "").toLowerCase();
+  const id = (el.id || el.getAttribute?.("id") || "").toLowerCase();
+  const aria = (el.getAttribute?.("aria-label") || "").toLowerCase();
+  const placeholder = (el.getAttribute?.("placeholder") || el.placeholder || "").toLowerCase();
+  const combined = `${autocomplete} ${name} ${id} ${aria} ${placeholder}`;
+
+  // If none of the sensitive signals trigger, return null
+  // Note: type="email" and type="tel" are PII for isSensitiveField DOM masking,
+  // but are not secret tokens under Contract 11.
+  const isSens = type === "password" ||
+    SENSITIVE_AUTOCOMPLETE_REGEX.test(autocomplete) ||
+    SENSITIVE_KEYWORD_REGEX.test(combined);
+  if (!isSens) return null;
+
+  // Refined classification per Contract 11 categories:
+  // password | cc_number | cc_cvv | cc_expiry | cc_name | ssn | otp | pin | secret
+  if (type === "password" || autocomplete === "current-password" || autocomplete === "new-password" || /\b(password|passwd)\b/i.test(combined)) {
+    return "password";
+  }
+  if (autocomplete.includes("cc-number") || /\b(cc[-_ ]?number|card[-_ ]?number|credit[-_ ]?card)\b/i.test(combined)) {
+    return "cc_number";
+  }
+  if (autocomplete.includes("cc-csc") || /\b(cc[-_ ]?(?:csc|cvv|cvc)|cvv|cvc|csc|security[-_ ]?code)\b/i.test(combined)) {
+    return "cc_cvv";
+  }
+  if (autocomplete.includes("cc-exp") || /\b(cc[-_ ]?exp|expiry|expiration)\b/i.test(combined)) {
+    return "cc_expiry";
+  }
+  if (autocomplete.includes("cc-name") || /\b(cc[-_ ]?name|cardholder|name[-_ ]?on[-_ ]?card)\b/i.test(combined)) {
+    return "cc_name";
+  }
+  if (autocomplete.includes("one-time-code") || /\b(one[-_ ]?time[-_ ]?code|otp|2fa|mfa|verification[-_ ]?code)\b/i.test(combined)) {
+    return "otp";
+  }
+  if (/(?:^|[-_ \b])ssn(?:[-_ \b]|$)|social[-_ ]?security/i.test(combined)) {
+    return "ssn";
+  }
+  if (/(?:^|[-_ \b])pin(?:[-_ \b]|$)/i.test(combined)) {
+    return "pin";
+  }
+  return "secret";
 };
 
 // ── Noise filter ─────────────────────────────────────────────────────────────
@@ -447,11 +495,20 @@ const NOISE_TEXT_PATTERNS = [
     return () => observer.disconnect();
   };
 
-  window.AtlasSerializer = {
+  const serializerApi = {
     serialize,
     getElementByAtlasId,
     observe,
     pause,
     resume,
+    isSensitiveField,
+    classifySensitiveField,
   };
+
+  if (typeof window !== "undefined") {
+    window.AtlasSerializer = serializerApi;
+  }
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = serializerApi;
+  }
 })();

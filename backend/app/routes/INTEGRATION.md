@@ -30,9 +30,11 @@ required unless you switch to Ollama:
 
 ```env
 LLM_PROVIDER=nvidia_nim
-LLM_MODEL=meta/llama-3.1-70b-instruct
+LLM_MODEL=nvidia/llama-3.3-nemotron-super-49b-v1.5
 LLM_BASE_URL=https://integrate.api.nvidia.com/v1
 LLM_API_KEY=                    # required — get one from https://build.nvidia.com
+
+# Note: Atlas automatically manages reasoning toggles (/think vs /no_think for Nemotron v1.5; see https://build.nvidia.com). Switching model families can change or disable toggle syntax.
 
 # To use local Ollama instead:
 # LLM_PROVIDER=ollama

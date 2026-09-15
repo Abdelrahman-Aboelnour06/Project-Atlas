@@ -25,7 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.db.models import ApiKey, UsageLog
+from app.db.models import ApiKey, UsageLog, SecurityEvent
 
 logger = logging.getLogger(__name__)
 
@@ -200,3 +200,32 @@ async def _log_usage(
             await db.rollback()
         except Exception:
             pass
+
+
+async def _record_security_event(
+    db: AsyncSession,
+    session_id: str,
+    category: str,
+    tenant_id: uuid.UUID | None = None,
+) -> None:
+    """
+    Records an audit security event when a raw secret is detected in an incoming command.
+    Captures only session_id, tenant_id, category, and timestamp — NEVER secret values.
+    Never raises to avoid interrupting request lifecycle.
+    """
+    try:
+        db.add(
+            SecurityEvent(
+                tenant_id=tenant_id,
+                session_id=session_id or "",
+                category=category,
+            )
+        )
+        await db.commit()
+    except Exception:
+        logger.exception("Failed to record security event (session_id=%s, category=%s)", session_id, category)
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+

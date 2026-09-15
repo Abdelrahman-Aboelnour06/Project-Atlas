@@ -65,7 +65,7 @@ def ws_client():
          patch("app.agent.llm_client.call_llm",
                new=AsyncMock(return_value=VALID_COMMAND_RESPONSE)), \
          patch("app.agent.simplify_prompt.build_simplify_prompt",
-               return_value="mock simplify prompt"), \
+               return_value=("mock simplify sys", "mock simplify user")), \
          patch("app.agent.simplify_parser.parse_simplify_response",
                return_value=[
                    {"element_id": "atlas-001", "label": "Checkout button", "category": "button"},
@@ -335,3 +335,48 @@ class TestRateLimiting:
             ws.send_json(self._command_payload())
             allowed = ws.receive_json()
             assert allowed["status"] == "success"
+
+
+# ── Fast-path vs Smart-path Reasoning Wiring Tests ────────────────────────────
+
+class TestPipelineReasoningWiring:
+    def test_command_pipeline_calls_llm_with_reasoning_off(self, ws_client):
+        """Command pipeline is on the real-time hot path: reasoning must be False."""
+        mock_call = AsyncMock(return_value='{"action": "click", "element_id": "atlas-001", "value": null, "message": "done"}')
+        with patch("app.agent.llm_client.call_llm", new=mock_call):
+            payload = {
+                "session_id": "test-reasoning-cmd",
+                "api_key": DEMO_API_KEY,
+                "url": "https://demo.atlas.com",
+                "dom_map": SAMPLE_DOM_MAP,
+                "command": "click checkout",
+                "type": "command",
+            }
+            with ws_client.websocket_connect("/v1/agent") as ws:
+                ws.send_json(payload)
+                resp = ws.receive_json()
+            assert resp["status"] == "success"
+            assert mock_call.called
+            call_kwargs = mock_call.call_args.kwargs
+            assert call_kwargs.get("reasoning") is False
+
+    def test_simplify_pipeline_calls_llm_with_reasoning_on(self, ws_client):
+        """Simplify pipeline runs per page-load: reasoning must be True."""
+        mock_call = AsyncMock(return_value='[{"element_id": "atlas-001", "label": "Checkout", "category": "button"}]')
+        with patch("app.agent.llm_client.call_llm", new=mock_call):
+            payload = {
+                "session_id": "test-reasoning-simp",
+                "api_key": DEMO_API_KEY,
+                "url": "https://demo.atlas.com",
+                "dom_map": SAMPLE_DOM_MAP,
+                "command": "",
+                "type": "simplify",
+            }
+            with ws_client.websocket_connect("/v1/agent") as ws:
+                ws.send_json(payload)
+                resp = ws.receive_json()
+            assert resp["status"] == "success"
+            assert mock_call.called
+            call_kwargs = mock_call.call_args.kwargs
+            assert call_kwargs.get("reasoning") is True
+

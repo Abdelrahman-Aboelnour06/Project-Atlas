@@ -31,6 +31,11 @@ jobs:
             echo "::error::Potential live cloud API key or DB secret found in tracked source files!"
             exit 1
           fi
+          # Verify test fixture files do not hardcode real-looking live credentials
+          if git grep -EI "sk_live_[a-zA-Z0-9]{24,}|ghp_[a-zA-Z0-9]{36}" -- 'backend/tests/'; then
+            echo "::error::Real-looking live credential found in test fixtures!"
+            exit 1
+          fi
           echo "No hardcoded high-entropy secrets found in tracked source code."
 
       - name: Set up Python
@@ -89,6 +94,9 @@ jobs:
       - name: Run Extension Unit Tests (Syntax & Manifest)
         run: node client-script/test_extension.js
 
+      - name: Run Secret Vault Unit Tests
+        run: node client-script/test_secret_vault.js
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -109,6 +117,10 @@ jobs:
       - name: Run Action & Simplify Parser Unit Tests
         working-directory: ./backend
         run: pytest tests/test_action_parser.py -v --tb=short
+
+      - name: Run LLM Client Unit Tests
+        working-directory: ./backend
+        run: pytest tests/test_llm_client.py -v --tb=short
 
       - name: Run Rate Limiter Unit Tests
         working-directory: ./backend
@@ -145,6 +157,10 @@ jobs:
       - name: Run Security & Resilience Regression Tests
         working-directory: ./backend
         run: pytest tests/test_security_resilience.py -v --tb=short
+
+      - name: Run Secret Tokenization Module Tests
+        working-directory: ./backend
+        run: pytest tests/test_secret_tokenization.py -v --tb=short
 
       - name: Run Universal Auth & Transaction Integrity Tests
         working-directory: ./backend
@@ -187,6 +203,10 @@ jobs:
       - name: Run WebSocket Agent Pipeline System Tests
         working-directory: ./backend
         run: pytest tests/test_websocket.py -v --tb=short
+
+      - name: Run Secret Leak Regression System Tests
+        working-directory: ./backend
+        run: pytest tests/test_secret_leak_regression.py -v --tb=short
 
       - name: Run End-to-End Multi-Service System Tests
         working-directory: ./backend

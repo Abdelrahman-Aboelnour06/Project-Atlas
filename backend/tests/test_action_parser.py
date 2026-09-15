@@ -360,3 +360,85 @@ class TestAgenticPlannerHeuristicsAndResilience:
             assert "401" in plan.reply
             assert "LLM_API_KEY" in plan.reply
 
+
+# ── Nemotron Reasoning <think> Block Stripping Tests ─────────────────────────
+
+class TestReasoningThinkBlockStripping:
+    def test_strip_thinking_removes_well_formed_block(self):
+        from app.agent.parser import _strip_thinking
+        raw = "<think>\nThinking about the user command...\nFound atlas-001\n</think>\n{\"action\": \"click\", \"element_id\": \"atlas-001\"}"
+        cleaned = _strip_thinking(raw)
+        assert "<think>" not in cleaned
+        assert "</think>" not in cleaned
+        assert cleaned == '{"action": "click", "element_id": "atlas-001"}'
+
+    def test_parse_action_with_thinking_block(self):
+        from app.agent.parser import parse_action
+        raw = "<think>\nNeed to click button\n</think>```json\n{\"action\": \"click\", \"element_id\": \"atlas-001\", \"value\": null}\n```"
+        result = parse_action(raw, [{"id": "atlas-001"}])
+        assert result.status == "success"
+        assert result.action == "click"
+        assert result.element_id == "atlas-001"
+
+    def test_parse_action_with_unterminated_thinking_block(self):
+        from app.agent.parser import parse_action
+        raw = "<think>\nCutoff mid-thought due to token limit..."
+        result = parse_action(raw, [{"id": "atlas-001"}])
+        assert result.status == "error"
+        assert "not valid JSON" in result.message
+
+    def test_parse_action_no_thinking_block_untouched(self):
+        from app.agent.parser import parse_action
+        raw = '{"action": "click", "element_id": "atlas-001", "value": null}'
+        result = parse_action(raw, [{"id": "atlas-001"}])
+        assert result.status == "success"
+        assert result.action == "click"
+
+    def test_parse_simplify_with_thinking_block(self, sample_dom_map):
+        from app.agent.simplify_parser import parse_simplify_response
+        raw = "<think>\nAnalyzing page elements...\n</think>\n[{\"element_id\": \"atlas-001\", \"label\": \"Checkout\", \"category\": \"button\"}]"
+        result = parse_simplify_response(raw, sample_dom_map)
+        assert len(result) == 1
+        assert result[0]["element_id"] == "atlas-001"
+
+    def test_parse_simplify_with_unterminated_thinking_block(self, sample_dom_map):
+        from app.agent.simplify_parser import parse_simplify_response
+        raw = "<think>\nTruncated thinking without closing tag..."
+        result = parse_simplify_response(raw, sample_dom_map)
+        assert result == []
+
+    def test_parse_simplify_no_thinking_block_untouched(self, sample_dom_map):
+        from app.agent.simplify_parser import parse_simplify_response
+        raw = '[{"element_id": "atlas-001", "label": "Checkout", "category": "button"}]'
+        result = parse_simplify_response(raw, sample_dom_map)
+        assert len(result) == 1
+        assert result[0]["element_id"] == "atlas-001"
+
+
+# ── Prompt Builder Tuple Split Tests ──────────────────────────────────────────
+
+class TestPromptBuilders:
+    def test_build_prompt_returns_tuple_split(self):
+        from app.agent.prompt import build_prompt
+        dom_map = [{"id": "btn-1", "tag": "button", "resolved_label": "Submit"}]
+        res = build_prompt(dom_map, "click submit")
+        assert isinstance(res, tuple)
+        assert len(res) == 2
+        sys_prompt, user_prompt = res
+        assert "CRITICAL SECURITY RULE" in sys_prompt
+        assert "Format: {\"action\":" in sys_prompt
+        assert "DOM MAP:" in user_prompt
+        assert "USER COMMAND: click submit" in user_prompt
+
+    def test_build_simplify_prompt_returns_tuple_split(self):
+        from app.agent.simplify_prompt import build_simplify_prompt
+        dom_map = [{"id": "btn-1", "tag": "button", "resolved_label": "Submit"}]
+        res = build_simplify_prompt(dom_map)
+        assert isinstance(res, tuple)
+        assert len(res) == 2
+        sys_prompt, user_prompt = res
+        assert "accessibility assistant" in sys_prompt
+        assert "CRITICAL SECURITY RULE" in sys_prompt
+        assert "INTERACTIVE ELEMENTS (1 total):" in user_prompt
+
+

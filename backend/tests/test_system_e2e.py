@@ -68,7 +68,7 @@ def e2e_client():
          patch("app.agent.llm_client.call_llm",
                new=AsyncMock(return_value=MOCK_COMMAND_RESPONSE)), \
          patch("app.agent.simplify_prompt.build_simplify_prompt",
-               return_value="mock simplify prompt"), \
+               return_value=("mock simplify sys", "mock simplify user")), \
          patch("app.agent.simplify_parser.parse_simplify_response",
                return_value=[
                    {"element_id": "atlas-001", "label": "Checkout", "category": "button"},

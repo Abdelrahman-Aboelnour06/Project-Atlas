@@ -25,11 +25,13 @@ Configure in backend/.env:
 | DATABASE_URL | PostgreSQL connection URL (asyncpg) | postgresql+asyncpg://postgres:postgres@localhost:5432/atlas |
 | LLM_PROVIDER | AI provider (nvidia_nim or ollama) | nvidia_nim |
 | LLM_BASE_URL | AI API base URL | https://integrate.api.nvidia.com/v1 |
-| LLM_MODEL | Target model identifier | meta/llama-3.2-11b-vision-instruct |
+| LLM_MODEL | Target model identifier | nvidia/llama-3.3-nemotron-super-49b-v1.5 |
 | LLM_API_KEY | Provider API key | your_api_key_here |
 | API_KEY_HEADER | Header name for API key authentication | X-Atlas-Key |
 | ALLOWED_ORIGINS | Comma-separated list of allowed origins | http://localhost:3000,... |
 | ALLOW_ORIGIN_REGEX | Regex for allowed extension origins | ^chrome-extension://[a-z]{32}$ |
+
+*Note: Atlas derives model reasoning toggles (`/think` vs `/no_think` for Nemotron v1.5; see [NVIDIA Nemotron documentation](https://build.nvidia.com)) automatically based on `LLM_MODEL`.*
 
 ## Setup & Running
 

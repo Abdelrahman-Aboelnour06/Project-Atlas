@@ -132,12 +132,19 @@
       const domMap = window.AtlasSerializer.serialize();
       const { apiKey, baseUrl } = await getStoredSettings();
 
-      conversationHistory.push({ role: "user", content: rawInput });
+      let inputToSend = rawInput;
+      if (window.AtlasSecretVault?.tokenizeCommand) {
+        const origin = window.location.origin || "";
+        const tokenized = await window.AtlasSecretVault.tokenizeCommand(origin, rawInput, domMap);
+        inputToSend = tokenized.command;
+      }
+
+      conversationHistory.push({ role: "user", content: inputToSend });
       if (conversationHistory.length > 8) conversationHistory = conversationHistory.slice(-8);
 
       const requestPayload = {
         url: window.location.href,
-        question: rawInput,
+        question: inputToSend,
         page_text: pageText,
         dom_map: domMap,
         history: conversationHistory,
@@ -354,10 +361,16 @@ const runCommand = async (command) => {
   window.AtlasSidebar.addChatThinking();
   try {
     const domMap = window.AtlasSerializer.serialize();
+    let commandToSend = command;
+    if (window.AtlasSecretVault?.tokenizeCommand) {
+      const origin = window.location.origin || "";
+      const tokenized = await window.AtlasSecretVault.tokenizeCommand(origin, command, domMap);
+      commandToSend = tokenized.command;
+    }
     const response = await window.AtlasSocket.sendCommand({
       url: window.location.href,
       domMap,
-      command,
+      command: commandToSend,
     });
     const result = await window.AtlasExecutor.execute(response);
     window.AtlasSidebar.setStatus(result.message, result.ok ? "ok" : "error");
