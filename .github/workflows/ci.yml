@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ main, master ]
 
+env:
+  LLM_PROVIDER: mock
+
 jobs:
   security-audit:
     name: "Tier 0: Security & Secret Audit Quality Gate"
@@ -165,6 +168,30 @@ jobs:
       - name: Run Universal Auth & Transaction Integrity Tests
         working-directory: ./backend
         run: pytest tests/test_auth_and_transactions.py -v --tb=short
+
+      - name: Run Goal Contracts Tests
+        working-directory: ./backend
+        run: pytest tests/test_goal_contracts.py -v --tb=short
+
+      - name: Run Goal Contracts Stress Tests
+        working-directory: ./backend
+        run: pytest tests/test_goal_contracts_stress.py -v --tb=short
+
+      - name: Run Goal Pipeline Tests
+        working-directory: ./backend
+        run: pytest tests/test_goal_pipeline.py -v --tb=short
+
+      - name: Run Mock LLM Adversarial Tests
+        working-directory: ./backend
+        run: pytest tests/test_mock_llm_adversarial.py -v --tb=short
+
+      - name: Run Mock LLM Conflicting Permutations Tests
+        working-directory: ./backend
+        run: pytest tests/test_mock_llm_conflicting_permutations.py -v --tb=short
+
+      - name: Run Mock LLM Role Precedence Tests
+        working-directory: ./backend
+        run: pytest tests/test_mock_llm_role_precedence.py -v --tb=short
 
       - name: Set up Node.js for Dashboard
         uses: actions/setup-node@v4

@@ -461,6 +461,75 @@ redacted server-side before it reaches the LLM or any log line, and a
 
 ---
 
+## Contract 12 — Goal-Directed Execution (Phase 1)
+
+> **v1.0** — Phase 1: same-page Navigator + Verifier loop.
+> Phase 2 will add Planner agent, `background.js` GoalStore, and cross-page state.
+
+### Goal Step Request (`POST /v1/chat/goal_step`)
+
+```json
+{
+  "goal_state": {
+    "goal_id": "string",
+    "original_goal": "string",
+    "milestones": [
+      {
+        "id": "string",
+        "description": "string",
+        "status": "pending | active | completed | failed",
+        "verification_method": "string (optional)"
+      }
+    ],
+    "hop_count": 0,
+    "max_hops": 8,
+    "status": "in_progress | completed | failed",
+    "plan_steps": []
+  },
+  "current_url": "string",
+  "current_dom": [ /* Contract 3 DomNode[] */ ],
+  "last_action_result": "string | null"
+}
+```
+
+### Goal Step Response
+
+```json
+{
+  "milestone_status": "in_progress | milestone_complete | goal_complete | goal_failed | requires_confirmation",
+  "next_steps": [ /* Contract 2 PlanStep[] */ ],
+  "updated_milestones": [ /* Milestone[] */ ],
+  "requires_confirmation": false,
+  "pending_step": null,
+  "confirmation_prompt": null,
+  "reply": "string",
+  "updated_goal_state": { /* GoalState */ }
+}
+```
+
+### Safety Guarantees
+
+- **`max_hops`** (default 8): Hard ceiling — goal auto-fails past this and returns
+  control to the user with a plain-language explanation.
+- **`requires_confirmation`**: Consequential actions (buy, delete, pay, submit, etc.)
+  pause for user approval, even mid-goal — inherited unchanged from the existing
+  single-page planner gate.
+- **Verifier rules-first**: 6 deterministic rules (client execution status, error
+  indicators, success indicators, URL transitions, element disappearance, LLM
+  fallback) are checked in sequence before any LLM judgment call.
+- **No hallucinated IDs**: Navigator validates every `element_id` against the live
+  DOM's `valid_ids` set; fuzzy-match recovery via `find_heuristic_match` (score ≥ 0.5)
+  for near-misses; unresolvable IDs are silently discarded.
+
+### Agents
+
+| Agent | Module | Calls LLM? | Job |
+|---|---|---|---|
+| Navigator | `app/agent/navigator.py` | Yes (1 call per hop) | Resolve milestone + current DOM → one concrete `PlanStep` |
+| Verifier | `app/agent/verifier.py` | Only if rules are inconclusive | Decide: `in_progress`, `milestone_complete`, `goal_complete`, or `goal_failed` |
+
+---
+
 ## Versioning
 
 | Version | Date | Change |
@@ -470,3 +539,4 @@ redacted server-side before it reaches the LLM or any log line, and a
 | v1.2 | Day 2 — Hour 4 | `type` corrected to **required, no default**; WS error-handling defined. |
 | v1.3 | Remediation Pass | Added `open` and `double_click` to Contract 2 action types; added `resolved_label` and `group_label` to Contract 3; added Contracts 6–10 (CSWSH handshake, Chat, Summary, Fixes, and Extension internal messaging). |
 | v1.4 | Security Pass | Added Contract 11 (Client-Side Secret Tokens & Local Vault). |
+| v1.5 | Phase 1 Goal Execution | Added Contract 12 (Goal-Directed Execution — Navigator + Verifier loop, `POST /v1/chat/goal_step`). |
