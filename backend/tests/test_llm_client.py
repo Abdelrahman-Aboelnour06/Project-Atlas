@@ -178,3 +178,95 @@ class TestCallLlmOllama:
             payload = mock_post.call_args.kwargs.get("json", {})
             assert "prompt" in payload
             assert payload["prompt"] == "System instructions\n\nUser input"
+
+
+# ── call_llm Groq branch ──────────────────────────────────────────────────────
+
+class TestCallLlmGroq:
+    @pytest.mark.asyncio
+    async def test_groq_command_pipeline_call(self):
+        fake_response = {
+            "choices": [
+                {"message": {"content": "{\"action\": \"click\", \"element_id\": \"atlas-001\"}"}}
+            ]
+        }
+        mock_post = AsyncMock()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = fake_response
+        mock_resp.raise_for_status.return_value = None
+        mock_post.return_value = mock_resp
+
+        with patch("app.agent.llm_client.LLM_PROVIDER", "groq"), \
+             patch("app.agent.llm_client.LLM_BASE_URL", "https://api.groq.com/openai/v1"), \
+             patch("app.agent.llm_client.LLM_MODEL", "llama-3.3-70b-versatile"), \
+             patch("app.agent.llm_client.LLM_API_KEY", "gsk_test_mock_key"), \
+             patch("httpx.AsyncClient.post", mock_post):
+
+            res = await call_llm(
+                user_prompt="DOM MAP:\n[]\n\nUSER COMMAND: click checkout",
+                system_prompt="You are an accessibility assistant.",
+                reasoning=False,
+            )
+
+            assert res == "{\"action\": \"click\", \"element_id\": \"atlas-001\"}"
+            call_url = mock_post.call_args.args[0]
+            assert call_url == "https://api.groq.com/openai/v1/chat/completions"
+            call_headers = mock_post.call_args.kwargs.get("headers", {})
+            assert call_headers.get("Authorization") == "Bearer gsk_test_mock_key"
+            payload = mock_post.call_args.kwargs.get("json", {})
+            assert payload.get("model") == "llama-3.3-70b-versatile"
+            assert payload.get("temperature") == 0.0
+            assert payload.get("max_tokens") == 1024
+
+    @pytest.mark.asyncio
+    async def test_groq_simplify_pipeline_call(self):
+        fake_response = {
+            "choices": [
+                {"message": {"content": "[{\"element_id\": \"atlas-001\", \"label\": \"Checkout\", \"category\": \"button\"}]"}}
+            ]
+        }
+        mock_post = AsyncMock()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = fake_response
+        mock_resp.raise_for_status.return_value = None
+        mock_post.return_value = mock_resp
+
+        with patch("app.agent.llm_client.LLM_PROVIDER", "groq"), \
+             patch("app.agent.llm_client.LLM_BASE_URL", "https://api.groq.com/openai/v1"), \
+             patch("app.agent.llm_client.LLM_MODEL", "llama-3.3-70b-versatile"), \
+             patch("app.agent.llm_client.LLM_API_KEY", "gsk_test_mock_key"), \
+             patch("httpx.AsyncClient.post", mock_post):
+
+            res = await call_llm(
+                user_prompt="INTERACTIVE ELEMENTS:\n[]\n\nJSON response:",
+                system_prompt="You are an accessibility assistant.",
+                reasoning=True,
+            )
+
+            assert "atlas-001" in res
+            payload = mock_post.call_args.kwargs.get("json", {})
+            assert payload.get("model") == "llama-3.3-70b-versatile"
+            assert payload.get("temperature") == 0.6
+            assert payload.get("max_tokens") == 4096
+
+    @pytest.mark.asyncio
+    async def test_groq_ping_llm(self):
+        from app.agent.llm_client import ping_llm
+        mock_get = AsyncMock()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_get.return_value = mock_resp
+
+        with patch("app.agent.llm_client.LLM_PROVIDER", "groq"), \
+             patch("app.agent.llm_client.LLM_BASE_URL", "https://api.groq.com/openai/v1"), \
+             patch("app.agent.llm_client.LLM_API_KEY", "gsk_test_mock_key"), \
+             patch("httpx.AsyncClient.get", mock_get):
+
+            ok = await ping_llm()
+            assert ok is True
+            call_url = mock_get.call_args.args[0]
+            assert call_url == "https://api.groq.com/openai/v1/models"
+            call_headers = mock_get.call_args.kwargs.get("headers", {})
+            assert call_headers.get("Authorization") == "Bearer gsk_test_mock_key"

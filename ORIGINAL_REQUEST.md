@@ -115,3 +115,49 @@ Consolidate findings into a single structured master audit report artifact conta
 - [ ] Actionable remediation plan categorized by severity and effort with explicit breaking change warnings.
 - [ ] CI prevention checklist includes concrete test criteria or rule configurations.
 
+## Follow-up — 2026-09-15T18:55:57Z
+
+Implement Phase 1 of Atlas Goal-Directed Multi-Step Execution: build the core Pydantic contracts, mock LLM provider, and the same-page Navigator and Verifier multi-agent pipeline with deterministic outcome verification.
+
+Working directory: c:\Users\abdel\OneDrive\Desktop\Hackthon\shit2
+Integrity mode: demo
+
+## Requirements
+
+### R1. Multi-Step Goal Contracts & Mock LLM Provider (Stage 0)
+- Define Milestone, GoalState, GoalStepRequest, and GoalStepResponse Pydantic models extending existing AgenticPlan and PlanStep contracts.
+- Add a deterministic mock provider in backend/app/agent/llm_client.py capable of returning predictable responses for multi-step execution without external network calls.
+- Support per-role model configuration (PLANNER_LLM_MODEL, NAVIGATOR_LLM_MODEL, VERIFIER_LLM_MODEL), falling back to LLM_MODEL.
+
+### R2. Same-Page Navigator & Verifier Agent Pipeline (Phase 1)
+- For Phase 1, treat the entire user goal as a single implicit milestone — do not implement goal decomposition; that belongs to Phase 2's Planner.
+- Implement the Navigator agent (extending backend/app/agent/agentic_planner.py) to resolve the active milestone into concrete, DOM-validated PlanSteps on the current page.
+- Implement the Verifier agent to evaluate post-action outcomes against observable signals (URL change, DOM element appearance/disappearance) to output milestone_complete, in_progress, goal_complete, or goal_failed.
+- Prioritize deterministic rules-first verification before falling back to LLM evaluation.
+- Wire the goal_step handler into the REST router in backend/app/routes/chat.py (e.g. POST /v1/chat/goal_step), sitting directly alongside the existing /v1/chat agentic planner endpoint.
+
+### R3. Safety Guardrails & Zero Regressions
+- Enforce strict max_hops boundary (default 8) to terminate runaway loops with clear user messaging.
+- Preserve the existing requires_confirmation human-in-the-loop gate for any consequential action step.
+- Ensure 100% adherence to the Prime Directive (universal web standards, zero site-specific hacks).
+- Maintain all existing tests in the test suite passing with zero regressions (baseline verified dynamically at run time).
+
+## Acceptance Criteria
+
+### Contracts & Mock Provider
+- [ ] Pydantic models (Milestone, GoalState, GoalStepRequest, GoalStepResponse) pass unit tests for round-trip serialization and schema validation.
+- [ ] LLM_PROVIDER=mock returns deterministic canned responses suitable for automated testing.
+- [ ] Per-role model environment variables correctly route requests to their respective configurations.
+
+### Navigator & Verifier Pipeline
+- [ ] POST /v1/chat/goal_step endpoint processes GoalStepRequest and returns contract-compliant GoalStepResponse.
+- [ ] Navigator resolves the implicit single milestone against page DOM without hallucinating element IDs.
+- [ ] Verifier correctly identifies milestone_complete or goal_complete upon expected DOM mutation or URL transition.
+- [ ] Verifier accurately flags failure when an action produces an unexpected state or times out.
+- [ ] Consequential actions pause and populate requires_confirmation and confirmation_prompt.
+
+### Safety & Test Verification
+- [ ] Execution gracefully aborts with goal_failed status when hop_count exceeds max_hops.
+- [ ] Comprehensive unit and integration test suite covers happy paths, verification failures, and safety limit cutoffs.
+- [ ] All tests in the existing backend and extension test suites continue to pass with zero regressions.
+

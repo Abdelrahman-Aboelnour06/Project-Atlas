@@ -147,7 +147,7 @@ if (-not (Test-Path $EnvFile)) {
     Log "No .env found - creating one from .env.example."
     Copy-Item ".env.example" ".env"
     Warn "backend\.env was just created from the template."
-    Warn "You MUST edit it and set LLM_API_KEY (from https://build.nvidia.com),"
+    Warn "You MUST edit it and set LLM_API_KEY (from https://console.groq.com or https://build.nvidia.com),"
     Warn "or switch LLM_PROVIDER to 'ollama' if you're running a local model."
     Warn "Re-run this script after editing .env."
     Pop-Location

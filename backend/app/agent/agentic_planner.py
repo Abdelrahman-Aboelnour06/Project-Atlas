@@ -23,26 +23,7 @@ from app.agent.sanitize import strip_pii_from_dom
 logger = logging.getLogger(__name__)
 
 VALID_ACTIONS = {"click", "open", "double_click", "fill", "scroll", "focus"}
-
-
-class PlanStep(BaseModel):
-    action: str
-    element_id: str
-    value: Optional[str] = None
-    description: Optional[str] = ""
-    delay_ms: Optional[int] = 600
-
-
-class AgenticPlan(BaseModel):
-    type: str = Field(default="plan", description="'plan', 'conversation', or 'confirmation'")
-    thought: Optional[str] = ""
-    reply: str
-    steps: List[PlanStep] = Field(default_factory=list)
-    requires_confirmation: bool = False
-    confirmation_prompt: Optional[str] = None
-    confirmation_options: List[str] = Field(default_factory=lambda: ["Yes, proceed", "No, cancel"])
-    pending_step: Optional[PlanStep] = None
-    confirmation_success_message: Optional[str] = "Done! Action completed."
+from app.models.goal import PlanStep, AgenticPlan
 
 
 def _clean_json_str(raw: str) -> str:
