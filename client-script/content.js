@@ -140,14 +140,20 @@
       }
 
       conversationHistory.push({ role: "user", content: inputToSend });
-      if (conversationHistory.length > 8) conversationHistory = conversationHistory.slice(-8);
+      if (conversationHistory.length > 4) conversationHistory = conversationHistory.slice(-4);
+
+      // Truncate history content to reduce token usage sent to the backend
+      const trimmedHistory = conversationHistory.map((h) => ({
+        role: h.role,
+        content: (h.content || "").slice(0, 100),
+      }));
 
       const requestPayload = {
         url: window.location.href,
         question: inputToSend,
         page_text: pageText,
         dom_map: domMap,
-        history: conversationHistory,
+        history: trimmedHistory,
         api_key: apiKey || "",
       };
 
@@ -348,12 +354,14 @@
     }
   };
 
-  const refreshPanel = () => {
+  const refreshPanel = (simplify = false) => {
     const domMap = window.AtlasSerializer.serialize();
     window.AtlasSidebar.renderElements(
       window.AtlasSidebar.deriveDisplayItems(domMap),
     );
-    renderSimplified(domMap);
+    if (simplify) {
+      renderSimplified(domMap);
+    }
   };
 
 const runCommand = async (command) => {
@@ -456,13 +464,10 @@ const handleElementClick = async (atlasId) => {
       }
       if (location.href !== lastUrl) {
         lastUrl = location.href;
-        window.AtlasSidebar.setStatus("Page changed — refreshing...", "info");
-        setTimeout(async () => {
-          if (active) {
-            refreshPanel();
-            await fetchPageSummary({ showThinking: true });
-          }
-        }, 800);
+        window.AtlasSidebar.setStatus("Ready.", "ok");
+        if (active) {
+          refreshPanel(false);
+        }
       }
     }, 500);
     return () => clearInterval(interval);

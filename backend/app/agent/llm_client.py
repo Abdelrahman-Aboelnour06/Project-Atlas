@@ -351,6 +351,7 @@ async def call_llm(
     reasoning: bool = False,
     role: Optional[str] = None,
     model: Optional[str] = None,
+    max_tokens: Optional[int] = None,
 ) -> str:
     """
     Invokes the configured AI provider (Mock, NVIDIA NIM, OpenAI-compatible, Groq, or Ollama) with retry logic.
@@ -361,6 +362,7 @@ async def call_llm(
         reasoning (bool): Whether to enable reasoning/chain-of-thought for supported models.
         role (str | None): Agent role ('planner', 'navigator', 'verifier', 'simplify', etc.).
         model (str | None): Optional model override.
+        max_tokens (int | None): Optional max_tokens override.
 
     Returns:
         str: Raw completion or response text from the model.
@@ -441,11 +443,15 @@ async def call_llm(
                         messages.append({"role": "system", "content": system_content})
                     messages.append({"role": "user", "content": user_prompt})
 
+                    effective_max_tokens = max_tokens if max_tokens is not None else (
+                        32768 if (reasoning and tokens) else (4096 if reasoning else 1024)
+                    )
+
                     payload = {
                         "model": effective_model,
                         "messages": messages,
                         "temperature": 0.6 if reasoning else 0.0,
-                        "max_tokens": 32768 if (reasoning and tokens) else (4096 if reasoning else 1024),
+                        "max_tokens": effective_max_tokens,
                     }
                     if reasoning and tokens:
                         payload["top_p"] = 0.95
@@ -465,6 +471,29 @@ async def call_llm(
             await asyncio.sleep(1)
 
         except httpx.HTTPStatusError as e:
+            if e.response.status_code == 429 and attempt < max_retries:
+                # If Groq rate limit reset is very quick (<= 2.5s), sleep briefly and retry once.
+                # If Groq requires a long wait (e.g. 15s-60s), fail fast so smart local fallback handles it in 0.01s without lagging out!
+                retry_wait = None
+                try:
+                    import re
+                    m = re.search(r"try again in ([\d\.]+)s", e.response.text)
+                    if m:
+                        val = float(m.group(1))
+                        if val <= 2.5:
+                            retry_wait = val + 0.5
+                    ra = e.response.headers.get("retry-after") or e.response.headers.get("x-ratelimit-reset-requests")
+                    if ra and not retry_wait:
+                        val = float(ra)
+                        if val <= 2.5:
+                            retry_wait = val + 0.5
+                except Exception:
+                    pass
+
+                if retry_wait is not None:
+                    await asyncio.sleep(retry_wait)
+                    continue
+                raise LLMError(f"LLM rate limit (429): {e.response.text}")
             raise LLMError(f"LLM HTTP error: {e.response.status_code} - {e.response.text}")
         except Exception as e:
             raise LLMError(f"Unexpected LLM error: {str(e)}")

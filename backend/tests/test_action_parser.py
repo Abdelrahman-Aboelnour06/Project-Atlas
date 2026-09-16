@@ -51,7 +51,7 @@ class TestParseAction:
         assert result.value == "john@example.com"
 
     def test_all_valid_action_types(self):
-        for action in ("click", "fill", "scroll", "focus"):
+        for action in ("click", "open", "double_click", "triple_click", "fill", "scroll", "focus"):
             raw = json.dumps({
                 "action": action, "element_id": "atlas-001",
                 "value": None, "message": f"did {action}",
@@ -59,6 +59,18 @@ class TestParseAction:
             result = self._parse(raw)
             assert result.status == "success", f"Action '{action}' should succeed"
             assert result.action == action
+
+    def test_click_count_parsing(self):
+        raw = json.dumps({
+            "action": "click",
+            "element_id": "atlas-001",
+            "click_count": 3,
+            "message": "Click 3 times",
+        })
+        result = self._parse(raw)
+        assert result.status == "success"
+        assert result.action == "click"
+        assert result.click_count == 3
 
     # ── Malformed JSON ────────────────────────────────────────────────────────
 
@@ -360,6 +372,60 @@ class TestAgenticPlannerHeuristicsAndResilience:
             assert "401" in plan.reply
             assert "LLM_API_KEY" in plan.reply
 
+    def test_detect_click_action_variations(self):
+        from app.agent.agentic_planner import _detect_click_action
+
+        assert _detect_click_action("double click starred") == ("double_click", 2)
+        assert _detect_click_action("double click on folder") == ("double_click", 2)
+        assert _detect_click_action("click twice on button") == ("double_click", 2)
+        assert _detect_click_action("click 2 times on item") == ("double_click", 2)
+        assert _detect_click_action("triple click the heading") == ("triple_click", 3)
+        assert _detect_click_action("click thrice on title") == ("triple_click", 3)
+        assert _detect_click_action("click 3 times on next") == ("triple_click", 3)
+        assert _detect_click_action("three times") == ("triple_click", 3)
+        assert _detect_click_action("click 5 times on button") == ("click", 5)
+        assert _detect_click_action("click starred") == ("click", None)
+
+    @pytest.mark.asyncio
+    async def test_multi_click_heuristic_resolution_without_llm(self):
+        from unittest.mock import patch
+        from app.agent.agentic_planner import plan_agentic_action
+        from app.agent.llm_client import LLMError
+
+        sample_dom = [
+            {"id": "btn-star", "tag": "button", "resolved_label": "Starred"},
+            {"id": "h-head", "tag": "h1", "resolved_label": "Heading"},
+            {"id": "btn-sub", "tag": "button", "resolved_label": "Submit Form"},
+        ]
+
+        with patch("app.agent.llm_client.call_llm", side_effect=LLMError("LLM 401")):
+            # Double click test
+            plan_double = await plan_agentic_action(sample_dom, "double click starred")
+            assert plan_double.type == "plan"
+            assert len(plan_double.steps) == 1
+            assert plan_double.steps[0].action == "double_click"
+            assert plan_double.steps[0].element_id == "btn-star"
+            assert plan_double.steps[0].click_count == 2
+            assert "Double click" in plan_double.steps[0].description
+
+            # Triple click test
+            plan_triple = await plan_agentic_action(sample_dom, "triple click the heading")
+            assert plan_triple.type == "plan"
+            assert len(plan_triple.steps) == 1
+            assert plan_triple.steps[0].action == "triple_click"
+            assert plan_triple.steps[0].element_id == "h-head"
+            assert plan_triple.steps[0].click_count == 3
+            assert "Triple click" in plan_triple.steps[0].description
+
+            # Multi-click N times test
+            plan_n = await plan_agentic_action(sample_dom, "click 4 times on submit form")
+            assert plan_n.type == "plan"
+            assert len(plan_n.steps) == 1
+            assert plan_n.steps[0].action == "click"
+            assert plan_n.steps[0].element_id == "btn-sub"
+            assert plan_n.steps[0].click_count == 4
+            assert "4 times" in plan_n.steps[0].description
+
 
 # ── Nemotron Reasoning <think> Block Stripping Tests ─────────────────────────
 
@@ -440,5 +506,54 @@ class TestPromptBuilders:
         assert "accessibility assistant" in sys_prompt
         assert "CRITICAL SECURITY RULE" in sys_prompt
         assert "INTERACTIVE ELEMENTS (1 total):" in user_prompt
+
+
+class TestSearchAndHeuristicEnhancements:
+    def test_detect_search_in_search_bar_for_query(self):
+        from app.agent.agentic_planner import _detect_search_or_fill_action
+        concise_dom = [
+            {"id": "atlas-input-1", "tag": "input", "role": "combobox", "label": "Search in Drive"}
+        ]
+        valid_ids = {"atlas-input-1"}
+        steps, query = _detect_search_or_fill_action("search in the search bar for cmp 2028", concise_dom, valid_ids)
+        assert query == "cmp 2028"
+        assert len(steps) >= 1
+        assert steps[0].action == "fill"
+        assert steps[0].element_id == "atlas-input-1"
+        assert steps[0].value == "cmp 2028"
+
+    def test_detect_search_focus_search_bar_only(self):
+        from app.agent.agentic_planner import _detect_search_or_fill_action
+        concise_dom = [
+            {"id": "atlas-input-1", "tag": "input", "role": "combobox", "label": "Search in Drive"}
+        ]
+        valid_ids = {"atlas-input-1"}
+        for phrase in ("the search bar", "search bar", "click search", "focus the search box"):
+            steps, query = _detect_search_or_fill_action(phrase, concise_dom, valid_ids)
+            assert query == ""
+            assert len(steps) == 1
+            assert steps[0].action == "click"
+            assert steps[0].element_id == "atlas-input-1"
+
+    def test_detect_search_type_into_search(self):
+        from app.agent.agentic_planner import _detect_search_or_fill_action
+        concise_dom = [
+            {"id": "atlas-input-1", "tag": "input", "role": "searchbox", "label": "Search products"}
+        ]
+        valid_ids = {"atlas-input-1"}
+        steps, query = _detect_search_or_fill_action("type wireless mouse in search", concise_dom, valid_ids)
+        assert query == "wireless mouse"
+        assert steps[0].action == "fill"
+        assert steps[0].value == "wireless mouse"
+
+    def test_heuristic_match_ui_stopwords(self):
+        from app.agent.agentic_planner import find_heuristic_match
+        concise_dom = [
+            {"id": "atlas-input-1", "tag": "input", "label": "Search in Drive", "category": "search"}
+        ]
+        node, score = find_heuristic_match("the search bar", concise_dom)
+        assert node is not None
+        assert node["id"] == "atlas-input-1"
+        assert score >= 0.5
 
 
