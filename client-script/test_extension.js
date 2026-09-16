@@ -150,6 +150,15 @@ assert(sidebarCss.includes('.atlas-collapsed'), 'sidebar.css styles .atlas-colla
 assert(sidebarCss.includes('.atlas-collapsed-badge'), 'sidebar.css styles .atlas-collapsed-badge');
 assert(sidebarCss.includes('.atlas-collapse-btn'), 'sidebar.css styles .atlas-collapse-btn');
 
+// 7. Header Refresh Button & Multi-Click Execution Quality Gates
+console.log('\n[Unit: Header Refresh Button & Multi-Click Execution]');
+assert(sidebarCode.includes('atlas-header-refresh'), 'sidebar.js includes #atlas-header-refresh button');
+assert(!sidebarCode.includes('atlas-refresh-label'), 'sidebar.js uses icon-only refresh button without text overflow');
+assert(executorCode.includes('doTripleClick'), 'executor.js implements doTripleClick');
+assert(executorCode.includes('doMultiClick'), 'executor.js implements doMultiClick');
+assert(executorCode.includes('triple_click'), 'executor.js supports triple_click in action set and dispatch');
+assert(executorCode.includes('click_count'), 'executor.js parses and honors click_count');
+
 console.log(`\nExtension Tests Complete: ${passed} passed, ${failures} failed.\n`);
 process.exit(failures > 0 ? 1 : 0);
 

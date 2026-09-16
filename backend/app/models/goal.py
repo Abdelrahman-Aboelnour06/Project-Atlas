@@ -23,9 +23,10 @@ from app.models.dom import DomNode
 
 class PlanStep(BaseModel):
     """Atomic interactive browser action step."""
-    action: ActionType = Field(..., description="Action type: click, open, double_click, fill, scroll, focus")
+    action: ActionType = Field(..., description="Action type: click, open, double_click, triple_click, fill, scroll, focus")
     element_id: Optional[str] = Field(default=None, description="Synthetic data-atlas-id of the target DOM element")
     value: Optional[str] = Field(default=None, description="Input string value when action is 'fill'")
+    click_count: Optional[int] = Field(default=None, description="Number of clicks to perform when action is click")
     description: Optional[str] = Field(default="", description="Human-readable description of this step")
     delay_ms: Optional[int] = Field(default=600, description="Execution delay in milliseconds before next action")
 
@@ -38,7 +39,7 @@ class AgenticPlan(BaseModel):
     steps: List[PlanStep] = Field(default_factory=list, description="Action steps to execute")
     requires_confirmation: bool = Field(default=False, description="Flag indicating human-in-the-loop confirmation is required")
     confirmation_prompt: Optional[str] = Field(default=None, description="Clear prompt explaining the consequential action")
-    confirmation_options: List[str] = Field(default_factory=lambda: ["Yes, proceed", "No, cancel"])
+    confirmation_options: Optional[List[str]] = Field(default_factory=lambda: ["Yes, proceed", "No, cancel"])
     pending_step: Optional[PlanStep] = Field(default=None, description="The consequential action step held pending confirmation")
     confirmation_success_message: Optional[str] = Field(default="Done! Action completed.")
 
@@ -60,6 +61,9 @@ class Milestone(BaseModel):
     success_criteria: Optional[str] = Field(default=None, description="Observable criteria for verification")
     steps: List[PlanStep] = Field(default_factory=list, description="Plan steps associated with this milestone")
     notes: Optional[str] = Field(default=None, description="Internal reasoning notes")
+    is_final: bool = Field(default=True, description="True if milestone represents final goal completion")
+    satisfied_by_navigation: bool = Field(default=False, description="True if navigation alone satisfies milestone")
+    branch_id: str = Field(default="b-0", description="Branch identifier")
 
 
 VerifierStatus = Literal["milestone_complete", "in_progress", "goal_complete", "goal_failed"]
@@ -83,7 +87,50 @@ GoalOverallStatus = Literal[
     "goal_complete",
     "goal_failed",
     "requires_confirmation",
+    "awaiting_user_input",
 ]
+
+
+class FieldPlan(BaseModel):
+    ref: str = Field(..., description="Stable element ref of target field")
+    action: ActionType = Field(default="fill", description="Action to perform: fill, select_option, set_checkbox, set_radio, upload_file")
+    value: Optional[str] = Field(default=None, description="Input string value or vault token e.g. '{password}', '{profile.email}'")
+    source: Literal["profile", "user", "generated", "default", "vault"] = Field(default="user")
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+    rationale: Optional[str] = Field(default=None, description="Explanation for this field mapping")
+
+
+class FormPlan(BaseModel):
+    form_id: str = Field(default="", description="Identifier of the target form")
+    fields: List[FieldPlan] = Field(default_factory=list, description="Fields to fill in batch")
+    submit_ref: Optional[str] = Field(default=None, description="Held-back submit control ref (never in fields)")
+    missing_required: List[str] = Field(default_factory=list, description="Refs for required fields lacking values")
+    blockers: List[str] = Field(default_factory=list, description="Observed blockers e.g. captcha, otp")
+
+
+class Budget(BaseModel):
+    max_hops: int = Field(default=8, description="Maximum navigations / page transitions")
+    hop_count: int = Field(default=0, description="Navigations completed")
+    max_field_ops: int = Field(default=40, description="Maximum field operations")
+    field_ops: int = Field(default=0, description="Field operations completed")
+    max_llm_calls: int = Field(default=25, description="Maximum total LLM calls across all agents")
+    llm_calls: int = Field(default=0, description="LLM calls completed")
+
+
+class Branch(BaseModel):
+    id: str = Field(default="b-0", description="Branch identifier")
+    milestone_ids: List[str] = Field(default_factory=list, description="Milestone IDs assigned to this branch")
+    tab_id: Optional[int] = Field(default=None, description="Browser tab ID if running parallel")
+    status: Literal["pending", "active", "done", "failed"] = Field(default="pending")
+    depends_on: List[str] = Field(default_factory=list, description="Prerequisite branch IDs")
+
+
+class UserInputRequest(BaseModel):
+    kind: Literal["otp", "captcha", "choice", "missing_field", "credential"] = Field(..., description="Type of user input requested")
+    prompt: str = Field(..., description="Human-readable explanation of needed input")
+    field_ref: Optional[str] = Field(default=None, description="Associated DOM ref")
+    options: List[str] = Field(default_factory=list, description="Selectable options if kind is choice")
+    resumable: bool = Field(default=True, description="Whether goal can resume once supplied")
 
 
 class GoalState(BaseModel):
@@ -108,6 +155,14 @@ class GoalState(BaseModel):
     pending_step: Optional[PlanStep] = Field(default=None, description="Step held for human confirmation")
     error_message: Optional[str] = Field(default=None, description="Error explanation if status is 'goal_failed'")
 
+    # v2 extensions (§9.5)
+    branches: List[Branch] = Field(default_factory=lambda: [Branch()])
+    budget: Budget = Field(default_factory=Budget)
+    awaiting: Optional[UserInputRequest] = None
+    trace_id: Optional[str] = None
+    page_kind: Optional[str] = None
+    form_plan: Optional[FormPlan] = None
+
     def is_terminal(self) -> bool:
         """Returns True if goal execution has reached a terminal state."""
         return self.status in ("goal_complete", "goal_failed")
@@ -125,9 +180,30 @@ class GoalState(BaseModel):
                 return m
         return self.milestones[0] if self.milestones else None
 
+    def next_pending_milestone(self, branch_id: Optional[str] = None) -> Optional[Milestone]:
+        """Returns the next pending milestone after active_milestone, optionally within branch_id."""
+        found_active = False
+        for m in self.milestones:
+            if branch_id and getattr(m, "branch_id", None) and m.branch_id != branch_id:
+                continue
+            if not found_active:
+                if m.id == self.active_milestone_id:
+                    found_active = True
+                continue
+            if m.status == "pending":
+                return m
+        for m in self.milestones:
+            if branch_id and getattr(m, "branch_id", None) and m.branch_id != branch_id:
+                continue
+            if m.status == "pending" and m.id != self.active_milestone_id:
+                return m
+        return None
+
     def advance_hop(self) -> None:
         """Increments hop_count and enforces the strict safety boundary."""
         self.hop_count += 1
+        if self.budget:
+            self.budget.hop_count = self.hop_count
         if self.hop_count >= self.max_hops and self.status != "goal_complete":
             self.status = "goal_failed"
             self.error_message = f"Goal execution stopped: reached maximum allowed hops limit ({self.max_hops})."

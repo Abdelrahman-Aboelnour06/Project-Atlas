@@ -77,6 +77,25 @@ def _clean_json_str(raw: str) -> str:
     return match.group(0) if match else text.strip()
 
 
+def _norm_url(u: Optional[str]) -> str:
+    """Normalizes URL by stripping trailing slashes and converting to lowercase."""
+    return (u or "").strip().lower().rstrip("/")
+
+
+def _url_changed(u1: Optional[str], u2: Optional[str]) -> bool:
+    """Checks if two URLs represent a distinct navigation transition."""
+    return bool(u1 and u2 and _norm_url(u1) != _norm_url(u2))
+
+
+def _url_matches(current: Optional[str], target: Optional[str]) -> bool:
+    """Checks if current URL satisfies target URL criteria."""
+    if not current or not target:
+        return False
+    norm_c = _norm_url(current)
+    norm_t = _norm_url(target)
+    return norm_t in norm_c or norm_c in norm_t
+
+
 def _extract_id_set(
     nodes_or_ids: Optional[Union[List[str], Set[str], List[Union[DomNode, Dict[str, Any]]]]]
 ) -> Set[str]:
@@ -258,43 +277,35 @@ async def verify_step_outcome(
                 verification_method="rules",
             )
 
-    # ── Rule 4: URL Transitions ──────────────────────────────────────────────────
-    if prior_url and current_url and prior_url != current_url:
-        # Check if milestone target URL was reached
-        if milestone.target_url:
-            norm_target = milestone.target_url.lower().rstrip("/")
-            norm_curr = current_url.lower().rstrip("/")
-            if norm_target in norm_curr or norm_curr in norm_target:
-                return VerifierResult(
-                    status="goal_complete",
-                    reason=f"URL transitioned to target: {current_url}.",
-                    confidence=1.0,
-                    signals_detected=[f"url_transition:{prior_url}->{current_url}", "target_url_matched"],
-                    verification_method="rules",
-                )
+    # ── Rule 4: URL Transitions (Corrected) ──────────────────────────────────────
+    if prior_url and current_url and _url_changed(prior_url, current_url):
+        signals = [f"url_transition:{prior_url}->{current_url}"]
 
-        # In Phase 1 implicit milestone, if user intended navigation and URL changed
-        goal_lower = goal.lower()
-        if any(nav_kw in goal_lower for nav_kw in ("go to", "navigate to", "open", "visit", "checkout", "cart")):
+        # Check if milestone target URL was reached
+        if milestone.target_url and _url_matches(current_url, milestone.target_url):
+            status = "goal_complete" if getattr(milestone, "is_final", True) else "milestone_complete"
             return VerifierResult(
-                status="goal_complete",
-                reason=f"Navigation action transitioned to {current_url}.",
-                confidence=0.92,
-                signals_detected=[f"url_transition:{prior_url}->{current_url}"],
+                status=status,
+                reason=f"URL transitioned to target: {current_url}.",
+                confidence=1.0,
+                signals_detected=signals + ["target_url_matched"],
                 verification_method="rules",
             )
-        else:
-            # URL changed following action; record progress / milestone complete
-            return VerifierResult(
-                status="goal_complete",
-                reason=f"Action caused URL transition to {current_url}.",
-                confidence=0.88,
-                signals_detected=[f"url_transition:{prior_url}->{current_url}"],
-                verification_method="rules",
-            )
+
+        # A navigation with no target match is PROGRESS, never premature completion.
+        status = "milestone_complete" if getattr(milestone, "satisfied_by_navigation", False) else "in_progress"
+        return VerifierResult(
+            status=status,
+            reason=f"Navigated to {current_url}; milestone target not yet reached." if status == "in_progress" else f"Milestone satisfied by navigation to {current_url}.",
+            confidence=0.75,
+            signals_detected=signals,
+            verification_method="rules",
+        )
 
     # ── Rule 5: Element Disappearance (e.g. dismissed modal, deleted item) ───────
-    if last_action and last_action.element_id:
+    # Guard: skip entirely when a navigation occurred, as element IDs are wiped on page load
+    nav_occurred = _url_changed(prior_url, current_url)
+    if not nav_occurred and last_action and last_action.element_id:
         target_eid = str(last_action.element_id)
         if prior_ids and target_eid in prior_ids and target_eid not in curr_ids:
             goal_lower = goal.lower()
@@ -353,8 +364,8 @@ JSON RESPONSE:"""
         valid_statuses = {"goal_complete", "milestone_complete", "in_progress", "goal_failed"}
         status: VerifierStatus = raw_status if raw_status in valid_statuses else "in_progress"
 
-        # In Phase 1, map milestone_complete to goal_complete for single implicit milestone
-        if status == "milestone_complete":
+        # In Phase 1 single milestone, map milestone_complete to goal_complete if milestone is final
+        if status == "milestone_complete" and getattr(milestone, "is_final", True):
             status = "goal_complete"
 
         return VerifierResult(

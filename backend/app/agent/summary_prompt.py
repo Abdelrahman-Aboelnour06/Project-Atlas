@@ -24,6 +24,6 @@ def build_summary_prompt(page_text: str, url: str) -> str:
     return (
         f"{system}\n\n"
         f"PAGE URL: {url}\n\n"
-        f"PAGE CONTENT:\n{page_text[:3000]}\n\n"
+        f"PAGE CONTENT:\n{page_text[:1000]}\n\n"
         f"Summary:"
     )

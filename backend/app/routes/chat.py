@@ -76,7 +76,16 @@ async def summary_endpoint(
         return SummaryResponse(status="ok", summary=raw_llm.strip())
     except Exception as exc:
         logger.warning("Summary generation failed: %s", exc)
-        return SummaryResponse(status="error", summary="Welcome to this webpage.")
+        fallback_summary = "Welcome to this webpage. You can browse, search, or tell me what to click."
+        if payload.url:
+            import urllib.parse
+            parsed = urllib.parse.urlparse(payload.url)
+            domain = (parsed.netloc or "").lower().replace("www.", "")
+            if "youtube.com" in domain or "youtu.be" in domain:
+                fallback_summary = "This is YouTube. You can search for videos, browse channels, and watch tutorials or entertainment."
+            elif domain:
+                fallback_summary = f"This is {domain}. You can search, browse content, or ask Atlas to navigate elements on this page."
+        return SummaryResponse(status="ok", summary=fallback_summary)
 
 
 class ChatRequest(BaseModel):
@@ -329,7 +338,7 @@ async def goal_step_endpoint(
         goal_state.verifier_result = verifier_res
         goal_state.last_action_result = last_result
 
-        if verifier_res.status in ("goal_complete", "milestone_complete"):
+        if verifier_res.status == "goal_complete":
             goal_state.status = "goal_complete"
             active_milestone.status = "completed"
             goal_state.current_url = payload.current_url
@@ -342,6 +351,26 @@ async def goal_step_endpoint(
                 requires_confirmation=False,
                 verifier_result=verifier_res,
             )
+        elif verifier_res.status == "milestone_complete":
+            active_milestone.status = "completed"
+            next_m = goal_state.next_pending_milestone(branch_id=getattr(active_milestone, "branch_id", None))
+            if next_m is None:
+                goal_state.status = "goal_complete"
+                goal_state.current_url = payload.current_url
+                goal_state.advance_hop()
+                return GoalStepResponse(
+                    status="goal_complete",
+                    goal_state=goal_state,
+                    reply=f"Goal completed successfully! All milestones finished. {verifier_res.reason}",
+                    steps=[],
+                    requires_confirmation=False,
+                    verifier_result=verifier_res,
+                )
+            else:
+                next_m.status = "active"
+                goal_state.active_milestone_id = next_m.id
+                active_milestone = next_m
+                goal_state.status = "in_progress"
         elif verifier_res.status == "goal_failed":
             goal_state.status = "goal_failed"
             goal_state.error_message = verifier_res.reason

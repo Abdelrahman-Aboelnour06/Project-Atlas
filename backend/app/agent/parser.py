@@ -22,7 +22,7 @@ from app.models.action import ActionResponse
 
 logger = logging.getLogger(__name__)
 
-VALID_ACTIONS = {"click", "open", "double_click", "fill", "scroll", "focus"}
+VALID_ACTIONS = {"click", "open", "double_click", "triple_click", "fill", "scroll", "focus"}
 
 _THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL)
 
@@ -154,7 +154,15 @@ def parse_action(raw: str, dom_map: list | None = None) -> ActionResponse:
     # test_all_valid_action_types exercises fill with value=None and expects
     # success. Steering the LLM to always supply a real value for fill is a
     # prompt-design concern, not something this parser should reject on.)
-    logger.info("Parsed action=%s element_id=%r", action, element_id)
+    raw_click_count = data.get("click_count")
+    click_count = None
+    if raw_click_count is not None:
+        try:
+            click_count = int(raw_click_count)
+        except (ValueError, TypeError):
+            click_count = None
+
+    logger.info("Parsed action=%s element_id=%r click_count=%r", action, element_id, click_count)
 
     return ActionResponse(
         status="success",
@@ -162,6 +170,7 @@ def parse_action(raw: str, dom_map: list | None = None) -> ActionResponse:
         element_id=element_id,
         value=value,
         message=f"{action.capitalize()} on '{element_id}'",
+        click_count=click_count,
     )
 
 

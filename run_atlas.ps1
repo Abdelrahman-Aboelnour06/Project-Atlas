@@ -46,6 +46,13 @@ function Err  ($msg) { Write-Host "[atlas] $msg" -ForegroundColor Red }
 # -- stop mode -----------------------------------------------------------------
 if ($Action -eq "stop") {
     foreach ($name in @("backend", "demo-site")) {
+        $pidFile = Join-Path $StateDir "$name.pid"
+        if (Test-Path $pidFile) {
+            $pId = Get-Content $pidFile
+            Stop-Process -Id $pId -Force -ErrorAction SilentlyContinue
+            Remove-Item $pidFile -Force
+            Log "Stopped $name (PID $pId)"
+        }
         $jobFile = Join-Path $StateDir "$name.jobid"
         if (Test-Path $jobFile) {
             $jobId = Get-Content $jobFile
@@ -90,11 +97,31 @@ foreach ($cmd in @("python", "curl")) {
 
 # -- 1. Postgres ---------------------------------------------------------------
 Log "Checking Postgres..."
-$hasDocker = [bool](Get-Command docker -ErrorAction SilentlyContinue)
+$hasDocker = $false
+if (Get-Command docker -ErrorAction SilentlyContinue) {
+    try {
+        $null = docker info 2>&1
+        if ($LASTEXITCODE -eq 0) { $hasDocker = $true }
+    } catch {
+        $hasDocker = $false
+    }
+}
 
-if ($hasDocker) {
-    $existingRunning = docker ps --format "{{.Names}}" | Select-String -Pattern "^$PgContainer$"
-    $existingAny      = docker ps -a --format "{{.Names}}" | Select-String -Pattern "^$PgContainer$"
+$pgListening = Test-NetConnection -ComputerName localhost -Port 5432 -WarningAction SilentlyContinue -InformationLevel Quiet
+if (-not $hasDocker -and -not $pgListening) {
+    if (Get-Command wsl -ErrorAction SilentlyContinue) {
+        Log "Starting PostgreSQL inside WSL Ubuntu..."
+        wsl -d Ubuntu -u root /usr/sbin/service postgresql start 2>&1 | Out-Null
+        Start-Sleep -Seconds 2
+        $pgListening = Test-NetConnection -ComputerName localhost -Port 5432 -WarningAction SilentlyContinue -InformationLevel Quiet
+    }
+}
+
+if ($pgListening) {
+    Log "Postgres is ready on port 5432."
+} elseif ($hasDocker) {
+    $existingRunning = docker ps --format "{{.Names}}" 2>$null | Select-String -Pattern "^$PgContainer$"
+    $existingAny      = docker ps -a --format "{{.Names}}" 2>$null | Select-String -Pattern "^$PgContainer$"
 
     if ($existingRunning) {
         Log "Postgres container '$PgContainer' already running."
@@ -121,7 +148,7 @@ if ($hasDocker) {
     }
     Log "Postgres is ready."
 } else {
-    Warn "Docker not found. Assuming you already have Postgres running locally"
+    Warn "Docker not running. Assuming you already have Postgres running locally"
     Warn "with a database/user matching backend\.env's DATABASE_URL. Continuing..."
 }
 
@@ -181,11 +208,18 @@ if ($dbUrl -match "://([^:]+):[^@]+@([^:/]+)(?::\d+)?/([^/?]+)") {
 }
 
 Log "Applying schema migration (001_init.sql)..."
-if ($hasDocker -and (docker ps --format "{{.Names}}" | Select-String -Pattern "^$PgContainer$")) {
+if ($hasDocker -and (docker ps --format "{{.Names}}" 2>$null | Select-String -Pattern "^$PgContainer$")) {
     Get-Content "app\migrations\001_init.sql" -Raw | docker exec -i $PgContainer psql -U $dbUser -d $dbName
-} else {
+} elseif (Get-Command psql -ErrorAction SilentlyContinue) {
     $env:PGPASSWORD = "atlas"
     psql -h $dbHost -U $dbUser -d $dbName -f "app\migrations\001_init.sql"
+} elseif (Get-Command wsl -ErrorAction SilentlyContinue) {
+    try {
+        $sql = Get-Content "app\migrations\001_init.sql" -Raw
+        $sql | wsl -d Ubuntu -u root su - postgres -c "psql -d $dbName" *>$null
+    } catch {}
+} else {
+    Log "psql CLI not on Windows PATH; assuming schema already migrated in database."
 }
 
 Log "Seeding demo tenant + API key..."
@@ -214,12 +248,8 @@ if ($backendListening) {
 
 if (-not $backendListening) {
     Log "Starting backend on http://localhost:$BackendPort ..."
-    $job = Start-Job -ScriptBlock {
-        param($uvicorn, $dir, $port)
-        Set-Location $dir
-        & $uvicorn app.main:app --port $port
-    } -ArgumentList $VenvUvicorn, $BackendDir, $BackendPort
-    $job.Id | Out-File (Join-Path $StateDir "backend.jobid")
+    $proc = Start-Process -FilePath $VenvUvicorn -ArgumentList "app.main:app --port $BackendPort" -WorkingDirectory $BackendDir -WindowStyle Hidden -PassThru
+    $proc.Id | Out-File (Join-Path $StateDir "backend.pid")
     Start-Sleep -Seconds 2
 }
 
@@ -245,12 +275,8 @@ if ($demoListening) {
     Warn "Something is already listening on port $DemoPort - assuming demo-site is up."
 } else {
     Log "Starting demo-site on http://localhost:$DemoPort ..."
-    $job = Start-Job -ScriptBlock {
-        param($dir, $port)
-        Set-Location $dir
-        python -m http.server $port
-    } -ArgumentList $DemoDir, $DemoPort
-    $job.Id | Out-File (Join-Path $StateDir "demo-site.jobid")
+    $proc = Start-Process -FilePath "python.exe" -ArgumentList "-m http.server $DemoPort" -WorkingDirectory $DemoDir -WindowStyle Hidden -PassThru
+    $proc.Id | Out-File (Join-Path $StateDir "demo-site.pid")
 }
 
 # -- done - print manual steps -------------------------------------------------

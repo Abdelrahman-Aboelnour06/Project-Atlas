@@ -17,7 +17,7 @@ import secrets
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 from app.agent import llm_client
-from app.agent.agentic_planner import find_heuristic_match
+from app.agent.agentic_planner import find_heuristic_match, _detect_click_action
 from app.agent.sanitize import strip_pii_from_dom
 from app.models.action import ActionType
 from app.models.dom import DomNode
@@ -25,7 +25,7 @@ from app.models.goal import AgenticPlan, Milestone, PlanStep
 
 logger = logging.getLogger(__name__)
 
-VALID_ACTIONS: Set[str] = {"click", "open", "double_click", "fill", "scroll", "focus"}
+VALID_ACTIONS: Set[str] = {"click", "open", "double_click", "triple_click", "fill", "scroll", "focus"}
 
 CONSEQUENTIAL_KEYWORDS: Set[str] = {
     "buy",
@@ -107,7 +107,7 @@ Return ONLY valid raw JSON with this exact schema:
   "reply": "friendly status message spoken or displayed to the user",
   "steps": [
     {
-      "action": "click" | "open" | "fill" | "scroll" | "focus",
+      "action": "click" | "open" | "double_click" | "triple_click" | "fill" | "scroll" | "focus",
       "element_id": "exact-id-from-dom-map",
       "value": "string or null",
       "description": "brief description of action",
@@ -258,6 +258,7 @@ JSON RESPONSE:"""
                 action=action,
                 element_id=eid,
                 value=s.get("value"),
+                click_count=s.get("click_count"),
                 description=s.get("description", f"{action} on {eid}"),
                 delay_ms=s.get("delay_ms", 600),
             ))
@@ -275,6 +276,7 @@ JSON RESPONSE:"""
                     action=action,
                     element_id=recovered_id,
                     value=s.get("value"),
+                    click_count=s.get("click_count"),
                     description=s.get("description", f"{action} on {recovered_id}"),
                     delay_ms=s.get("delay_ms", 600),
                 ))
@@ -312,14 +314,31 @@ JSON RESPONSE:"""
         if matched_node and str(matched_node.get("id")) in valid_ids:
             mid = str(matched_node["id"])
             lbl = matched_node.get("label") or mid
-            act = "open" if matched_node.get("category") in {"folder", "file"} or matched_node.get("role") in {"row", "gridcell"} else "click"
+            click_act, click_count = _detect_click_action(target_query)
+            if click_act in {"double_click", "triple_click"}:
+                act = click_act
+            elif matched_node.get("category") in {"folder", "file"} or matched_node.get("role") in {"row", "gridcell"}:
+                act = "open"
+            else:
+                act = "click"
+
+            if act in {"open", "double_click"}:
+                act_desc = f"Double click '{lbl}'"
+            elif act == "triple_click":
+                act_desc = f"Triple click '{lbl}'"
+            elif click_count and click_count > 1:
+                act_desc = f"Click '{lbl}' {click_count} times"
+            else:
+                act_desc = f"Click '{lbl}'"
+
             validated_steps.append(PlanStep(
                 action=act,
                 element_id=mid,
-                description=f"{act.capitalize()} '{lbl}'",
+                click_count=click_count,
+                description=act_desc,
                 delay_ms=600,
             ))
-            reply = f"I found '{lbl}' on the page. Clicking it for you now."
+            reply = f"I found '{lbl}' on the page. {act_desc} for you now."
             thought = f"Universal heuristic matched '{target_query}' to element '{lbl}' (id={mid}, score={score:.2f})"
 
     # Deterministic Consequential Action Gate

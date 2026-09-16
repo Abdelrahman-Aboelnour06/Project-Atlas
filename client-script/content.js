@@ -401,13 +401,15 @@ const handleElementClick = async (atlasId) => {
   );
   const actionToUse = isFileOrRow ? "open" : "click";
 
+  window.AtlasSidebar.setStatus("Confirm action on page...", "info");
+
   const result = await window.AtlasExecutor.execute({
     status: "ok",
     action: actionToUse,
     element_id: atlasId,
     value: null,
     message: isFileOrRow ? "Opening..." : "Done.",
-  }, { skipConfirmation: true });
+  }, { skipConfirmation: false });
   window.AtlasSidebar.setStatus(result.message, result.ok ? "ok" : "error");
 };
 

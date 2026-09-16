@@ -373,17 +373,23 @@ function requestConfirmation(el, action, value) {
         const originalOutline = el.style.outline
         el.style.outline = '4px solid rgba(255, 200, 0, 0.9)'
 
+        // Clean up any existing confirmation banner
+        document.getElementById('atlas-confirm-banner')?.remove()
+
         const banner = document.createElement('div')
         banner.id = 'atlas-confirm-banner'
         banner.style.cssText = `
-            position: fixed; bottom: 20px; right: 20px; z-index: 2147483647;
+            position: fixed; bottom: 24px; left: 24px; z-index: 2147483647;
             background: #1b1d22; color: #f4f4f6; padding: 14px 20px;
-            border-radius: 8px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.5); display: flex; align-items: center; gap: 12px; font-size: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            border-radius: 10px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.6); display: flex; align-items: center; gap: 14px; font-size: 14px;
         `
+        const rawLabel = (el.getAttribute('aria-label') || el.innerText || el.getAttribute('title') || 'this element').trim().replace(/\s+/g, ' ').slice(0, 40)
+        const actionVerb = (action === 'open' || action === 'double_click') ? 'open' : (action === 'fill' ? 'fill' : 'click')
         const label = action === 'fill'
             ? `Atlas wants to fill this field: “${value || 'value'}”.`
-            : `Atlas wants to click this element.`
+            : `Atlas wants to ${actionVerb} “${rawLabel}”.`
 
         const textSpan = document.createElement('span')
         const strongPrefix = document.createElement('strong')
@@ -393,12 +399,12 @@ function requestConfirmation(el, action, value) {
 
         const yesBtn = document.createElement('button')
         yesBtn.id = 'atlas-confirm-yes'
-        yesBtn.style.cssText = 'background:#22c55e;color:#fff;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;'
+        yesBtn.style.cssText = 'background:#22c55e;color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px;'
         yesBtn.textContent = 'Confirm (Tap)'
 
         const noBtn = document.createElement('button')
         noBtn.id = 'atlas-confirm-no'
-        noBtn.style.cssText = 'background:#ef4444;color:#fff;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;'
+        noBtn.style.cssText = 'background:#ef4444;color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px;'
         noBtn.textContent = 'Cancel'
 
         banner.appendChild(textSpan)
@@ -461,7 +467,7 @@ const execute = async (actionResponse, options = {}) => {
     }
     
     // Scroll element into view before asking for confirmation
-    if (action === 'click') scrollToElement(el)
+    if (action === 'click' || action === 'open' || action === 'double_click') scrollToElement(el)
     if (action === 'fill') scrollToElement(el)
 
     // Handle credential autofill flow when targeting credential fields with null or placeholder value
@@ -479,8 +485,10 @@ const execute = async (actionResponse, options = {}) => {
     const shouldConfirm = requiresConfirmation || (MUTATE_ACTIONS.has(action) && !options.skipConfirmation);
 
     if (shouldConfirm) {
+        window.AtlasSidebar?.setStatus("Confirm action on page...", "info");
         const confirmed = await requestConfirmation(el, action, value);
         if (!confirmed) {
+            window.AtlasSidebar?.setStatus("Action cancelled", "error");
             return { ok: false, message: 'Action cancelled by user.' };
         }
     }

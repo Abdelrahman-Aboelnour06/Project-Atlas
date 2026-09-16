@@ -556,4 +556,19 @@ class TestSearchAndHeuristicEnhancements:
         assert node["id"] == "atlas-input-1"
         assert score >= 0.5
 
+    def test_heuristic_match_double_click_on_preposition_phrase(self):
+        from app.agent.agentic_planner import find_heuristic_match
+        concise_dom = [
+            {"id": "atlas-row-1", "label": "memories 2 2028cmp Oct 10, 2024", "category": "folder", "role": "row"},
+            {"id": "atlas-row-2", "label": "Old Drives", "category": "folder", "role": "row"},
+        ]
+        for phrase in ("double click on memories", "open memories", "open the memories folder", "click on Old Drives"):
+            node, score = find_heuristic_match(phrase, concise_dom)
+            assert node is not None
+            assert score >= 0.5
+            if "memories" in phrase:
+                assert node["id"] == "atlas-row-1"
+            elif "Old Drives" in phrase:
+                assert node["id"] == "atlas-row-2"
+
 

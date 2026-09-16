@@ -230,14 +230,19 @@ def find_heuristic_match(user_message: str, concise_dom: List[Dict[str, Any]]) -
         tuple[Optional[Dict[str, Any]], float]: Best matching node and match score (0.0 to 1.0).
     """
     clean_user = _normalize_text(user_message)
-    # Universal intent, conversational, click frequency, & generic UI structural stop words to strip
+    # Universal intent, conversational, prepositions, & generic UI structural stop words to strip
     stop_words = {
         "want", "to", "check", "show", "open", "click", "my", "the", "go",
         "find", "navigate", "please", "see", "view", "take", "me", "look", "at",
         "can", "you", "i", "need", "would", "like", "select", "press",
         "double", "triple", "twice", "thrice", "times",
-        # Generic UI component nouns that users mention alongside element labels
-        "bar", "box", "button", "tab", "link", "field", "input", "item", "icon", "section", "page"
+        # Prepositions, conjunctions, and conversational particles
+        "on", "in", "into", "onto", "at", "by", "for", "with", "about", "to",
+        "from", "up", "down", "over", "under", "off", "of", "and", "or",
+        "just", "hey", "atlas", "let", "us", "now", "there", "here", "this", "that",
+        # Generic UI component and hierarchy nouns
+        "bar", "box", "button", "tab", "link", "field", "input", "item", "icon",
+        "section", "page", "row", "folder", "file", "document", "menu"
     }
     words = [w.lower() for w in re.findall(r"[a-zA-Z0-9]+", user_message) if w.lower() not in stop_words]
     clean_keyword = "".join(words)
