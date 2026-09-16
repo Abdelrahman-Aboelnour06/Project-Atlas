@@ -85,6 +85,13 @@ const doClick = (el) => {
     const link = el.tagName === 'A' ? el : (el.closest('a[href]') || el.querySelector('a[href]'));
     if (link && link !== el && link.href) {
         link.click();
+        return;
+    }
+
+    // SPA child dispatch: try clicking a role=link/button child if present
+    const clickableChild = el.querySelector('[role="link"], [role="button"], a[href]');
+    if (clickableChild && clickableChild !== el) {
+        clickableChild.click();
     }
 };
 
@@ -118,7 +125,7 @@ const doOpen = async (el) => {
     el.dispatchEvent(new MouseEvent('click', dblInit));
     el.dispatchEvent(new MouseEvent('dblclick', dblInit));
 
-    // 3. Enter keypress (universal accessibility standard for opening selected items, folders, files)
+    // 3. Enter keypress on the element AND on document (apps like Google Drive listen globally)
     const enterInit = {
         key: 'Enter',
         code: 'Enter',
@@ -131,11 +138,129 @@ const doOpen = async (el) => {
     el.dispatchEvent(new KeyboardEvent('keydown', enterInit));
     el.dispatchEvent(new KeyboardEvent('keypress', enterInit));
     el.dispatchEvent(new KeyboardEvent('keyup', enterInit));
+    // Also dispatch on document for apps with global keyboard listeners
+    document.dispatchEvent(new KeyboardEvent('keydown', enterInit));
+    document.dispatchEvent(new KeyboardEvent('keyup', enterInit));
 
-    // 4. If anchor with href
+    // 4. If anchor with href — navigate directly (most reliable for links)
     const link = el.tagName === 'A' ? el : (el.closest('a[href]') || el.querySelector('a[href]'));
     if (link && link.href) {
         link.click();
+        return;
+    }
+
+    // 5. React/SPA child dispatch: for rows in apps like Google Drive where the real
+    //    event listener lives on a specific child element (aria name cell, icon div, etc.)
+    //    rather than the row container itself.
+    await new Promise((r) => setTimeout(r, 40));
+    const clickableChild = el.querySelector('[role="link"], [role="button"], a[href]') ||
+        el.querySelector('[data-id], [data-itemid], [data-entryid]');
+    if (clickableChild && clickableChild !== el) {
+        clickableChild.focus();
+        clickableChild.click();
+        clickableChild.dispatchEvent(new MouseEvent('dblclick', {
+            bubbles: true, cancelable: true, view: window, detail: 2, clientX, clientY,
+        }));
+    }
+};
+
+const doTripleClick = async (el) => {
+    scrollToElement(el);
+    glow(el);
+    el.focus();
+
+    // 1. First click in sequence (detail: 1)
+    dispatchMouseSequence(el, 1);
+    el.click();
+
+    await new Promise((r) => setTimeout(r, 60));
+
+    // 2. Second click in sequence (detail: 2) + dblclick
+    const rect = el.getBoundingClientRect();
+    const clientX = rect.left + rect.width / 2;
+    const clientY = rect.top + rect.height / 2;
+    const dblInit = {
+        bubbles: true,
+        cancelable: true,
+        view: window,
+        detail: 2,
+        clientX,
+        clientY,
+    };
+    el.dispatchEvent(new PointerEvent('pointerdown', dblInit));
+    el.dispatchEvent(new MouseEvent('mousedown', dblInit));
+    el.dispatchEvent(new PointerEvent('pointerup', dblInit));
+    el.dispatchEvent(new MouseEvent('mouseup', dblInit));
+    el.dispatchEvent(new MouseEvent('click', dblInit));
+    el.dispatchEvent(new MouseEvent('dblclick', dblInit));
+
+    await new Promise((r) => setTimeout(r, 60));
+
+    // 3. Third click in sequence (detail: 3)
+    const triInit = {
+        bubbles: true,
+        cancelable: true,
+        view: window,
+        detail: 3,
+        clientX,
+        clientY,
+    };
+    el.dispatchEvent(new PointerEvent('pointerdown', triInit));
+    el.dispatchEvent(new MouseEvent('mousedown', triInit));
+    el.dispatchEvent(new PointerEvent('pointerup', triInit));
+    el.dispatchEvent(new MouseEvent('mouseup', triInit));
+    el.dispatchEvent(new MouseEvent('click', triInit));
+
+    // Native browser triple-click behavior: select text contents if selectable
+    if (typeof window !== 'undefined' && window.getSelection && document.createRange) {
+        try {
+            const selection = window.getSelection();
+            const range = document.createRange();
+            range.selectNodeContents(el);
+            selection.removeAllRanges();
+            selection.addRange(range);
+        } catch (_) {}
+    }
+};
+
+const doMultiClick = async (el, count = 1) => {
+    if (count <= 1) {
+        doClick(el);
+        return;
+    }
+    if (count === 2) {
+        await doOpen(el);
+        return;
+    }
+    if (count === 3) {
+        await doTripleClick(el);
+        return;
+    }
+
+    // For arbitrary N clicks > 3
+    scrollToElement(el);
+    glow(el);
+    el.focus();
+    for (let i = 1; i <= count; i++) {
+        const detail = i <= 3 ? i : 1;
+        dispatchMouseSequence(el, detail);
+        el.click();
+        if (i === 2) {
+            const rect = el.getBoundingClientRect();
+            const clientX = rect.left + rect.width / 2;
+            const clientY = rect.top + rect.height / 2;
+            el.dispatchEvent(new MouseEvent('dblclick', {
+                bubbles: true,
+                cancelable: true,
+                view: window,
+                detail: 2,
+                clientX,
+                clientY,
+            }));
+        }
+        if (i < count) {
+            await new Promise((r) => setTimeout(r, 60));
+        }
     }
 };
 
@@ -154,15 +279,65 @@ const defaultInputSetter = () =>
     Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
 
 const doFill = (el, value) => {
-    scrollToElement(el)
-    glow(el)
-    el.focus()
-    const getSetter = NATIVE_VALUE_SETTERS[el.tagName] || defaultInputSetter
-    const setter = getSetter()
-    setter.call(el, value)
-    el.dispatchEvent(new Event('input', { bubbles: true }))
-    el.dispatchEvent(new Event('change', { bubbles: true }))
-}
+    scrollToElement(el);
+    glow(el);
+    el.focus();
+
+    const stringValue = value !== null && value !== undefined ? String(value) : '';
+
+    try {
+        const getSetter = NATIVE_VALUE_SETTERS[el.tagName] || (el.tagName === 'INPUT' ? defaultInputSetter : null);
+        if (getSetter) {
+            const setter = getSetter();
+            setter.call(el, stringValue);
+        } else {
+            el.value = stringValue;
+            if (el.isContentEditable) el.innerText = stringValue;
+        }
+    } catch (_) {
+        el.value = stringValue;
+        if (el.isContentEditable) el.innerText = stringValue;
+    }
+
+    // Dispatch input and change events with modern InputEvent for reactive frameworks (Polymer, React, Vue)
+    try {
+        el.dispatchEvent(new InputEvent('input', {
+            bubbles: true,
+            cancelable: true,
+            inputType: 'insertText',
+            data: stringValue,
+        }));
+    } catch (_) {
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+
+    // Key events for frameworks listening to typing
+    const keyInit = { bubbles: true, cancelable: true, view: window };
+    el.dispatchEvent(new KeyboardEvent('keydown', keyInit));
+    el.dispatchEvent(new KeyboardEvent('keyup', keyInit));
+
+    // If this is a search input, trigger Enter key to submit search
+    const isSearch = el.type === 'search' || /search/i.test(el.id || '') || /search/i.test(el.name || '') || /search/i.test(el.placeholder || '') || el.getAttribute('role') === 'searchbox';
+    if (isSearch) {
+        const enterInit = {
+            key: 'Enter',
+            code: 'Enter',
+            keyCode: 13,
+            which: 13,
+            bubbles: true,
+            cancelable: true,
+            view: window,
+        };
+        el.dispatchEvent(new KeyboardEvent('keydown', enterInit));
+        el.dispatchEvent(new KeyboardEvent('keypress', enterInit));
+        el.dispatchEvent(new KeyboardEvent('keyup', enterInit));
+        if (el.form && typeof el.form.requestSubmit === 'function') {
+            try { el.form.requestSubmit(); } catch (_) {}
+        }
+    }
+};
 
 const doScroll = (el) => {
     scrollToElement(el)
@@ -176,7 +351,7 @@ const doFocus = (el) => {
 }
 
 const READ_ONLY_ACTIONS = new Set(['scroll', 'focus'])
-const MUTATE_ACTIONS   = new Set(['click', 'open', 'double_click', 'dblclick', 'fill'])
+const MUTATE_ACTIONS   = new Set(['click', 'open', 'double_click', 'dblclick', 'triple_click', 'tripleclick', 'fill'])
 
 const isCredentialField = (el) => {
     if (!el || el.tagName !== 'INPUT') return false
@@ -311,14 +486,32 @@ const execute = async (actionResponse, options = {}) => {
     }
 
     try {
+        let clickCount = actionResponse.click_count;
+        if (!clickCount && action === 'click') {
+            if (typeof actionResponse.value === 'number') {
+                clickCount = actionResponse.value;
+            } else if (typeof actionResponse.value === 'string' && /^\d+$/.test(actionResponse.value.trim())) {
+                clickCount = parseInt(actionResponse.value.trim(), 10);
+            }
+        }
+        clickCount = clickCount && clickCount > 0 ? clickCount : 1;
+
         switch (action) {
             case 'click':
-                doClick(el);
+                if (clickCount > 1) {
+                    await doMultiClick(el, clickCount);
+                } else {
+                    doClick(el);
+                }
                 break;
             case 'open':
             case 'double_click':
             case 'dblclick':
                 await doOpen(el);
+                break;
+            case 'triple_click':
+            case 'tripleclick':
+                await doTripleClick(el);
                 break;
             case 'fill': {
                 let fillValue = value;
@@ -356,11 +549,22 @@ const executeStep = async (step) => {
         action: step.action,
         element_id: step.element_id,
         value: step.value,
+        click_count: step.click_count,
         message: step.description || `Performed ${step.action}`,
     }, { skipConfirmation: true });
 };
 
-const executorApi = { execute, executeStep, isCredentialField, requestNativeCredentials, TOKEN_REGEX };
+const executorApi = {
+    execute,
+    executeStep,
+    doClick,
+    doOpen,
+    doTripleClick,
+    doMultiClick,
+    isCredentialField,
+    requestNativeCredentials,
+    TOKEN_REGEX,
+};
 if (typeof window !== 'undefined') {
     window.AtlasExecutor = executorApi;
 }
