@@ -18,6 +18,7 @@ const TOKEN_REGEX = /^\{(password|cc_number|cc_cvv|cc_expiry|cc_name|ssn|otp|pin
 const glowTimers = new WeakMap()
 
 const ensureHighlightStyleInjected = () => {
+    if (typeof document === 'undefined') return
     if (document.getElementById('atlas-glow-style')) return
     const style = document.createElement('style')
     style.id = 'atlas-glow-style'
@@ -33,6 +34,7 @@ const ensureHighlightStyleInjected = () => {
 }
 
 const glow = (el) => {
+    if (typeof document === 'undefined' || !el?.classList) return
     ensureHighlightStyleInjected()
     el.classList.add(HIGHLIGHT_CLASS)
 
@@ -350,8 +352,194 @@ const doFocus = (el) => {
     el.focus()
 }
 
-const READ_ONLY_ACTIONS = new Set(['scroll', 'focus'])
-const MUTATE_ACTIONS   = new Set(['click', 'open', 'double_click', 'dblclick', 'triple_click', 'tripleclick', 'fill'])
+// ── v2 Form & Automation Actions (§9.1, §12.4) ──────────────────────────────
+const defaultCheckedSetter = () =>
+    (typeof window !== 'undefined' && window.HTMLInputElement)
+        ? Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'checked')?.set
+        : null;
+
+const doSelectOption = (el, value) => {
+    scrollToElement(el);
+    glow(el);
+    el.focus();
+
+    const targetVal = String(value || '').trim();
+    if (el.tagName === 'SELECT') {
+        const options = Array.from(el.options || []);
+        const match = options.find((opt) =>
+            opt.value === targetVal ||
+            opt.text.trim().toLowerCase() === targetVal.toLowerCase() ||
+            (opt.label && opt.label.trim().toLowerCase() === targetVal.toLowerCase())
+        );
+        const resolvedValue = match ? match.value : targetVal;
+        try {
+            const getSetter = NATIVE_VALUE_SETTERS.SELECT;
+            if (getSetter) {
+                const setter = getSetter();
+                setter.call(el, resolvedValue);
+            } else {
+                el.value = resolvedValue;
+            }
+        } catch (_) {
+            el.value = resolvedValue;
+        }
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+    } else {
+        const role = el.getAttribute('role');
+        if (role === 'combobox') {
+            el.click();
+            const controlsId = el.getAttribute('aria-controls') || el.getAttribute('aria-owns');
+            const targetContainer = controlsId ? document.getElementById(controlsId) : (el.parentElement || document);
+            const opt = Array.from(targetContainer.querySelectorAll('[role="option"]')).find((o) =>
+                (o.getAttribute('data-value') || o.innerText || o.textContent || '').trim().toLowerCase() === targetVal.toLowerCase()
+            );
+            if (opt) {
+                opt.click();
+            }
+        } else if (role === 'option') {
+            el.click();
+        }
+    }
+};
+
+const doSetCheckbox = (el, value) => {
+    scrollToElement(el);
+    glow(el);
+    el.focus();
+
+    const desiredChecked = typeof value === 'boolean' ? value : String(value).toLowerCase() === 'true';
+    const currentChecked = Boolean(el.checked || el.getAttribute('aria-checked') === 'true');
+
+    if (currentChecked === desiredChecked) {
+        return; // Idempotent: already in desired state
+    }
+
+    try {
+        const setter = defaultCheckedSetter();
+        if (setter) {
+            setter.call(el, desiredChecked);
+        } else {
+            el.checked = desiredChecked;
+        }
+    } catch (_) {
+        el.checked = desiredChecked;
+    }
+
+    if (el.hasAttribute('aria-checked')) {
+        el.setAttribute('aria-checked', String(desiredChecked));
+    }
+
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+};
+
+const doSetRadio = (el) => {
+    scrollToElement(el);
+    glow(el);
+    el.focus();
+
+    try {
+        const setter = defaultCheckedSetter();
+        if (setter) {
+            setter.call(el, true);
+        } else {
+            el.checked = true;
+        }
+    } catch (_) {
+        el.checked = true;
+    }
+
+    if (el.hasAttribute('aria-checked')) {
+        el.setAttribute('aria-checked', 'true');
+    }
+
+    el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+};
+
+const doPressKey = (el, keyName = 'Enter') => {
+    scrollToElement(el);
+    glow(el);
+    el.focus();
+
+    const key = String(keyName || 'Enter');
+    const keyCode = key === 'Enter' ? 13 : key === 'Tab' ? 9 : key === 'Escape' ? 27 : 0;
+    const eventInit = {
+        key,
+        code: key,
+        keyCode,
+        which: keyCode,
+        bubbles: true,
+        cancelable: true,
+        view: window,
+    };
+    el.dispatchEvent(new KeyboardEvent('keydown', eventInit));
+    el.dispatchEvent(new KeyboardEvent('keypress', eventInit));
+    el.dispatchEvent(new KeyboardEvent('keyup', eventInit));
+};
+
+const doUploadFile = async (el, fileIdentifier) => {
+    scrollToElement(el);
+    glow(el);
+    el.focus();
+
+    const fileName = typeof fileIdentifier === 'string' && fileIdentifier ? fileIdentifier.split('/').pop() : 'document.pdf';
+    try {
+        const file = new File(['mock content'], fileName, { type: 'application/pdf' });
+        const dataTransfer = new DataTransfer();
+        dataTransfer.items.add(file);
+        el.files = dataTransfer.files;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+    } catch (_) {
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+};
+
+const doWaitFor = async (value = 'settle') => {
+    const val = String(value || 'settle').trim();
+    if (val.startsWith('element:')) {
+        const ref = val.slice('element:'.length).trim();
+        const start = Date.now();
+        while (Date.now() - start < 5000) {
+            const found = window.AtlasSerializer?.getElementByAtlasId(ref) || document.querySelector(`[data-atlas-id="${CSS.escape(ref)}"]`);
+            if (found) return { ok: true, message: `Element ${ref} appeared` };
+            await new Promise((r) => setTimeout(r, 100));
+        }
+        return { ok: false, message: `Timed out waiting for element ${ref}` };
+    }
+    if (val.startsWith('text:')) {
+        const phrase = val.slice('text:'.length).trim().toLowerCase();
+        const start = Date.now();
+        while (Date.now() - start < 5000) {
+            const bodyText = (document.body?.innerText || '').toLowerCase();
+            if (bodyText.includes(phrase)) return { ok: true, message: `Text "${phrase}" appeared` };
+            await new Promise((r) => setTimeout(r, 100));
+        }
+        return { ok: false, message: `Timed out waiting for text "${phrase}"` };
+    }
+    await new Promise((r) => setTimeout(r, 800));
+    return { ok: true, message: 'Settled' };
+};
+
+let navigationPendingState = false;
+if (typeof window !== 'undefined') {
+    window.addEventListener('beforeunload', () => {
+        navigationPendingState = true;
+    });
+}
+
+const navigationPending = async () => navigationPendingState;
+
+const READ_ONLY_ACTIONS = new Set(['scroll', 'focus', 'wait_for'])
+const MUTATE_ACTIONS = new Set([
+    'click', 'open', 'double_click', 'dblclick', 'triple_click', 'tripleclick',
+    'fill', 'select_option', 'set_checkbox', 'set_radio', 'press_key', 'upload_file'
+])
 
 const isCredentialField = (el) => {
     if (!el || el.tagName !== 'INPUT') return false
@@ -461,14 +649,18 @@ const execute = async (actionResponse, options = {}) => {
     if (status === 'error' || status === 'no_match' || action === 'none') {
         return { ok: false, message: actionResponse.message }
     }
+    if (action === 'wait_for') {
+        return await doWaitFor(value);
+    }
+
     const el = window.AtlasSerializer?.getElementByAtlasId(elementId)
     if (!el) {
         return { ok: false, message: `Couldn't find that element on the page anymore — try again.` }
     }
     
     // Scroll element into view before asking for confirmation
-    if (action === 'click' || action === 'open' || action === 'double_click') scrollToElement(el)
-    if (action === 'fill') scrollToElement(el)
+    if (action === 'click' || action === 'open' || action === 'double_click' || action === 'select_option') scrollToElement(el)
+    if (action === 'fill' || action === 'set_checkbox' || action === 'set_radio' || action === 'upload_file') scrollToElement(el)
 
     // Handle credential autofill flow when targeting credential fields with null or placeholder value
     if (action === 'fill' && isCredentialField(el) && (!value || value === '[AUTOFILL]' || value === '[CREDENTIAL]')) {
@@ -536,6 +728,24 @@ const execute = async (actionResponse, options = {}) => {
                 doFill(el, fillValue);
                 break;
             }
+            case 'select_option':
+                doSelectOption(el, value);
+                break;
+            case 'set_checkbox':
+                doSetCheckbox(el, value);
+                break;
+            case 'set_radio':
+                doSetRadio(el);
+                break;
+            case 'press_key':
+                doPressKey(el, value);
+                break;
+            case 'upload_file':
+                await doUploadFile(el, value);
+                break;
+            case 'wait_for':
+                await doWaitFor(value);
+                break;
             case 'scroll':
                 doScroll(el);
                 break;
@@ -562,13 +772,39 @@ const executeStep = async (step) => {
     }, { skipConfirmation: true });
 };
 
+const executeBatch = async (steps, options = {}) => {
+    const onProgress = options.onProgress || (() => {});
+    const report = { results: [], navigated: false, settle_timeout: false };
+
+    for (const step of steps) {
+        if (await navigationPending()) {
+            report.navigated = true;
+            break;
+        }
+        const r = await executeStep(step);
+        report.results.push(r);
+        onProgress(step, r);
+        if (!r.ok && step.critical) break;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    return report;
+};
+
 const executorApi = {
     execute,
     executeStep,
+    executeBatch,
+    navigationPending,
     doClick,
     doOpen,
     doTripleClick,
     doMultiClick,
+    doSelectOption,
+    doSetCheckbox,
+    doSetRadio,
+    doPressKey,
+    doUploadFile,
+    doWaitFor,
     isCredentialField,
     requestNativeCredentials,
     TOKEN_REGEX,
