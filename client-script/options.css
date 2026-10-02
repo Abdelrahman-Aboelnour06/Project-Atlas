@@ -269,3 +269,57 @@ button {
 #secrets-status[data-kind="ok"] { color: var(--atlas-ok); }
 #secrets-status[data-kind="error"] { color: var(--atlas-error); }
 
+/* User Profile Section */
+.atlas-profile-section {
+  margin-top: 48px;
+  padding-top: 32px;
+  border-top: 1px solid var(--atlas-border);
+}
+
+.atlas-profile-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.atlas-profile-header h2 {
+  font-size: 20px;
+  margin: 0 0 4px;
+}
+
+.atlas-profile-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.atlas-form-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.atlas-form-group label {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--atlas-text);
+}
+
+.atlas-form-group input {
+  min-height: 44px;
+  margin-bottom: 0;
+}
+
+#profile-status {
+  min-height: 20px;
+  margin-top: 16px;
+  font-size: 14px;
+}
+
+#profile-status[data-kind="ok"] { color: var(--atlas-ok); }
+#profile-status[data-kind="error"] { color: var(--atlas-error); }
+
+

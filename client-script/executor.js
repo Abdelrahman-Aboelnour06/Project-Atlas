@@ -10,7 +10,7 @@
 
 const HIGHLIGHT_CLASS = 'atlas-glow-highlight'
 const HIGHLIGHT_DURATION_MS = 2000
-const TOKEN_REGEX = /^\{(password|cc_number|cc_cvv|cc_expiry|cc_name|ssn|otp|pin|secret)(_\d+)?\}$/
+const TOKEN_REGEX = /^\{(password|cc_number|cc_cvv|cc_expiry|cc_name|ssn|otp|pin|secret|profile\.[a-z0-9_]+)(_\d+)?\}$/
 
 // Tracks the pending "remove highlight" timeout per element so that
 // re-glowing the same element within the highlight window resets the

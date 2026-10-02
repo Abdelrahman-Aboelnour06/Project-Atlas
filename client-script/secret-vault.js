@@ -13,7 +13,8 @@
 
   const VAULT_KEY_STORAGE_KEY = "atlas_vault_key";
   const VAULT_PREFIX = "atlas_vault:";
-  const TOKEN_REGEX = /^\{(password|cc_number|cc_cvv|cc_expiry|cc_name|ssn|otp|pin|secret)(_\d+)?\}$/;
+  const PROFILE_PREFIX = "atlas_profile:";
+  const TOKEN_REGEX = /^\{(password|cc_number|cc_cvv|cc_expiry|cc_name|ssn|otp|pin|secret|profile\.[a-z0-9_]+)(_\d+)?\}$/;
 
   // In-memory key cache during active runtime session
   let cachedKey = null;
@@ -237,10 +238,17 @@
    * Never throws error with secret plaintext.
    */
   const resolve = async (origin, token) => {
-    if (!origin || !token) return null;
+    if (!token) return null;
     try {
       const storage = getStorage();
-      const storageKey = `${VAULT_PREFIX}${origin}:${token}`;
+      let storageKey;
+      if (typeof token === "string" && token.startsWith("{profile.") && token.endsWith("}")) {
+        const field = token.slice("{profile.".length, -1);
+        storageKey = `${PROFILE_PREFIX}${field}`;
+      } else {
+        if (!origin) return null;
+        storageKey = `${VAULT_PREFIX}${origin}:${token}`;
+      }
       const result = await storage.get([storageKey]);
       const entry = result[storageKey];
       if (!entry || !entry.ciphertext || !entry.iv) return null;
@@ -340,6 +348,85 @@
     const storage = getStorage();
     const all = await storage.get(null);
     const toRemove = Object.keys(all).filter((k) => k.startsWith(VAULT_PREFIX));
+    if (toRemove.length > 0) {
+      await storage.remove(toRemove);
+    }
+  };
+
+  /**
+   * Saves a single profile field encrypted under atlas_profile: prefix.
+   */
+  const saveProfileField = async (field, plaintext) => {
+    if (!field || typeof plaintext !== "string") return;
+    const storage = getStorage();
+    const key = await getOrCreateVaultKey();
+    const subtle = getSubtleCrypto();
+    const iv = getRandomBytes(12);
+    const encoded = new TextEncoder().encode(plaintext);
+    const cipherBuffer = await subtle.encrypt(
+      { name: "AES-GCM", iv },
+      key,
+      encoded
+    );
+    const entry = {
+      ciphertext: bytesToBase64(new Uint8Array(cipherBuffer)),
+      iv: bytesToBase64(iv),
+      field,
+      updatedAt: new Date().toISOString(),
+    };
+    await storage.set({ [`${PROFILE_PREFIX}${field}`]: entry });
+  };
+
+  /**
+   * Retrieves and decrypts all saved profile fields into an object { field: plaintext }.
+   */
+  const getProfile = async () => {
+    const storage = getStorage();
+    const all = await storage.get(null);
+    const profile = {};
+    const key = await getOrCreateVaultKey();
+    const subtle = getSubtleCrypto();
+
+    for (const [k, entry] of Object.entries(all)) {
+      if (k.startsWith(PROFILE_PREFIX) && entry && entry.ciphertext && entry.iv) {
+        const field = k.slice(PROFILE_PREFIX.length);
+        try {
+          const iv = base64ToBytes(entry.iv);
+          const ciphertext = base64ToBytes(entry.ciphertext);
+          const decryptedBuffer = await subtle.decrypt(
+            { name: "AES-GCM", iv },
+            key,
+            ciphertext
+          );
+          profile[field] = new TextDecoder().decode(decryptedBuffer);
+        } catch (_) {}
+      }
+    }
+    return profile;
+  };
+
+  /**
+   * Returns list of saved profile field names (metadata only, no plaintext).
+   */
+  const listProfileKeys = async () => {
+    const storage = getStorage();
+    const all = await storage.get(null);
+    const keys = [];
+    for (const k of Object.keys(all)) {
+      if (k.startsWith(PROFILE_PREFIX)) {
+        keys.push(k.slice(PROFILE_PREFIX.length));
+      }
+    }
+    return keys;
+  };
+
+  /**
+   * Clears all saved profile fields.
+   */
+  const clearProfile = async () => {
+    const storage = getStorage();
+    const all = await storage.get(null);
+    const toRemove = Object.keys(all).filter((k) => k.startsWith(PROFILE_PREFIX));
     if (toRemove.length > 0) {
       await storage.remove(toRemove);
     }
@@ -549,6 +636,10 @@
     deleteEntry,
     clearOrigin,
     clearAll,
+    saveProfileField,
+    getProfile,
+    listProfileKeys,
+    clearProfile,
     tokenizeCommand,
     _resetKeyCache,
     _setStorage,

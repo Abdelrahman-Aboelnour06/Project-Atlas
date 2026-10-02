@@ -342,6 +342,72 @@ async function runTests() {
     secretVault.resolve = originalResolve;
   }
 
+  // ── Track 1i: Profile Store Tests ──────────────────────────────────────────
+  {
+    console.log('\n[Unit: Track 1i Profile Store]');
+
+    testAssert(
+      secretVault.TOKEN_REGEX.test('{profile.email}'),
+      'TOKEN_REGEX accepts {profile.email}'
+    );
+    testAssert(
+      secretVault.TOKEN_REGEX.test('{profile.address_line1}'),
+      'TOKEN_REGEX accepts {profile.address_line1}'
+    );
+    testAssert(
+      secretVault.TOKEN_REGEX.test('{profile.phone}'),
+      'TOKEN_REGEX accepts {profile.phone}'
+    );
+    testAssert(
+      !secretVault.TOKEN_REGEX.test('{profile.Invalid-Field!}'),
+      'TOKEN_REGEX rejects invalid profile token'
+    );
+
+    // Test saving, getting, resolving, and clearing profile
+    await secretVault.saveProfileField('email', 'alice@example.com');
+    await secretVault.saveProfileField('given_name', 'Alice');
+
+    // Confirm encrypted in mockStore
+    const emailKey = 'atlas_profile:email';
+    testAssert(
+      mockStore[emailKey] && mockStore[emailKey].ciphertext,
+      'Profile field is saved with ciphertext'
+    );
+    testAssert(
+      JSON.stringify(mockStore[emailKey]).indexOf('alice@example.com') === -1,
+      'Storage never contains plaintext profile email'
+    );
+
+    // Resolve via token
+    const resolvedEmail = await secretVault.resolve('https://example.com', '{profile.email}');
+    testAssert(
+      resolvedEmail === 'alice@example.com',
+      `resolve() recovers plaintext profile email: got "${resolvedEmail}"`
+    );
+
+    // getProfile
+    const profile = await secretVault.getProfile();
+    testAssert(
+      profile.email === 'alice@example.com' && profile.given_name === 'Alice',
+      'getProfile() returns all decrypted profile fields'
+    );
+
+    // listProfileKeys
+    const keys = await secretVault.listProfileKeys();
+    testAssert(
+      keys.includes('email') && keys.includes('given_name'),
+      'listProfileKeys() returns saved profile key names'
+    );
+
+    // clearProfile
+    await secretVault.clearProfile();
+    const afterClear = await secretVault.getProfile();
+    testAssert(
+      Object.keys(afterClear).length === 0,
+      'clearProfile() removes all profile entries'
+    );
+  }
+
   console.log(`\nSecret Vault Tests Complete: ${passed} passed, ${failures} failed.\n`);
   process.exit(failures > 0 ? 1 : 0);
 }

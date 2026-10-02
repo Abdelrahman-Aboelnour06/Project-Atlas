@@ -170,54 +170,150 @@ if (clearAllSecretsBtn) {
   })
 }
 
-const load = () => {
-  chrome.storage.local.get(
-    [API_KEY_STORAGE_KEY, BASE_URL_STORAGE_KEY],
-    (result) => {
-      apiKeyInput.value = result[API_KEY_STORAGE_KEY] || ''
-      baseUrlInput.value = result[BASE_URL_STORAGE_KEY] || DEFAULT_BASE_URL
+const PROFILE_FIELDS = [
+  'given_name',
+  'family_name',
+  'full_name',
+  'email',
+  'phone',
+  'address_line1',
+  'address_line2',
+  'city',
+  'region',
+  'postal_code',
+  'country',
+  'date_of_birth',
+]
+
+const profileForm = document.getElementById('atlas-profile-form')
+const clearProfileBtn = document.getElementById('clear-profile-btn')
+const profileStatusEl = document.getElementById('profile-status')
+
+const setProfileStatus = (text, kind = 'info') => {
+  if (!profileStatusEl) return
+  profileStatusEl.textContent = text
+  profileStatusEl.dataset.kind = kind
+}
+
+const renderProfile = async () => {
+  if (!profileForm) return
+  const vault = getVault()
+  if (!vault || !vault.getProfile) return
+  try {
+    const profile = await vault.getProfile()
+    for (const field of PROFILE_FIELDS) {
+      const input = profileForm.elements[field]
+      if (input && profile[field] !== undefined) {
+        input.value = profile[field]
+      }
     }
-  )
+  } catch (err) {
+    console.error('Failed to load profile:', err)
+  }
+}
+
+if (profileForm) {
+  profileForm.addEventListener('submit', async (e) => {
+    e.preventDefault()
+    const vault = getVault()
+    if (!vault || !vault.saveProfileField) {
+      setProfileStatus('Vault unavailable.', 'error')
+      return
+    }
+    for (const field of PROFILE_FIELDS) {
+      const input = profileForm.elements[field]
+      if (input) {
+        const val = input.value.trim()
+        if (val) {
+          await vault.saveProfileField(field, val)
+        }
+      }
+    }
+    setProfileStatus('Profile saved securely.', 'ok')
+  })
+}
+
+if (clearProfileBtn) {
+  clearProfileBtn.addEventListener('click', async () => {
+    if (!confirm('Are you sure you want to clear your saved profile data?')) {
+      return
+    }
+    const vault = getVault()
+    if (vault && vault.clearProfile) {
+      await vault.clearProfile()
+      if (profileForm) {
+        for (const field of PROFILE_FIELDS) {
+          const input = profileForm.elements[field]
+          if (input) input.value = ''
+        }
+      }
+      setProfileStatus('Profile cleared.', 'ok')
+    }
+  })
+}
+
+const load = () => {
+  if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+    chrome.storage.local.get(
+      [API_KEY_STORAGE_KEY, BASE_URL_STORAGE_KEY],
+      (result) => {
+        if (apiKeyInput) apiKeyInput.value = result[API_KEY_STORAGE_KEY] || ''
+        if (baseUrlInput) baseUrlInput.value = result[BASE_URL_STORAGE_KEY] || DEFAULT_BASE_URL
+      }
+    )
+  }
   renderSecrets()
+  renderProfile()
 }
 
 const isPlausibleKey = (value) => value.trim().startsWith('atlas_')
 
-form.addEventListener('submit', (e) => {
-  e.preventDefault()
+if (form) {
+  form.addEventListener('submit', (e) => {
+    e.preventDefault()
 
-  const key = apiKeyInput.value.trim()
-  const baseUrl = baseUrlInput.value.trim() || DEFAULT_BASE_URL
+    const key = apiKeyInput ? apiKeyInput.value.trim() : ''
+    const baseUrl = (baseUrlInput && baseUrlInput.value.trim()) || DEFAULT_BASE_URL
 
-  if (key && !isPlausibleKey(key)) {
-    setStatus("That doesn't look like an Atlas key — it should start with \"atlas_\".", 'error')
-    return
-  }
-
-  chrome.storage.local.set(
-    { [API_KEY_STORAGE_KEY]: key, [BASE_URL_STORAGE_KEY]: baseUrl },
-    () => {
-      setStatus('Saved. Reload any open tabs to pick up the change.', 'ok')
+    if (key && !isPlausibleKey(key)) {
+      setStatus("That doesn't look like an Atlas key — it should start with \"atlas_\".", 'error')
+      return
     }
-  )
-})
 
-clearBtn.addEventListener('click', () => {
-  if (!confirm('Are you sure you want to clear your stored Atlas API key?')) {
-    return
-  }
-  chrome.storage.local.remove([API_KEY_STORAGE_KEY], () => {
-    apiKeyInput.value = ''
-    setStatus('API key cleared. You will be prompted again on next activation.', 'ok')
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.set(
+        { [API_KEY_STORAGE_KEY]: key, [BASE_URL_STORAGE_KEY]: baseUrl },
+        () => {
+          setStatus('Saved. Reload any open tabs to pick up the change.', 'ok')
+        }
+      )
+    }
   })
-})
+}
 
-toggleBtn.addEventListener('click', () => {
-  const isPassword = apiKeyInput.type === 'password'
-  apiKeyInput.type = isPassword ? 'text' : 'password'
-  toggleBtn.textContent = isPassword ? 'Hide' : 'Show'
-  toggleBtn.setAttribute('aria-label', isPassword ? 'Hide API key' : 'Show API key')
-})
+if (clearBtn) {
+  clearBtn.addEventListener('click', () => {
+    if (!confirm('Are you sure you want to clear your stored Atlas API key?')) {
+      return
+    }
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.remove([API_KEY_STORAGE_KEY], () => {
+        if (apiKeyInput) apiKeyInput.value = ''
+        setStatus('API key cleared. You will be prompted again on next activation.', 'ok')
+      })
+    }
+  })
+}
+
+if (toggleBtn) {
+  toggleBtn.addEventListener('click', () => {
+    if (!apiKeyInput) return
+    const isPassword = apiKeyInput.type === 'password'
+    apiKeyInput.type = isPassword ? 'text' : 'password'
+    toggleBtn.textContent = isPassword ? 'Hide' : 'Show'
+    toggleBtn.setAttribute('aria-label', isPassword ? 'Hide API key' : 'Show API key')
+  })
+}
 
 load()
 
@@ -225,6 +321,7 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     load,
     renderSecrets,
+    renderProfile,
     getVault,
   }
 }

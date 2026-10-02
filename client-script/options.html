@@ -65,6 +65,76 @@
       <div id="secrets-container" class="atlas-secrets-list"></div>
       <p id="secrets-status" role="status" aria-live="polite"></p>
     </section>
+
+    <section class="atlas-profile-section" aria-labelledby="profile-heading">
+      <div class="atlas-profile-header">
+        <div>
+          <h2 id="profile-heading">User Profile</h2>
+          <p class="atlas-hint">Locally encrypted profile data for universal automated form filling.</p>
+        </div>
+        <button type="button" id="clear-profile-btn" class="atlas-secondary atlas-danger-btn">
+          Clear profile
+        </button>
+      </div>
+
+      <form id="atlas-profile-form" novalidate>
+        <div class="atlas-profile-grid">
+          <div class="atlas-form-group">
+            <label for="profile-given-name">Given name</label>
+            <input id="profile-given-name" name="given_name" type="text" autocomplete="given-name" placeholder="Alice" />
+          </div>
+          <div class="atlas-form-group">
+            <label for="profile-family-name">Family name</label>
+            <input id="profile-family-name" name="family_name" type="text" autocomplete="family-name" placeholder="Smith" />
+          </div>
+          <div class="atlas-form-group">
+            <label for="profile-full-name">Full name</label>
+            <input id="profile-full-name" name="full_name" type="text" autocomplete="name" placeholder="Alice Smith" />
+          </div>
+          <div class="atlas-form-group">
+            <label for="profile-email">Email</label>
+            <input id="profile-email" name="email" type="email" autocomplete="email" placeholder="alice@example.com" />
+          </div>
+          <div class="atlas-form-group">
+            <label for="profile-phone">Phone number</label>
+            <input id="profile-phone" name="phone" type="tel" autocomplete="tel" placeholder="+15551234567" />
+          </div>
+          <div class="atlas-form-group">
+            <label for="profile-address-1">Address line 1</label>
+            <input id="profile-address-1" name="address_line1" type="text" autocomplete="address-line1" placeholder="123 Main St" />
+          </div>
+          <div class="atlas-form-group">
+            <label for="profile-address-2">Address line 2</label>
+            <input id="profile-address-2" name="address_line2" type="text" autocomplete="address-line2" placeholder="Apt 4B" />
+          </div>
+          <div class="atlas-form-group">
+            <label for="profile-city">City</label>
+            <input id="profile-city" name="city" type="text" autocomplete="address-level2" placeholder="Springfield" />
+          </div>
+          <div class="atlas-form-group">
+            <label for="profile-region">State / Region</label>
+            <input id="profile-region" name="region" type="text" autocomplete="address-level1" placeholder="IL" />
+          </div>
+          <div class="atlas-form-group">
+            <label for="profile-postal-code">Postal / ZIP code</label>
+            <input id="profile-postal-code" name="postal_code" type="text" autocomplete="postal-code" placeholder="62701" />
+          </div>
+          <div class="atlas-form-group">
+            <label for="profile-country">Country</label>
+            <input id="profile-country" name="country" type="text" autocomplete="country-name" placeholder="United States" />
+          </div>
+          <div class="atlas-form-group">
+            <label for="profile-dob">Date of birth</label>
+            <input id="profile-dob" name="date_of_birth" type="text" autocomplete="bday" placeholder="1990-01-15" />
+          </div>
+        </div>
+
+        <div class="atlas-actions">
+          <button type="submit" id="save-profile-btn">Save profile</button>
+        </div>
+        <p id="profile-status" role="status" aria-live="polite"></p>
+      </form>
+    </section>
   </main>
   <script src="secret-vault.js"></script>
   <script src="options.js"></script>
