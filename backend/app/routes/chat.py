@@ -6,6 +6,7 @@ Answers natural language questions about current webpage content using
 the configured LLM provider (NVIDIA NIM or Ollama).
 """
 
+import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -19,6 +20,9 @@ from app.agent.agentic_planner import AgenticPlan
 from app.agent.llm_client import LLMError
 from app.agent.navigator import plan_milestone_step
 from app.agent.verifier import verify_step_outcome
+from app.agent.planner import plan_goal
+from app.agent.scout import classify_page, ScoutResult
+from app.agent.form_filler import plan_form_fill
 from app.models.goal import (
     GoalState,
     GoalStepRequest,
@@ -26,6 +30,8 @@ from app.models.goal import (
     Milestone,
     PlanStep,
     VerifierResult,
+    UserInputRequest,
+    FormPlan,
 )
 
 logger = logging.getLogger(__name__)
@@ -235,26 +241,54 @@ async def goal_step_endpoint(
     if payload.goal and not goal_state.goal:
         goal_state.goal = payload.goal
 
-    # In Phase 1, ensure single implicit active milestone exists
+    # First hop milestone decomposition (Track 1m / Defect C fix)
     if not goal_state.milestones:
-        implicit_milestone = Milestone(
-            id="m-1",
-            description=goal_state.goal,
-            status="active",
-        )
-        goal_state.milestones = [implicit_milestone]
-        goal_state.active_milestone_id = "m-1"
+        try:
+            planned_milestones = await plan_goal(
+                goal=goal_state.goal,
+                current_url=payload.current_url,
+                page_text=payload.page_text,
+            )
+        except Exception as exc:
+            logger.warning("Planner execution failed: %s. Using fallback milestone.", exc)
+            planned_milestones = []
+
+        if planned_milestones:
+            planned_milestones[0].status = "active"
+            for m in planned_milestones[1:]:
+                if m.status != "completed":
+                    m.status = "pending"
+            goal_state.milestones = planned_milestones
+            goal_state.active_milestone_id = planned_milestones[0].id
+        else:
+            implicit_milestone = Milestone(
+                id="m-1",
+                description=goal_state.goal,
+                status="active",
+                is_final=True,
+                branch_id="b-0",
+            )
+            goal_state.milestones = [implicit_milestone]
+            goal_state.active_milestone_id = "m-1"
 
     active_milestone = goal_state.get_active_milestone()
     if not active_milestone:
-        implicit_milestone = Milestone(
-            id="m-1",
-            description=goal_state.goal,
-            status="active",
-        )
-        goal_state.milestones.append(implicit_milestone)
-        goal_state.active_milestone_id = "m-1"
-        active_milestone = implicit_milestone
+        next_m = goal_state.next_pending_milestone()
+        if next_m:
+            next_m.status = "active"
+            goal_state.active_milestone_id = next_m.id
+            active_milestone = next_m
+        else:
+            implicit_milestone = Milestone(
+                id="m-1",
+                description=goal_state.goal,
+                status="active",
+                is_final=True,
+                branch_id="b-0",
+            )
+            goal_state.milestones.append(implicit_milestone)
+            goal_state.active_milestone_id = "m-1"
+            active_milestone = implicit_milestone
 
     # Enforce strict max_hops safety boundary (default 8)
     if goal_state.hop_count >= goal_state.max_hops:
@@ -281,6 +315,11 @@ async def goal_step_endpoint(
             requires_confirmation=False,
             verifier_result=goal_state.verifier_result,
         )
+
+    # Handle awaiting_user_input resumption
+    if goal_state.status == "awaiting_user_input" and payload.user_response:
+        goal_state.status = "in_progress"
+        goal_state.awaiting = None
 
     # Handle confirmation response from user if state was paused for confirmation
     if goal_state.requires_confirmation and payload.user_response:
@@ -312,7 +351,7 @@ async def goal_step_endpoint(
                     requires_confirmation=False,
                 )
 
-    # Prior Action Verification
+    # Prior Action Verification & Perception Fan-out (Track 1m)
     has_prior_action = (
         payload.last_action_result is not None
         or (goal_state.plan_steps and len(goal_state.plan_steps) > 0)
@@ -320,11 +359,17 @@ async def goal_step_endpoint(
 
     prior_dom_ids = (goal_state.dom_state or {}).get("ids", [])
 
+    scout_task = classify_page(
+        dom_map=payload.dom_map,
+        current_url=payload.current_url,
+        page_text=payload.page_text,
+    )
+
     if has_prior_action:
         last_step = goal_state.plan_steps[-1] if goal_state.plan_steps else None
         last_result = payload.last_action_result or goal_state.last_action_result
 
-        verifier_res = await verify_step_outcome(
+        verifier_task = verify_step_outcome(
             goal=goal_state.goal,
             milestone=active_milestone,
             last_action=last_step,
@@ -335,8 +380,12 @@ async def goal_step_endpoint(
             current_dom_map=payload.dom_map,
             page_text=payload.page_text,
         )
+
+        scout_res, verifier_res = await asyncio.gather(scout_task, verifier_task)
+
         goal_state.verifier_result = verifier_res
         goal_state.last_action_result = last_result
+        goal_state.page_kind = scout_res.page_kind
 
         if verifier_res.status == "goal_complete":
             goal_state.status = "goal_complete"
@@ -384,8 +433,144 @@ async def goal_step_endpoint(
                 requires_confirmation=False,
                 verifier_result=verifier_res,
             )
+    else:
+        scout_res = await scout_task
+        goal_state.page_kind = scout_res.page_kind
 
-    # If verification outcome is non-terminal (in_progress), plan next page actions via Navigator
+    # Blocker Detection via Scout
+    if scout_res.blockers or scout_res.page_kind == "captcha":
+        if "captcha" in scout_res.blockers or scout_res.page_kind == "captcha":
+            goal_state.status = "awaiting_user_input"
+            goal_state.awaiting = UserInputRequest(
+                kind="captcha",
+                prompt="A CAPTCHA challenge was detected. Please solve it in the browser to continue.",
+                resumable=True,
+            )
+            return GoalStepResponse(
+                status="awaiting_user_input",
+                goal_state=goal_state,
+                reply="A CAPTCHA challenge was detected. Please solve it to continue.",
+                steps=[],
+                requires_confirmation=False,
+                verifier_result=goal_state.verifier_result,
+            )
+        elif "otp" in scout_res.blockers:
+            goal_state.status = "awaiting_user_input"
+            goal_state.awaiting = UserInputRequest(
+                kind="otp",
+                prompt="A one-time verification code (OTP) is required. Please provide it to continue.",
+                resumable=True,
+            )
+            return GoalStepResponse(
+                status="awaiting_user_input",
+                goal_state=goal_state,
+                reply="A one-time verification code (OTP) is required. Please provide it to continue.",
+                steps=[],
+                requires_confirmation=False,
+                verifier_result=goal_state.verifier_result,
+            )
+
+    # Form Filler execution if page is classified as form (Track 1m)
+    form_steps: List[PlanStep] = []
+    milestone_desc = (active_milestone.description or "").lower() if active_milestone else ""
+    is_form_relevant = (
+        not any(kw in milestone_desc for kw in ("download", "view", "read", "browse", "navigate to"))
+        or any(kw in milestone_desc for kw in ("form", "fill", "sign", "register", "login", "input", "account", "checkout", "details"))
+    )
+    if goal_state.page_kind == "form" and is_form_relevant:
+        default_profile_keys = [
+            "email",
+            "full_name",
+            "first_name",
+            "last_name",
+            "phone",
+            "address_line1",
+            "address_line2",
+            "city",
+            "state",
+            "postal_code",
+            "country",
+        ]
+        target_form_id = scout_res.form_inventory[0] if scout_res.form_inventory else "main-form"
+        form_plan = await plan_form_fill(
+            form_id=target_form_id,
+            dom_nodes=payload.dom_map,
+            goal=goal_state.goal,
+            profile_hints=default_profile_keys,
+        )
+        goal_state.form_plan = form_plan
+
+        if form_plan.blockers:
+            if "captcha" in form_plan.blockers:
+                goal_state.status = "awaiting_user_input"
+                goal_state.awaiting = UserInputRequest(
+                    kind="captcha",
+                    prompt="A CAPTCHA challenge was detected in the form. Please solve it to continue.",
+                    resumable=True,
+                )
+                return GoalStepResponse(
+                    status="awaiting_user_input",
+                    goal_state=goal_state,
+                    reply="A CAPTCHA challenge was detected in the form. Please solve it to continue.",
+                    steps=[],
+                    requires_confirmation=False,
+                    verifier_result=goal_state.verifier_result,
+                )
+            elif "otp" in form_plan.blockers:
+                goal_state.status = "awaiting_user_input"
+                goal_state.awaiting = UserInputRequest(
+                    kind="otp",
+                    prompt="A one-time verification code (OTP) is required. Please enter it to continue.",
+                    resumable=True,
+                )
+                return GoalStepResponse(
+                    status="awaiting_user_input",
+                    goal_state=goal_state,
+                    reply="A one-time verification code (OTP) is required. Please enter it to continue.",
+                    steps=[],
+                    requires_confirmation=False,
+                    verifier_result=goal_state.verifier_result,
+                )
+
+        if form_plan.fields:
+            for field in form_plan.fields:
+                form_steps.append(
+                    PlanStep(
+                        action=field.action,
+                        element_id=field.ref,
+                        value=field.value,
+                        description=f"Fill {field.ref} ({field.source}): {field.value}",
+                        delay_ms=300,
+                    )
+                )
+
+    if form_steps:
+        goal_state.plan_steps.extend(form_steps)
+        goal_state.current_url = payload.current_url
+        goal_state.dom_state = {
+            "ids": [str(getattr(node, "id", None) or getattr(node, "ref", None)) for node in payload.dom_map if getattr(node, "id", None) or getattr(node, "ref", None)]
+        }
+        goal_state.status = "in_progress"
+        goal_state.advance_hop()
+        if goal_state.status == "goal_failed":
+            return GoalStepResponse(
+                status="goal_failed",
+                goal_state=goal_state,
+                reply=goal_state.error_message or "Reached maximum hops limit.",
+                steps=[],
+                requires_confirmation=False,
+                verifier_result=goal_state.verifier_result,
+            )
+        return GoalStepResponse(
+            status="in_progress",
+            goal_state=goal_state,
+            reply=f"Prepared batch form fill for {len(form_steps)} fields.",
+            steps=form_steps,
+            requires_confirmation=False,
+            verifier_result=goal_state.verifier_result,
+        )
+
+    # If verification outcome is non-terminal and no form batch steps, plan next page actions via Navigator
     plan = await plan_milestone_step(
         goal=goal_state.goal,
         milestone=active_milestone,
@@ -398,7 +583,7 @@ async def goal_step_endpoint(
     # Update persistent DOM and URL tracking
     goal_state.current_url = payload.current_url
     goal_state.dom_state = {
-        "ids": [str(node.id) for node in payload.dom_map if getattr(node, "id", None)]
+        "ids": [str(getattr(node, "id", None) or getattr(node, "ref", None)) for node in payload.dom_map if getattr(node, "id", None) or getattr(node, "ref", None)]
     }
 
     # Handle confirmation pause

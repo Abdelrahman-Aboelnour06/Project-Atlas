@@ -572,7 +572,7 @@ class TestGoalStepEndpointIntegration:
         assert len(data["steps"]) >= 1
         assert data["steps"][0]["element_id"] == "atlas-001"
         assert data["goal_state"]["hop_count"] == 1
-        assert data["goal_state"]["milestones"][0]["id"] == "m-1"
+        assert data["goal_state"]["milestones"][0]["id"] in ("m-0", "m-1")
         assert data["requires_confirmation"] is False
 
     def test_goal_step_consequential_action_pause(self, api_client):
@@ -801,3 +801,135 @@ class TestGoalStepEndpointIntegration:
 
         assert data["status"] == "goal_complete"
         assert data["steps"] == []
+
+    def test_goal_step_multi_milestone_planning(self, api_client):
+        """Track 1m / Defect C fix: Multi-part goal invokes planner.plan_goal generating multiple milestones."""
+        mock_planner_output = json.dumps({
+            "milestones": [
+                {
+                    "id": "m-1",
+                    "description": "Register user account",
+                    "is_final": False,
+                    "branch_id": "b-0",
+                },
+                {
+                    "id": "m-2",
+                    "description": "Download timetable schedule",
+                    "is_final": True,
+                    "branch_id": "b-1",
+                },
+            ]
+        })
+        payload = {
+            "goal": "Register account and download timetable",
+            "current_url": "https://example.com/signup",
+            "dom_map": [
+                make_dom_dict(id="atlas-001", tag="input", name="username", role="textbox")
+            ],
+            "api_key": DEMO_API_KEY,
+        }
+
+        with patch("app.agent.planner.llm_client.call_llm", new=AsyncMock(return_value=mock_planner_output)):
+            res = api_client.post("/v1/chat/goal_step", json=payload)
+            assert res.status_code == 200
+            data = res.json()
+
+            milestones = data["goal_state"]["milestones"]
+            assert len(milestones) == 2
+            assert milestones[0]["id"] == "m-1"
+            assert milestones[0]["status"] == "active"
+            assert milestones[1]["id"] == "m-2"
+            assert milestones[1]["status"] == "pending"
+            assert data["goal_state"]["active_milestone_id"] == "m-1"
+
+    def test_goal_step_scout_page_classification(self, api_client):
+        """Track 1m: Scout classifies page during perception phase and populates goal_state.page_kind."""
+        payload = {
+            "goal": "Fill contact form",
+            "current_url": "https://example.com/contact",
+            "dom_map": [
+                make_dom_dict(id="input-name", tag="input", type="text", name="full_name", resolved_label="Full Name"),
+                make_dom_dict(id="input-email", tag="input", type="email", name="email", resolved_label="Email"),
+                make_dom_dict(id="btn-send", tag="button", inner_text="Send Message"),
+            ],
+            "api_key": DEMO_API_KEY,
+        }
+
+        res = api_client.post("/v1/chat/goal_step", json=payload)
+        assert res.status_code == 200
+        data = res.json()
+
+        assert data["goal_state"]["page_kind"] == "form"
+
+    def test_goal_step_form_filler_batch_execution(self, api_client):
+        """Track 1m: On form page, Form Filler produces batch steps and holds back submit_ref."""
+        payload = {
+            "goal": "Register user account",
+            "current_url": "https://example.com/signup",
+            "dom_map": [
+                make_dom_dict(id="f-email", tag="input", type="email", name="email", resolved_label="Email Address"),
+                make_dom_dict(id="f-pass", tag="input", type="password", name="password", sensitive=True, resolved_label="Password"),
+                make_dom_dict(id="f-submit", tag="button", inner_text="Submit Registration"),
+            ],
+            "api_key": DEMO_API_KEY,
+        }
+
+        res = api_client.post("/v1/chat/goal_step", json=payload)
+        assert res.status_code == 200
+        data = res.json()
+
+        assert data["goal_state"]["page_kind"] == "form"
+        assert data["goal_state"]["form_plan"] is not None
+        assert len(data["steps"]) >= 2
+        # Verify submit_ref is held back and not in execution batch steps
+        step_ids = [s["element_id"] for s in data["steps"]]
+        assert "f-submit" not in step_ids
+        # Verify privacy tokens were emitted
+        step_values = [s["value"] for s in data["steps"] if s.get("value")]
+        assert any("{password}" in v for v in step_values)
+
+    def test_goal_step_scout_blocker_captcha(self, api_client):
+        """Track 1m: CAPTCHA detected by Scout sets status=awaiting_user_input and populates awaiting."""
+        payload = {
+            "goal": "Verify my identity",
+            "current_url": "https://example.com/challenge",
+            "dom_map": [
+                make_dom_dict(id="c-recaptcha", tag="div", aria_label="reCAPTCHA challenge", inner_text="I am not a robot"),
+                make_dom_dict(id="c-submit", tag="button", inner_text="Verify"),
+            ],
+            "api_key": DEMO_API_KEY,
+        }
+
+        res = api_client.post("/v1/chat/goal_step", json=payload)
+        assert res.status_code == 200
+        data = res.json()
+
+        assert data["status"] == "awaiting_user_input"
+        assert data["goal_state"]["status"] == "awaiting_user_input"
+        assert data["goal_state"]["awaiting"] is not None
+        assert data["goal_state"]["awaiting"]["kind"] == "captcha"
+        assert len(data["steps"]) == 0
+
+    def test_goal_step_scout_blocker_otp(self, api_client):
+        """Track 1m: OTP blocker detected sets status=awaiting_user_input and populates awaiting."""
+        payload = {
+            "goal": "Log in to my account",
+            "current_url": "https://example.com/verify-otp",
+            "dom_map": [
+                make_dom_dict(id="otp-input", tag="input", name="two_factor_code", resolved_label="Enter Verification Code"),
+                make_dom_dict(id="otp-btn", tag="button", inner_text="Submit Code"),
+            ],
+            "page_text": "Please enter the one-time verification code sent to your phone.",
+            "api_key": DEMO_API_KEY,
+        }
+
+        res = api_client.post("/v1/chat/goal_step", json=payload)
+        assert res.status_code == 200
+        data = res.json()
+
+        assert data["status"] == "awaiting_user_input"
+        assert data["goal_state"]["status"] == "awaiting_user_input"
+        assert data["goal_state"]["awaiting"] is not None
+        assert data["goal_state"]["awaiting"]["kind"] == "otp"
+        assert len(data["steps"]) == 0
+

@@ -209,15 +209,95 @@ def _generate_deterministic_mock_response(
         })
 
     def _mock_planner() -> str:
+        goal_match = re.search(r'USER GOAL TO DECOMPOSE:\s*["\']?([^"\'\n]+)', user_prompt, re.I)
+        goal_text = goal_match.group(1).strip() if goal_match else "Complete user goal on page"
         return json.dumps({
             "milestones": [
                 {
                     "id": "m-0",
-                    "description": "Complete user goal on page",
+                    "description": goal_text,
                     "status": "active",
+                    "is_final": True,
+                    "branch_id": "b-0",
                     "success_criteria": "Target action completed successfully"
                 }
             ]
+        })
+
+    def _mock_scout() -> str:
+        lower_user = user_prompt.lower()
+        if any(w in lower_user for w in ("captcha", "robot", "human verification", "recaptcha", "hcaptcha", "turnstile")):
+            return json.dumps({
+                "page_kind": "captcha",
+                "blockers": ["captcha"],
+                "form_inventory": [],
+                "primary_cta": None,
+                "summary": "CAPTCHA challenge page"
+            })
+        if any(w in lower_user for w in ("two_factor_code", "verification code", "two-factor", "2fa", "security code", "otp")):
+            return json.dumps({
+                "page_kind": "form",
+                "blockers": ["otp"],
+                "form_inventory": ["verify-form"],
+                "primary_cta": "verify-btn",
+                "summary": "OTP verification page"
+            })
+        has_form_input = len(re.findall(r'"tag":\s*"(input|select|textarea)"', lower_user)) >= 2
+        if has_form_input:
+            found_forms = re.findall(r'["\']form_id["\']:\s*["\']([^"\']+)["\']', user_prompt)
+            form_inv = [f for f in list(dict.fromkeys(found_forms)) if f and f.lower() != "null"]
+            if not form_inv:
+                form_inv = ["main-form"]
+            found_ids = re.findall(r'["\']id["\']:\s*["\']([^"\']+)["\']', user_prompt)
+            btn_ids = [i for i in found_ids if any(b in i.lower() for b in ("btn", "button", "submit", "send"))]
+            cta = btn_ids[-1] if btn_ids else (found_ids[-1] if found_ids else "submit-btn")
+            return json.dumps({
+                "page_kind": "form",
+                "blockers": [],
+                "form_inventory": form_inv,
+                "primary_cta": cta,
+                "summary": "Interactive form page"
+            })
+        return json.dumps({
+            "page_kind": "other",
+            "blockers": [],
+            "form_inventory": [],
+            "primary_cta": None,
+            "summary": "Standard web page"
+        })
+
+    def _mock_form_filler() -> str:
+        found_refs = re.findall(r'["\']ref["\']:\s*["\']([^"\']+)["\']', user_prompt)
+        if not found_refs:
+            found_refs = re.findall(r'["\']id["\']:\s*["\']([^"\']+)["\']', user_prompt)
+        fields = []
+        submit_ref = None
+        for r in found_refs:
+            r_lower = r.lower()
+            if any(b in r_lower for b in ("submit", "btn", "button", "send")):
+                submit_ref = r
+                continue
+            val = "{password}" if any(p in r_lower for p in ("pass", "pwd", "secret")) else ("{profile.email}" if "email" in r_lower else ("{profile.full_name}" if any(n in r_lower for n in ("name", "user")) else "John Doe"))
+            src = "vault" if "{password}" in val else ("profile" if "{profile." in val else "user")
+            fields.append({
+                "ref": r,
+                "action": "fill",
+                "value": val,
+                "source": src,
+                "confidence": 1.0,
+                "rationale": "Automated form fill"
+            })
+        if not submit_ref and found_refs:
+            for r in reversed(found_refs):
+                if any(b in r.lower() for b in ("submit", "btn", "button", "send")):
+                    submit_ref = r
+                    break
+        return json.dumps({
+            "form_id": "main-form",
+            "fields": fields,
+            "submit_ref": submit_ref,
+            "missing_required": [],
+            "blockers": []
         })
 
     def _mock_navigator() -> str:
@@ -291,6 +371,10 @@ def _generate_deterministic_mock_response(
         return _mock_verifier()
     elif norm_role in ("planner",):
         return _mock_planner()
+    elif norm_role in ("scout",):
+        return _mock_scout()
+    elif norm_role in ("form_filler", "formfiller", "form"):
+        return _mock_form_filler()
     elif norm_role in ("navigator", "navigation"):
         return _mock_navigator()
     elif norm_role in ("simplify", "simplifier"):
@@ -303,6 +387,10 @@ def _generate_deterministic_mock_response(
     # 2. Heuristic Prompt Fallback (ONLY when norm_role is None or unrecognized above)
     if "VERIFIER" in full_prompt or "signals_detected" in full_prompt or "post-action" in full_prompt.lower():
         return _mock_verifier()
+    elif "SCOUT" in full_prompt or "page_kind" in full_prompt:
+        return _mock_scout()
+    elif "FORM_FILLER" in full_prompt or "submit_ref" in full_prompt:
+        return _mock_form_filler()
     elif "milestone" in full_prompt.lower():
         return _mock_planner()
     elif "AUTHENTIC USER COMMAND" in full_prompt or '"steps"' in full_prompt or "agentic" in full_prompt.lower():
