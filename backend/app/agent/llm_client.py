@@ -472,6 +472,17 @@ async def call_llm(
     provider = _get_current_provider()
     effective_model = get_model_for_role(role=role, model_override=model)
 
+    if _mock_canned_queue:
+        call_record = {
+            "user_prompt": user_prompt,
+            "system_prompt": system_prompt,
+            "reasoning": reasoning,
+            "role": role,
+            "model": effective_model,
+        }
+        _mock_call_history.append(call_record)
+        return _mock_canned_queue.pop(0)
+
     # BRANCH 0: Deterministic Mock Provider
     if provider == "mock":
         call_record = {
@@ -482,9 +493,6 @@ async def call_llm(
             "model": effective_model,
         }
         _mock_call_history.append(call_record)
-
-        if _mock_canned_queue:
-            return _mock_canned_queue.pop(0)
 
         return _generate_deterministic_mock_response(
             user_prompt=user_prompt,
