@@ -10,6 +10,7 @@ Adheres strictly to Prime Directive: 100% universal across all websites,
 zero domain or vendor-specific hardcoding.
 """
 
+import asyncio
 import json
 import logging
 import re
@@ -384,3 +385,195 @@ JSON RESPONSE:"""
             signals_detected=["fallback_in_progress"],
             verification_method="rules",
         )
+
+
+VERIFIER_STRICT_PROMPT = (
+    VERIFIER_SYSTEM_PROMPT
+    + "\nCRITICAL: Require explicit, incontrovertible evidence of completion before returning goal_complete. If there is any ambiguity, return in_progress."
+)
+
+
+async def _verify_with_llm(
+    step: Optional[PlanStep] = None,
+    last_action_result: Optional[Dict[str, Any]] = None,
+    current_url: Optional[str] = None,
+    previous_url: Optional[str] = None,
+    dom_map: Optional[List[DomNode]] = None,
+    milestone: Optional[Milestone] = None,
+    goal: str = "",
+    page_text: Optional[str] = None,
+    prior_dom_map: Optional[List[DomNode]] = None,
+    role: str = "verifier",
+    system_prompt: Optional[str] = None,
+) -> VerifierResult:
+    """Invokes LLM for verification using specified role and prompt."""
+    if milestone is None:
+        milestone = Milestone(id="m-0", description=goal or "Complete goal", is_final=True)
+
+    prior_ids = _extract_id_set(prior_dom_map)
+    curr_nodes = dom_map or []
+    new_nodes = [
+        node.model_dump()
+        for node in curr_nodes
+        if getattr(node, "id", None) and str(node.id) not in prior_ids
+    ] if prior_ids else []
+
+    user_body = f"""USER GOAL:
+"{goal}"
+
+ACTIVE MILESTONE:
+"{milestone.description}" (status: {milestone.status})
+
+LAST ACTION EXECUTED:
+{step.model_dump_json() if step else "None"}
+
+CLIENT ACTION RESULT:
+{json.dumps(last_action_result or {}, indent=2)}
+
+PRIOR URL: {previous_url or "Unknown"}
+CURRENT URL: {current_url or "Unknown"}
+
+NEWLY APPEARED DOM NODES:
+{json.dumps(new_nodes[:10], indent=2) if new_nodes else "None"}
+
+VISIBLE PAGE TEXT SNIPPET:
+{(page_text or "")[:1000] if page_text else "No page text"}
+
+JSON RESPONSE:"""
+
+    effective_prompt = system_prompt or VERIFIER_SYSTEM_PROMPT
+
+    try:
+        raw_llm = await llm_client.call_llm(
+            user_prompt=user_body,
+            system_prompt=effective_prompt,
+            role=role,
+        )
+        cleaned = _clean_json_str(raw_llm)
+        parsed = json.loads(cleaned)
+
+        raw_status = str(parsed.get("status", "in_progress")).lower().strip()
+        valid_statuses = {"goal_complete", "milestone_complete", "in_progress", "goal_failed"}
+        status: VerifierStatus = raw_status if raw_status in valid_statuses else "in_progress"
+
+        if status == "milestone_complete" and getattr(milestone, "is_final", True):
+            status = "goal_complete"
+
+        return VerifierResult(
+            status=status,
+            reason=parsed.get("reason") or f"Verified via LLM evaluation ({role}).",
+            confidence=float(parsed.get("confidence", 0.85)),
+            signals_detected=parsed.get("signals_detected") or [f"llm_evaluation:{role}"],
+            verification_method="llm",
+        )
+    except Exception as exc:
+        logger.warning("Verifier LLM variant (%s) evaluation failed: %s", role, exc)
+        return VerifierResult(
+            status="in_progress",
+            reason=f"LLM variant ({role}) evaluation unavailable; continuing execution.",
+            confidence=0.5,
+            signals_detected=["fallback_in_progress"],
+            verification_method="llm",
+        )
+
+
+def consolidate(results: List[VerifierResult]) -> VerifierResult:
+    """
+    Consolidates ensemble verifier results per §8.6:
+    - Any single goal_failed is sufficient to fail the entire quorum (pessimism).
+    - goal_complete requires unanimous agreement across all variants (optimism).
+    - Otherwise falls back to in_progress.
+    """
+    if not results:
+        return VerifierResult(
+            status="in_progress",
+            reason="Empty verifier quorum results.",
+            confidence=0.5,
+            verification_method="llm",
+        )
+
+    # 1. Any single goal_failed fails the quorum
+    failed_results = [r for r in results if r.status == "goal_failed"]
+    if failed_results:
+        reasons = "; ".join(r.reason for r in failed_results if r.reason)
+        all_signals = [sig for r in failed_results for sig in (r.signals_detected or [])]
+        avg_conf = sum(r.confidence for r in failed_results) / len(failed_results)
+        return VerifierResult(
+            status="goal_failed",
+            reason=reasons or "Goal failed according to verifier quorum.",
+            confidence=avg_conf,
+            signals_detected=all_signals or ["quorum_goal_failed"],
+            verification_method="llm",
+        )
+
+    # 2. Unanimous goal_complete
+    if all(r.status == "goal_complete" for r in results):
+        reasons = "; ".join(r.reason for r in results if r.reason)
+        all_signals = [sig for r in results for sig in (r.signals_detected or [])]
+        min_conf = min(r.confidence for r in results)
+        return VerifierResult(
+            status="goal_complete",
+            reason=reasons or "Goal verified complete by unanimous quorum.",
+            confidence=min_conf,
+            signals_detected=all_signals or ["quorum_unanimous_complete"],
+            verification_method="llm",
+        )
+
+    # 3. Disagreement / lack of unanimity falls back to in_progress
+    all_signals = [sig for r in results for sig in (r.signals_detected or [])]
+    return VerifierResult(
+        status="in_progress",
+        reason="Quorum lacked unanimity for goal completion; continuing execution.",
+        confidence=0.7,
+        signals_detected=all_signals or ["quorum_in_progress"],
+        verification_method="llm",
+    )
+
+
+async def verify_quorum(
+    step: Optional[PlanStep] = None,
+    last_action_result: Optional[Dict[str, Any]] = None,
+    current_url: Optional[str] = None,
+    previous_url: Optional[str] = None,
+    dom_map: Optional[List[DomNode]] = None,
+    milestone: Optional[Milestone] = None,
+    goal: str = "",
+    page_text: Optional[str] = None,
+    prior_dom_map: Optional[List[DomNode]] = None,
+    n: int = 3,
+) -> VerifierResult:
+    """
+    Ensemble verifier for consequential outcomes (§8.6).
+    Runs N variants concurrently with asyncio.TaskGroup and consolidates results.
+    """
+    if milestone is None:
+        milestone = Milestone(id="m-0", description=goal or "Complete goal", is_final=True)
+
+    variants = [
+        ("verifier", VERIFIER_STRICT_PROMPT),
+        ("verifier", VERIFIER_SYSTEM_PROMPT),
+        ("verifier_alt", VERIFIER_SYSTEM_PROMPT),
+    ][:n]
+
+    async with asyncio.TaskGroup() as tg:
+        tasks = [
+            tg.create_task(
+                _verify_with_llm(
+                    step=step,
+                    last_action_result=last_action_result,
+                    current_url=current_url,
+                    previous_url=previous_url,
+                    dom_map=dom_map,
+                    milestone=milestone,
+                    goal=goal,
+                    page_text=page_text,
+                    prior_dom_map=prior_dom_map,
+                    role=role,
+                    system_prompt=prompt,
+                )
+            )
+            for role, prompt in variants
+        ]
+    results = [t.result() for t in tasks]
+    return consolidate(results)
+

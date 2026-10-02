@@ -40,12 +40,14 @@ LLM_API_KEY = os.getenv("LLM_API_KEY", "")
 PLANNER_LLM_MODEL = os.getenv("PLANNER_LLM_MODEL") or LLM_MODEL
 NAVIGATOR_LLM_MODEL = os.getenv("NAVIGATOR_LLM_MODEL") or LLM_MODEL
 VERIFIER_LLM_MODEL = os.getenv("VERIFIER_LLM_MODEL") or LLM_MODEL
+VERIFIER_ALT_LLM_MODEL = os.getenv("VERIFIER_ALT_LLM_MODEL") or os.getenv("VERIFIER_LLM_MODEL") or LLM_MODEL
 
 _INITIAL_LLM_PROVIDER = LLM_PROVIDER
 _INITIAL_LLM_MODEL = LLM_MODEL
 _INITIAL_PLANNER_MODEL = PLANNER_LLM_MODEL
 _INITIAL_NAVIGATOR_MODEL = NAVIGATOR_LLM_MODEL
 _INITIAL_VERIFIER_MODEL = VERIFIER_LLM_MODEL
+_INITIAL_VERIFIER_ALT_MODEL = VERIFIER_ALT_LLM_MODEL
 
 if LLM_PROVIDER not in ("ollama", "mock") and not LLM_API_KEY:
     raise RuntimeError(
@@ -57,6 +59,14 @@ if LLM_PROVIDER not in ("ollama", "mock") and not LLM_API_KEY:
 
 class LLMError(Exception):
     pass
+
+
+class LLMRateLimited(LLMError):
+    """Raised when an LLM provider returns HTTP 429 Too Many Requests."""
+    def __init__(self, message: str, retry_after: float = 2.0, model: Optional[str] = None):
+        super().__init__(message)
+        self.retry_after = retry_after
+        self.model = model
 
 
 # ── Mock LLM Provider State & Utilities ───────────────────────────────────────
@@ -127,6 +137,7 @@ def get_model_for_role(
             "PLANNER_LLM_MODEL": _INITIAL_PLANNER_MODEL,
             "NAVIGATOR_LLM_MODEL": _INITIAL_NAVIGATOR_MODEL,
             "VERIFIER_LLM_MODEL": _INITIAL_VERIFIER_MODEL,
+            "VERIFIER_ALT_LLM_MODEL": _INITIAL_VERIFIER_ALT_MODEL,
         }
         # 1. Explicit patch in module globals (e.g. unittest.mock.patch in tests)
         if global_val is not None and global_val != initial_map.get(role_key):
@@ -471,29 +482,32 @@ async def call_llm(
             await asyncio.sleep(1)
 
         except httpx.HTTPStatusError as e:
-            if e.response.status_code == 429 and attempt < max_retries:
-                # If Groq rate limit reset is very quick (<= 2.5s), sleep briefly and retry once.
-                # If Groq requires a long wait (e.g. 15s-60s), fail fast so smart local fallback handles it in 0.01s without lagging out!
+            if e.response.status_code == 429:
                 retry_wait = None
+                retry_after_val = 2.0
                 try:
                     import re
                     m = re.search(r"try again in ([\d\.]+)s", e.response.text)
                     if m:
-                        val = float(m.group(1))
-                        if val <= 2.5:
-                            retry_wait = val + 0.5
+                        retry_after_val = float(m.group(1))
                     ra = e.response.headers.get("retry-after") or e.response.headers.get("x-ratelimit-reset-requests")
-                    if ra and not retry_wait:
-                        val = float(ra)
-                        if val <= 2.5:
-                            retry_wait = val + 0.5
+                    if ra:
+                        retry_after_val = float(ra)
+                    if retry_after_val <= 2.5 and attempt < max_retries:
+                        retry_wait = retry_after_val + 0.5
                 except Exception:
                     pass
 
                 if retry_wait is not None:
                     await asyncio.sleep(retry_wait)
                     continue
-                raise LLMError(f"LLM rate limit (429): {e.response.text}")
+                raise LLMRateLimited(
+                    f"LLM rate limit (429): {e.response.text}",
+                    retry_after=retry_after_val,
+                    model=effective_model,
+                )
             raise LLMError(f"LLM HTTP error: {e.response.status_code} - {e.response.text}")
+        except LLMError:
+            raise
         except Exception as e:
             raise LLMError(f"Unexpected LLM error: {str(e)}")
