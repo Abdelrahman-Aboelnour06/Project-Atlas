@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>System Diagnostic &amp; Telehealth Status — CareLink Portal</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      :root {
+        --primary: #1a56a0; --primary-dark: #0e3d7a; --primary-lt: #e8f0fb;
+        --secondary: #107040; --danger: #b91c1c; --bg-page: #f8fafc;
+        --card-bg: #ffffff; --border-color: #cbd5e1; --text-main: #0f172a;
+        --text-muted: #475569; --radius: 8px; --shadow: 0 4px 12px rgba(0,0,0,0.06);
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: var(--bg-page); color: var(--text-main); line-height: 1.5; padding: 40px 15px;
+      }
+      .container {
+        max-width: 620px; margin: 0 auto; background: var(--card-bg); border-radius: var(--radius);
+        padding: 36px 32px; box-shadow: var(--shadow); border: 1px solid var(--border-color);
+      }
+      h1 { font-size: 24px; color: var(--primary-dark); margin-bottom: 8px; }
+      p.subtitle { color: var(--text-muted); font-size: 14px; margin-bottom: 24px; }
+      .nav-links { display: flex; gap: 12px; margin-bottom: 20px; }
+      .nav-links a { color: var(--primary); text-decoration: none; font-size: 14px; font-weight: 500; }
+      .nav-links a:hover { text-decoration: underline; }
+      .spinner {
+        display: flex; align-items: center; justify-content: center; gap: 12px;
+        padding: 40px 0; color: var(--text-muted); font-size: 15px;
+      }
+      .spin-icon {
+        width: 24px; height: 24px; border: 3px solid var(--border-color);
+        border-top-color: var(--primary); border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      #delayed-content { display: none; }
+      .status-box {
+        background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: var(--radius);
+        padding: 20px; margin-bottom: 20px;
+      }
+      .status-box h3 { color: #065f46; font-size: 16px; margin-bottom: 6px; }
+      .status-box p { color: #047857; font-size: 14px; }
+      .btn-action {
+        display: inline-block; padding: 10px 18px; background: var(--primary); color: white;
+        text-decoration: none; border-radius: var(--radius); font-weight: 600; font-size: 14px;
+      }
+      .btn-action:hover { background: var(--primary-dark); }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="nav-links">
+        <a href="index.html">← Return Home</a>
+        <a href="account.html">Account</a>
+      </div>
+
+      <h1>System Diagnostic</h1>
+      <p class="subtitle">Checking real-time telehealth server latency and regional clinic node health...</p>
+
+      <div id="loading-state" class="spinner">
+        <div class="spin-icon"></div>
+        <span>Querying CareLink node cluster (simulated 1.5s delay)...</span>
+      </div>
+
+      <div id="delayed-content">
+        <div class="status-box">
+          <h3>All Systems Operational</h3>
+          <p>Latency: 42ms &bull; Telehealth audio/video channels ready &bull; Database connected.</p>
+        </div>
+
+        <p style="margin-bottom: 20px; font-size: 14px; color: var(--text-muted);">
+          Diagnostic test complete. No packet loss detected across the edge network.
+        </p>
+
+        <a href="index.html" id="btn-proceed" class="btn-action">Proceed to Clinic Services</a>
+      </div>
+    </div>
+
+    <script>
+      // 1.5s artificial render delay for testing settle detection
+      setTimeout(function() {
+        const loading = document.getElementById('loading-state');
+        const content = document.getElementById('delayed-content');
+        if (loading) loading.style.display = 'none';
+        if (content) content.style.display = 'block';
+      }, 1500);
+    </script>
+  </body>
+</html>

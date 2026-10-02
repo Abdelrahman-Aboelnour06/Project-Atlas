@@ -1,0 +1,8 @@
+CareLink Chronic Care Clinic - Patient Medication Timetable
+Generated on: 2026-10-02
+Patient: Alice Smith (CL-884920)
+
+Time       | Medication           | Dose    | Instructions
+08:00 AM   | Metformin            | 500mg   | With breakfast
+12:30 PM   | Vitamin D3           | 2000IU  | With lunch
+07:00 PM   | Atorvastatin         | 20mg    | Before dinner

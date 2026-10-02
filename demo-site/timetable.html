@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Prescription Timetable — CareLink Portal</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      :root {
+        --primary: #1a56a0; --primary-dark: #0e3d7a; --primary-lt: #e8f0fb;
+        --secondary: #107040; --bg-page: #f8fafc; --card-bg: #ffffff;
+        --border-color: #cbd5e1; --text-main: #0f172a; --text-muted: #475569;
+        --radius: 8px; --shadow: 0 4px 12px rgba(0,0,0,0.06);
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: var(--bg-page); color: var(--text-main); line-height: 1.5; padding: 40px 15px;
+      }
+      .container {
+        max-width: 680px; margin: 0 auto; background: var(--card-bg); border-radius: var(--radius);
+        padding: 36px 32px; box-shadow: var(--shadow); border: 1px solid var(--border-color);
+      }
+      h1 { font-size: 24px; color: var(--primary-dark); margin-bottom: 8px; }
+      p.subtitle { color: var(--text-muted); font-size: 14px; margin-bottom: 24px; }
+      .nav-links { display: flex; gap: 12px; margin-bottom: 20px; }
+      .nav-links a { color: var(--primary); text-decoration: none; font-size: 14px; font-weight: 500; }
+      .nav-links a:hover { text-decoration: underline; }
+      table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+      th, td { text-align: left; padding: 12px; border-bottom: 1px solid var(--border-color); }
+      th { background: var(--primary-lt); color: var(--primary-dark); font-weight: 600; font-size: 14px; }
+      td { font-size: 14px; }
+      .download-card {
+        background: #f1f5f9; border: 1px solid var(--border-color); border-radius: var(--radius);
+        padding: 20px; display: flex; align-items: center; justify-content: space-between;
+      }
+      .download-btn {
+        display: inline-flex; align-items: center; gap: 8px; background: var(--secondary);
+        color: white; padding: 12px 20px; border-radius: var(--radius); font-weight: 600;
+        text-decoration: none; border: none; cursor: pointer; font-size: 15px;
+      }
+      .download-btn:hover { background: #0a4f2b; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="nav-links">
+        <a href="index.html">← Back to Main Portal</a>
+        <a href="account.html">Account Details</a>
+      </div>
+
+      <h1>Medication Schedule &amp; Timetable</h1>
+      <p class="subtitle">Daily medication schedule for chronic care maintenance.</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Medication</th>
+            <th>Dosage</th>
+            <th>Instructions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>08:00 AM</td>
+            <td>Metformin</td>
+            <td>500mg</td>
+            <td>Take with breakfast</td>
+          </tr>
+          <tr>
+            <td>12:30 PM</td>
+            <td>Vitamin D3</td>
+            <td>2000 IU</td>
+            <td>Take with lunch</td>
+          </tr>
+          <tr>
+            <td>07:00 PM</td>
+            <td>Atorvastatin</td>
+            <td>20mg</td>
+            <td>Take before bedtime</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="download-card">
+        <div>
+          <strong style="display:block; margin-bottom:4px;">Printable Schedule (PDF/Text)</strong>
+          <span style="font-size:13px; color:var(--text-muted);">Download an offline copy to keep on your fridge or phone.</span>
+        </div>
+        <a href="medication-schedule.txt" download="medication-schedule.txt" id="download-timetable-btn" class="download-btn">
+          <span>⬇</span> Download Timetable
+        </a>
+      </div>
+    </div>
+  </body>
+</html>
