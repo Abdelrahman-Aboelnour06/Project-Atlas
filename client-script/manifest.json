@@ -1,9 +1,16 @@
 {
   "manifest_version": 3,
   "name": "Atlas — AI Web Accessibility Agent",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Atlas simplifies any website for elderly and disabled users via an AI-powered sidebar and voice commands.",
-  "permissions": ["activeTab", "storage", "scripting"],
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting",
+    "webNavigation",
+    "downloads",
+    "tabs"
+  ],
   "host_permissions": [
     "http://localhost:8000/*",
     "http://127.0.0.1:8000/*",

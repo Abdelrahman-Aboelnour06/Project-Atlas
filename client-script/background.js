@@ -1,5 +1,29 @@
 
 
+async function ensureContentScript(tabId) {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: [
+        "dom-serializer.js",
+        "websocket-client.js",
+        "secret-vault.js",
+        "executor.js",
+        "speech.js",
+        "tts.js",
+        "sidebar.js",
+        "content.js",
+      ]
+    });
+    await chrome.scripting.insertCSS({
+      target: { tabId },
+      files: ["sidebar.css"]
+    });
+  } catch (err) {
+    console.error("Atlas: content script injection failed", err);
+  }
+}
+
 chrome.action.onClicked.addListener(async (tab) => {
   if (!tab.id) return;
 
@@ -18,28 +42,11 @@ chrome.action.onClicked.addListener(async (tab) => {
   }
 
   try {
-    await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      files: [
-        "dom-serializer.js",
-        "websocket-client.js",
-        "secret-vault.js",
-        "executor.js",
-        "speech.js",
-        "tts.js",
-        "sidebar.js",
-        "content.js",
-      ]
-    });
-    await chrome.scripting.insertCSS({
-      target: { tabId: tab.id },
-      files: ["sidebar.css"]
-    });
-
+    await ensureContentScript(tab.id);
     // Content script is now loaded; send the toggle command
     await chrome.tabs.sendMessage(tab.id, { type: 'ATLAS_TOGGLE' });
   } catch (err) {
-    console.error("Atlas: injection failed", err);
+    console.error("Atlas: toggle after injection failed", err);
   }
 });
 
@@ -300,4 +307,113 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       });
     return true;
   }
+
+  // ── GoalStore Messaging ─────────────────────────────────────────────────────
+  if (message.type === "ATLAS_GOAL_STORE_GET") {
+    GoalStore.get(message.tabId || sender.tab?.id)
+      .then((state) => sendResponse({ ok: true, state }))
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
+    return true;
+  }
+
+  if (message.type === "ATLAS_GOAL_STORE_PUT") {
+    GoalStore.put(message.tabId || sender.tab?.id, message.goalState)
+      .then((state) => sendResponse({ ok: true, state }))
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
+    return true;
+  }
+
+  if (message.type === "ATLAS_GOAL_STORE_CLEAR") {
+    GoalStore.clear(message.tabId || sender.tab?.id)
+      .then(() => sendResponse({ ok: true }))
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
+    return true;
+  }
+
+  if (message.type === "ATLAS_GOAL_STORE_SET_EXECUTING") {
+    GoalStore.setExecuting(message.tabId || sender.tab?.id, message.isExecuting)
+      .then(() => sendResponse({ ok: true }))
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
+    return true;
+  }
 });
+
+// ── GoalStore Implementation (§12.2) ──────────────────────────────────────────
+const GoalStore = {
+  async get(tabId) {
+    if (!tabId || !chrome?.storage?.session) return null;
+    const key = `atlas_goal_tab_${tabId}`;
+    try {
+      const res = await chrome.storage.session.get(key);
+      return res ? res[key] || null : null;
+    } catch (_) {
+      return null;
+    }
+  },
+  async put(tabId, goalState) {
+    if (!tabId) return goalState;
+    if (!chrome?.storage?.session) return goalState;
+    const key = `atlas_goal_tab_${tabId}`;
+    try {
+      const existing = (await GoalStore.get(tabId)) || {};
+      const merged = { ...existing, ...goalState, updated_at: Date.now() };
+      await chrome.storage.session.set({ [key]: merged });
+      return merged;
+    } catch (_) {
+      return goalState;
+    }
+  },
+  async clear(tabId) {
+    if (!tabId || !chrome?.storage?.session) return;
+    const key = `atlas_goal_tab_${tabId}`;
+    try {
+      await chrome.storage.session.remove(key);
+    } catch (_) {}
+  },
+  async setExecuting(tabId, v) {
+    const state = await GoalStore.get(tabId);
+    if (state) {
+      state.is_executing = Boolean(v);
+      await GoalStore.put(tabId, state);
+    }
+  },
+};
+
+// ── Download Evidence (§12.2) ────────────────────────────────────────────────
+const downloadEvidenceList = [];
+function recordDownloadEvidence(downloadItem) {
+  downloadEvidenceList.push({
+    id: downloadItem.id || downloadItem,
+    timestamp: Date.now(),
+  });
+}
+
+if (typeof chrome !== "undefined" && chrome.downloads?.onChanged) {
+  chrome.downloads.onChanged.addListener(({ id, state }) => {
+    if (state?.current === "complete") recordDownloadEvidence(id);
+  });
+}
+
+// ── Navigation Resume Listener (§12.2) ───────────────────────────────────────
+if (typeof chrome !== "undefined" && chrome.webNavigation?.onCompleted) {
+  chrome.webNavigation.onCompleted.addListener(async ({ tabId, frameId, url }) => {
+    if (frameId !== 0) return; // top frame only
+    const state = await GoalStore.get(tabId);
+    if (!state || state.status !== "in_progress") return;
+    await ensureContentScript(tabId);
+    try {
+      chrome.tabs.sendMessage(tabId, { type: "ATLAS_GOAL_RESUME", goalState: state });
+    } catch (err) {
+      console.error("Atlas: failed to send resume message", err);
+    }
+  });
+}
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = {
+    GoalStore,
+    sanitizeBaseUrl,
+    recordDownloadEvidence,
+    downloadEvidenceList,
+  };
+}
