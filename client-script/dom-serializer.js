@@ -207,9 +207,36 @@ const NOISE_TEXT_PATTERNS = [
     return false;
   };
 
-  // 4. Duplicate labels — keep only the first occurrence per page
+  // ── Stable element identity & FNV-1a (§9.2) ──────────────────────────────
+  const fnv1a64 = (str) => {
+    let hash = 0xcbf29ce484222325n;
+    const prime = 0x100000001b3n;
+    for (let i = 0; i < str.length; i++) {
+      hash ^= BigInt(str.charCodeAt(i));
+      hash = (hash * prime) & 0xffffffffffffffffn;
+    }
+    return hash;
+  };
+
+  const normaliseLabel = (label) =>
+    (label || "").toLowerCase().trim().replace(/\s+/g, " ");
+
+  const computeRef = (el, label, formId, ordinal) => {
+    const basis = [
+      el.tagName.toLowerCase(),
+      el.getAttribute("role") || "",
+      el.getAttribute("type") || "",
+      normaliseLabel(label),
+      formId || "",
+      String(ordinal),
+    ].join("|");
+    return "el_" + fnv1a64(basis).toString(16).padStart(12, "0");
+  };
+
+  // 4. Duplicate labels — keep only first occurrence outside forms; inside forms, preserve all
   const seenLabels = new Set();
-  const isDuplicate = (label) => {
+  const isDuplicate = (label, formId) => {
+    if (formId) return false; // Suspend label dedup inside forms (§11.2)
     const key = label.toLowerCase().trim();
     if (seenLabels.has(key)) return true;
     seenLabels.add(key);
@@ -375,16 +402,140 @@ const NOISE_TEXT_PATTERNS = [
     return null;
   };
 
-  // ── Atlas ID management ───────────────────────────────────────────────────────
-  let idCounter = 0;
-  const nextAtlasId = () => `atlas-${Date.now()}-${idCounter++}`;
+  // ── Form-aware helpers (§11.2) ──────────────────────────────────────────
+  const detectFormId = (el) => {
+    const form = el.closest("form");
+    if (!form) return null;
+    return form.id || form.getAttribute("name") || form.getAttribute(ATLAS_ID_ATTR) || "form_0";
+  };
 
-  // ── Two-Phase Layout-Safe Serializer (Feature 16) ─────────────────────────────
+  const collectOptions = (el) => {
+    const tag = el.tagName.toLowerCase();
+    const role = (el.getAttribute("role") || "").toLowerCase();
+    let opts = [];
+
+    if (tag === "select") {
+      const optionEls = Array.from(el.querySelectorAll("option"));
+      opts = optionEls.slice(0, 200).map((opt) => ({
+        value: opt.value || opt.text || "",
+        label: (opt.text || opt.label || opt.value || "").trim(),
+        selected: Boolean(opt.selected),
+      }));
+    } else if (role === "combobox" || role === "listbox") {
+      let optionEls = [];
+      const controlsId = el.getAttribute("aria-controls") || el.getAttribute("aria-owns");
+      if (controlsId) {
+        const target = document.getElementById(controlsId);
+        if (target) optionEls = Array.from(target.querySelectorAll('[role="option"]'));
+      }
+      if (!optionEls.length) {
+        optionEls = Array.from(el.querySelectorAll('[role="option"]'));
+      }
+      if (!optionEls.length && el.nextElementSibling) {
+        optionEls = Array.from(el.nextElementSibling.querySelectorAll('[role="option"]'));
+      }
+      if (!optionEls.length && el.parentElement) {
+        optionEls = Array.from(el.parentElement.querySelectorAll('[role="option"]'));
+      }
+      opts = optionEls.slice(0, 200).map((opt) => ({
+        value: opt.getAttribute("data-value") || opt.getAttribute("value") || (opt.innerText || opt.textContent || "").trim(),
+        label: (opt.innerText || opt.textContent || opt.getAttribute("data-value") || "").trim(),
+        selected: opt.getAttribute("aria-selected") === "true",
+      }));
+    } else if (el.type === "radio" && el.name) {
+      const form = el.closest("form") || document;
+      const radios = Array.from(form.querySelectorAll(`input[type="radio"][name="${CSS.escape(el.name)}"]`));
+      opts = radios.slice(0, 200).map((r) => {
+        const lbl = resolveLabel(r) || r.value;
+        return {
+          value: r.value,
+          label: lbl,
+          selected: Boolean(r.checked),
+        };
+      });
+    }
+
+    return opts.length > 0 ? opts : null;
+  };
+
+  const resolveErrorText = (el) => {
+    // 1. aria-errormessage
+    const errMsgId = el.getAttribute("aria-errormessage");
+    if (errMsgId) {
+      const errEl = document.getElementById(errMsgId);
+      if (errEl && isVisible(errEl)) {
+        const t = truncate(errEl.innerText || errEl.textContent);
+        if (t) return t;
+      }
+    }
+    // 2. aria-describedby
+    const descId = el.getAttribute("aria-describedby");
+    if (descId) {
+      const parts = descId.split(/\s+/).map((id) => {
+        const dEl = document.getElementById(id);
+        return dEl && isVisible(dEl) ? (dEl.innerText || dEl.textContent || "").trim() : null;
+      }).filter(Boolean);
+      if (parts.length) {
+        const t = truncate(parts.join(" "));
+        if (t && /error|invalid|required|fail|must/i.test(t)) return t;
+      }
+    }
+    // 3. nearest following sibling with [role=alert] or an error class
+    let sib = el.nextElementSibling;
+    while (sib) {
+      if (isVisible(sib) && (sib.getAttribute("role") === "alert" || /error|invalid|alert/i.test(sib.className || ""))) {
+        const t = truncate(sib.innerText || sib.textContent);
+        if (t) return t;
+      }
+      sib = sib.nextElementSibling;
+    }
+    const parentGroup = el.closest(".form-group, .input-group, fieldset, [role='group']");
+    if (parentGroup) {
+      const alertEl = parentGroup.querySelector('[role="alert"], [class*="error"], [class*="invalid"]');
+      if (alertEl && isVisible(alertEl) && alertEl !== el) {
+        const t = truncate(alertEl.innerText || alertEl.textContent);
+        if (t) return t;
+      }
+    }
+    // 4. validationMessage from Constraint Validation API
+    if (el.validationMessage && typeof el.checkValidity === "function" && !el.checkValidity()) {
+      return truncate(el.validationMessage);
+    }
+    return null;
+  };
+
+  const detectSectionLabel = (el) => {
+    const fs = el.closest("fieldset");
+    if (fs) {
+      const leg = fs.querySelector("legend");
+      if (leg) {
+        const t = truncate(leg.innerText || leg.textContent, 50);
+        if (t) return t;
+      }
+    }
+    let curr = el;
+    while (curr && curr !== document.body) {
+      let prev = curr.previousElementSibling;
+      while (prev) {
+        if (/^h[1-6]$/i.test(prev.tagName) || (prev.querySelector && prev.querySelector("h1,h2,h3,h4,h5,h6"))) {
+          const heading = /^h[1-6]$/i.test(prev.tagName) ? prev : prev.querySelector("h1,h2,h3,h4,h5,h6");
+          const t = truncate(heading.innerText || heading.textContent, 50);
+          if (t) return t;
+        }
+        prev = prev.previousElementSibling;
+      }
+      curr = curr.parentElement;
+    }
+    return null;
+  };
+
+  // ── Two-Phase Layout-Safe Serializer (Feature 16 + v2) ─────────────────────────
   // Phase 1: Read all DOM & layout properties without modifying the DOM.
   // Phase 2: Batch-write data-atlas-id attributes to newly identified elements.
   // Phase 3: Construct the final clean payload array.
   const serialize = () => {
     seenLabels.clear(); // reset duplicate tracker on each scan
+    const ordinalCounter = new Map();
 
     // Phase 1: All DOM Reads
     const candidates = Array.from(document.querySelectorAll(INTERACTIVE_SELECTOR));
@@ -392,7 +543,7 @@ const NOISE_TEXT_PATTERNS = [
 
     for (let i = 0; i < candidates.length; i++) {
       const el = candidates[i];
-      if (el.disabled) continue;
+      // Note: do NOT skip el.disabled; emit disabled: true (§11.2)
       if (!isVisible(el)) continue;
       if (isStructuralNoise(el)) continue;
       if (isMachineLabel(el)) continue;
@@ -402,10 +553,13 @@ const NOISE_TEXT_PATTERNS = [
       const label = resolveLabel(el);
       if (!label) continue;
       if (isTextNoise(label)) continue;
-      if (isDuplicate(label)) continue;
+
+      const formId = detectFormId(el);
+      if (isDuplicate(label, formId)) continue;
 
       const sensitive = isSensitiveField(el);
       const groupLabel = detectGroupLabel(el);
+      const sectionLabel = detectSectionLabel(el);
       const tag = el.tagName.toLowerCase();
       const type = el.getAttribute("type") || null;
       const innerText = sensitive ? null : truncate(el.innerText || el.textContent);
@@ -416,9 +570,31 @@ const NOISE_TEXT_PATTERNS = [
       const role = el.getAttribute("role") || null;
       const existingAtlasId = el.getAttribute(ATLAS_ID_ATTR);
 
+      // v2 fields (§9.3)
+      const disabled = Boolean(el.disabled || el.getAttribute("aria-disabled") === "true");
+      const required = Boolean(el.required || el.getAttribute("aria-required") === "true");
+      const isCheckable = type === "checkbox" || type === "radio" || role === "checkbox" || role === "radio" || role === "switch";
+      const checked = isCheckable ? Boolean(el.checked || el.getAttribute("aria-checked") === "true") : null;
+      const options = collectOptions(el);
+      const errorText = resolveErrorText(el);
+      const invalid = Boolean(errorText || el.getAttribute("aria-invalid") === "true" || (typeof el.checkValidity === "function" && !el.checkValidity()));
+      const pattern = el.getAttribute("pattern") || null;
+      const maxlength = (el.maxLength > 0 && el.maxLength < 100000) ? el.maxLength : (parseInt(el.getAttribute("maxlength"), 10) || null);
+      const inputmode = el.getAttribute("inputmode") || null;
+      const autocomplete = el.getAttribute("autocomplete") || null;
+      const currentValue = sensitive ? null : (el.value != null && el.value !== "" ? String(el.value) : null);
+
+      // Disambiguate identical tuples using ordinal
+      const basisKey = [tag, role || "", type || "", normaliseLabel(label), formId || ""].join("|");
+      const ordinal = ordinalCounter.get(basisKey) || 0;
+      ordinalCounter.set(basisKey, ordinal + 1);
+
+      const ref = computeRef(el, label, formId, ordinal);
+
       passedElements.push({
         el,
         existingAtlasId,
+        ref,
         tag,
         type,
         inner_text: innerText,
@@ -430,6 +606,19 @@ const NOISE_TEXT_PATTERNS = [
         sensitive,
         resolved_label: label,
         group_label: groupLabel,
+        section_label: sectionLabel,
+        form_id: formId,
+        required,
+        disabled,
+        current_value: currentValue,
+        checked,
+        options,
+        pattern,
+        maxlength,
+        inputmode,
+        autocomplete,
+        invalid,
+        error_text: errorText,
       });
     }
 
@@ -437,9 +626,8 @@ const NOISE_TEXT_PATTERNS = [
     for (let i = 0; i < passedElements.length; i++) {
       const item = passedElements[i];
       if (!item.existingAtlasId) {
-        const newId = nextAtlasId();
-        item.existingAtlasId = newId;
-        item.el.setAttribute(ATLAS_ID_ATTR, newId);
+        item.existingAtlasId = item.ref;
+        item.el.setAttribute(ATLAS_ID_ATTR, item.ref);
       }
     }
 
@@ -457,6 +645,20 @@ const NOISE_TEXT_PATTERNS = [
       sensitive: item.sensitive,
       resolved_label: item.resolved_label,
       group_label: item.group_label,
+      ref: item.ref,
+      form_id: item.form_id,
+      required: item.required,
+      disabled: item.disabled,
+      current_value: item.current_value,
+      checked: item.checked,
+      options: item.options,
+      pattern: item.pattern,
+      maxlength: item.maxlength,
+      inputmode: item.inputmode,
+      autocomplete: item.autocomplete,
+      invalid: item.invalid,
+      error_text: item.error_text,
+      section_label: item.section_label,
     }));
   };
 
@@ -503,6 +705,8 @@ const NOISE_TEXT_PATTERNS = [
     resume,
     isSensitiveField,
     classifySensitiveField,
+    computeRef,
+    fnv1a64,
   };
 
   if (typeof window !== "undefined") {
