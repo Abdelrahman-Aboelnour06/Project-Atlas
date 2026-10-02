@@ -161,3 +161,37 @@ Integrity mode: demo
 - [ ] Comprehensive unit and integration test suite covers happy paths, verification failures, and safety limit cutoffs.
 - [ ] All tests in the existing backend and extension test suites continue to pass with zero regressions.
 
+
+
+## Follow-up — 2026-10-02T09:14:48Z
+
+Complete the remaining integration and end-to-end verification tracks for Atlas v2: integrate the new Planner, Scout, and Form Filler agents into the chat.py execution loop (Track 1m), and establish the Playwright E2E extension harness (Track 1l).
+
+Working directory: /media/abdelrahman-abdelrahman/Acer/Users/abdel/OneDrive/Desktop/Hackthon/shit2
+Integrity mode: development
+
+## Requirements
+
+### R1. Integrate Planner, Scout, and Form Filler into chat.py (Track 1m)
+- In `backend/app/routes/chat.py`, on the first hop of a goal when `goal_state.milestones` is empty, call `planner.plan_goal()` to generate milestones instead of the legacy single implicit milestone (Defect C fix).
+- In the perception phase of `goal_step_endpoint`, execute `scout.classify_page()` concurrently with `verify_step_outcome()` and store `goal_state.page_kind`.
+- When `goal_state.page_kind == "form"`, invoke `form_filler.plan_form_fill()` to generate a `FormPlan` using profile hints from `secret_vault.js` / defaults, emitting tokenized inputs and holding back `submit_ref`.
+- Handle blockers (`otp`, `captcha`) by setting `goal_state.status = "awaiting_user_input"` and populating `goal_state.awaiting`.
+- Hard rule: Do NOT touch Rules 4, 5, or 6 in `backend/app/agent/verifier.py`.
+
+### R2. Playwright E2E Extension Test Harness (Track 1l)
+- Create `ci/e2e/harness.js` that launches headless Chromium with the unpacked extension via `chromium.launchPersistentContext` specifying `channel: 'chromium'`.
+- Verify extension loads correctly, background service worker responds, and `demo-site/index.html` navigates without errors.
+
+## Acceptance Criteria
+
+### Integration Tests (Track 1m)
+- [ ] `LLM_PROVIDER=mock pytest backend/tests/test_goal_pipeline.py -v` passes with newly added integration tests asserting multi-milestone planning, page classification, and form fill plan execution.
+- [ ] Full backend test suite `LLM_PROVIDER=mock pytest backend/tests -q` passes with >= 444 tests and zero regressions.
+
+### E2E Harness (Track 1l)
+- [ ] Running `node ci/e2e/harness.js` launches Chromium with the extension loaded, navigates to `demo-site/index.html`, and verifies service worker connectivity.
+
+### Code & Specification Integrity
+- [ ] Zero domain or website-specific hardcoding (Universal Directive).
+- [ ] All 6 existing frontend test suites continue to pass (`test_extension.js`, `test_secret_vault.js`, `test_dom_serializer_v2.js`, `test_goal_store.js`, `test_executor_v2.js`, `demo-site/test_fixtures.js`).
