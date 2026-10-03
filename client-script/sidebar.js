@@ -458,6 +458,7 @@
       </div>
 
       <div class="atlas-header-actions">
+        <button class="atlas-tts-toggle" id="atlas-header-tts" aria-label="Toggle voice output" title="Toggle voice output">🔊</button>
         <button class="atlas-refresh-btn" id="atlas-header-refresh" aria-label="Reload page analysis" title="Reload Page Elements & Summary">
           <svg class="atlas-refresh-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/>
@@ -531,6 +532,21 @@
 
     // Collapse handlers
     rootEl.querySelector("#atlas-header-collapse")?.addEventListener("click", collapse);
+
+    // TTS voice output mute toggle
+    const ttsBtn = rootEl.querySelector("#atlas-header-tts");
+    if (ttsBtn) {
+      if (window.AtlasTTS?.isMuted?.()) {
+        ttsBtn.textContent = "🔇";
+        ttsBtn.setAttribute("aria-label", "Unmute voice output");
+      }
+      ttsBtn.addEventListener("click", () => {
+        const isMuted = window.AtlasTTS?.toggleMute?.();
+        const mutedNow = typeof isMuted === "boolean" ? isMuted : (window.AtlasTTS?.isMuted?.() ?? false);
+        ttsBtn.textContent = mutedNow ? "🔇" : "🔊";
+        ttsBtn.setAttribute("aria-label", mutedNow ? "Unmute voice output" : "Mute voice output");
+      });
+    }
 
     modeBtn?.addEventListener("click", () => {
       const nextMode = currentMode === "chat" ? "voice" : "chat";

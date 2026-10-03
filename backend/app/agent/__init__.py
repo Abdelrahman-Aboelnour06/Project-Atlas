@@ -22,9 +22,12 @@ from app.agent.prompt import build_prompt
 from app.agent.parser import parse_action, ParseError, error_response
 from app.agent.simplify_prompt import build_simplify_prompt
 from app.agent.simplify_parser import parse_simplify_response
+from app.agent.chat_prompt import build_chat_prompt
+from app.agent.summary_prompt import build_summary_prompt
 
 __all__ = [
     "call_llm", "LLMError",
     "build_prompt", "parse_action", "ParseError", "error_response",
     "build_simplify_prompt", "parse_simplify_response",
+    "build_chat_prompt", "build_summary_prompt",
 ]

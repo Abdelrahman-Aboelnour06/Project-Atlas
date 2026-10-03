@@ -44,6 +44,8 @@ from app.agent import prompt as command_prompt
 from app.agent import parser as command_parser
 from app.agent import simplify_prompt
 from app.agent import simplify_parser
+from app.agent import chat_prompt
+from app.agent import summary_prompt
 from app.agent import rate_limiter
 from app.agent.sanitize import strip_pii_from_dom, trim_log_payload, redact_raw_secrets
 
@@ -176,6 +178,9 @@ async def websocket_endpoint(websocket: WebSocket):
                 if message.type == "simplify":
                     err = _simplify_error("Rate limit exceeded — please slow down and try again shortly.")
                     await websocket.send_json({**base_extra, **err})
+                elif message.type in ("chat", "summary"):
+                    err = {"status": "error", "message": "Rate limit exceeded — please slow down and try again shortly."}
+                    await websocket.send_json({**base_extra, **err})
                 else:
                     err = ActionResponse.error("Rate limit exceeded — please slow down and try again shortly.").model_dump()
                     await websocket.send_json({**base_extra, **err})
@@ -229,6 +234,23 @@ async def websocket_endpoint(websocket: WebSocket):
                     elements = simplify_parser.parse_simplify_response(raw_llm, safe_dom)
                     final_response = {"status": "success", "elements": elements, "message": None}
 
+                elif message.type == "chat":
+                    prompt_text = chat_prompt.build_chat_prompt(
+                        page_text=message.page_text,
+                        question=message.command,
+                        url=message.url,
+                    )
+                    raw_llm = await llm_client.call_llm(prompt_text)
+                    final_response = {"status": "success", "message": raw_llm.strip()}
+
+                elif message.type == "summary":
+                    prompt_text = summary_prompt.build_summary_prompt(
+                        page_text=message.page_text,
+                        url=message.url,
+                    )
+                    raw_llm = await llm_client.call_llm(prompt_text)
+                    final_response = {"status": "success", "message": raw_llm.strip()}
+
                 else:  # "command"
                     sys_prompt, usr_prompt = command_prompt.build_prompt(safe_dom, safe_command)
                     raw_llm = await llm_client.call_llm(
@@ -257,6 +279,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 logger.warning("LLM call failed: %s", exc)
                 if message.type == "simplify":
                     final_response = _simplify_error("AI service unavailable. Please try again.")
+                elif message.type in ("chat", "summary"):
+                    final_response = {"status": "error", "message": "AI service unavailable. Please try again."}
                 else:
                     final_response = ActionResponse.error(
                         "AI service unavailable. Please try again."

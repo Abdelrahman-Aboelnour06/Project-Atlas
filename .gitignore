@@ -10,8 +10,9 @@ dist/
 build/
 .pytest_cache/
 
-# Environment
+# Environment — never commit real secrets
 .env
+**/.env
 *.env.local
 
 # Node
@@ -38,3 +39,6 @@ yarn-debug.log*
 agents/
 backend/.env.example
 backend/env.example
+
+# Runner script state
+.atlas-run/

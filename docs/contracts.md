@@ -24,19 +24,37 @@ Message sent **from the browser snippet → FastAPI backend**.
   "api_key":    "string",
   "url":        "string",
   "dom_map":    [ /* see Contract 3 */ ],
-  "type":       "command | simplify",
-  "command":    "string"
+  "type":       "command | simplify | chat | summary",
+  "command":    "string",
+  "page_text":  "string (optional)"
 }
 ```
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `session_id` | `string` | UUID generated client-side on each activation |
-| `api_key` | `string` | Tenant API key — used to authenticate the request |
+| `api_key` | `string` | Tenant API key — used to authenticate the request (optional per-message after Contract 6 handshake) |
 | `url` | `string` | Current page URL — used for audit logging |
 | `dom_map` | `array` | Serialized DOM nodes — see Contract 3 |
-| `type` | `"command" \| "simplify"` | Which pipeline to run. **REQUIRED — no default.** Omitting it makes the whole message invalid (see error handling below). |
-| `command` | `string` | Raw transcribed voice command. Required field on every message (send `""` when `type` is `"simplify"`). |
+| `type` | `"command" \| "simplify" \| "chat" \| "summary"` | Which pipeline to run. **REQUIRED — no default.** Omitting it makes the whole message invalid (see error handling below). |
+| `command` | `string` | Raw transcribed voice command or user question. Required field on every message (send `""` when `type` is `"simplify"` or `"summary"`). |
+| `page_text` | `string` | Optional extracted page visible text (capped at 3000 chars), sent with `"chat"` and `"summary"` requests for page context. |
+
+### WebSocket Chat & Summary Response
+
+When invoked via WebSocket (`/v1/agent`) with `type: "chat"` or `type: "summary"`, the backend returns:
+
+```json
+{
+  "status":  "success | error",
+  "message": "string"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `status` | `"success" \| "error"` | Whether the AI generated a response |
+| `message` | `string` | Plain-language answer to user question (chat) or 2-3 sentence overview of page and possible actions (summary) |
 
 ### WebSocket Error Handling
 

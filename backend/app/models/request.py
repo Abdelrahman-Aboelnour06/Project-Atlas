@@ -9,4 +9,5 @@ class AgentMessage(BaseModel):
     url:        str
     dom_map:    list[DomNode]
     command:    str
-    type:       Literal["command", "simplify"]
+    type:       Literal["command", "simplify", "chat", "summary"]
+    page_text:  str = ""

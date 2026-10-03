@@ -262,7 +262,8 @@
 }
 
 #atlas-sidebar-root .atlas-refresh-btn,
-#atlas-sidebar-root .atlas-collapse-btn {
+#atlas-sidebar-root .atlas-collapse-btn,
+#atlas-sidebar-root .atlas-tts-toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -272,15 +273,17 @@
   background: var(--atlas-control-bg);
   border: 1px solid var(--atlas-control-border);
   border-radius: 8px;
-  color: var(--atlas-secondary-label);
+  color: var(--atlas-label);
   cursor: pointer;
   transition: all 0.15s ease;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 500;
+  line-height: 1;
 }
 
 #atlas-sidebar-root .atlas-refresh-btn:hover,
-#atlas-sidebar-root .atlas-collapse-btn:hover {
+#atlas-sidebar-root .atlas-collapse-btn:hover,
+#atlas-sidebar-root .atlas-tts-toggle:hover {
   background: var(--atlas-control-bg-hover);
   color: var(--atlas-label);
   border-color: var(--atlas-accent);

@@ -276,6 +276,110 @@ const sendSimplify = async ({ url, domMap }) => {
   })
 }
 
+// Chat Q&A pipeline (Contract 1 / Contract 6)
+const sendChat = async ({ url, domMap, command, pageText }) => {
+  if (hasBgProxy()) {
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage(
+        {
+          type: 'ATLAS_SOCKET_SEND',
+          payload: { url, dom_map: domMap, command, page_text: pageText || '', type: 'chat' },
+        },
+        (res) => {
+          if (chrome.runtime.lastError) {
+            return reject(new Error(chrome.runtime.lastError.message))
+          }
+          if (!res || !res.ok) {
+            return reject(new Error(res?.error || 'Chat failed'))
+          }
+          resolve(res.data)
+        }
+      )
+    })
+  }
+
+  if (!socket || socket.readyState !== WebSocket.OPEN || !authenticated) {
+    try {
+      await ensureConnected()
+    } catch (err) {
+      console.error('Atlas: ensureConnected failed in sendChat:', err)
+      throw new Error(`Failed to connect to backend: ${err.message}`)
+    }
+  }
+  if (!socket || socket.readyState !== WebSocket.OPEN) {
+    return Promise.reject(new Error(`Socket is not connected. Please check that backend is running at ${baseUrl}`))
+  }
+  if (!authenticated) {
+    return Promise.reject(new Error('Not authenticated. Please check your Atlas API key.'))
+  }
+
+  return new Promise((resolve, reject) => {
+    pendingQueue.push({ resolve, reject })
+    socket.send(
+      JSON.stringify({
+        session_id: sessionId,
+        url,
+        dom_map: domMap,
+        command,
+        page_text: pageText || '',
+        type: 'chat',
+      })
+    )
+  })
+}
+
+// Page summary pipeline (Contract 1 / Contract 6)
+const sendSummary = async ({ url, domMap, pageText }) => {
+  if (hasBgProxy()) {
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage(
+        {
+          type: 'ATLAS_SOCKET_SEND',
+          payload: { url, dom_map: domMap, command: '', page_text: pageText || '', type: 'summary' },
+        },
+        (res) => {
+          if (chrome.runtime.lastError) {
+            return reject(new Error(chrome.runtime.lastError.message))
+          }
+          if (!res || !res.ok) {
+            return reject(new Error(res?.error || 'Summary failed'))
+          }
+          resolve(res.data)
+        }
+      )
+    })
+  }
+
+  if (!socket || socket.readyState !== WebSocket.OPEN || !authenticated) {
+    try {
+      await ensureConnected()
+    } catch (err) {
+      console.error('Atlas: ensureConnected failed in sendSummary:', err)
+      throw new Error(`Failed to connect to backend: ${err.message}`)
+    }
+  }
+  if (!socket || socket.readyState !== WebSocket.OPEN) {
+    return Promise.reject(new Error(`Socket is not connected. Please check that backend is running at ${baseUrl}`))
+  }
+  if (!authenticated) {
+    return Promise.reject(new Error('Not authenticated. Please check your Atlas API key.'))
+  }
+
+  return new Promise((resolve, reject) => {
+    pendingQueue.push({ resolve, reject })
+    socket.send(
+      JSON.stringify({
+        session_id: sessionId,
+        url,
+        dom_map: domMap,
+        command: '',
+        page_text: pageText || '',
+        type: 'summary',
+      })
+    )
+  })
+}
+
 const onDisconnect = (fn) => {
   disconnectHandlers.push(fn)
 }
@@ -287,5 +391,5 @@ const close = () => {
   socket = null
 }
 
-window.AtlasSocket = { connect, sendCommand, sendSimplify, onDisconnect, close }
+window.AtlasSocket = { connect, sendCommand, sendSimplify, sendChat, sendSummary, onDisconnect, close }
 })();

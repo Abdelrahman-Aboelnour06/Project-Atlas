@@ -195,3 +195,216 @@ Integrity mode: development
 ### Code & Specification Integrity
 - [ ] Zero domain or website-specific hardcoding (Universal Directive).
 - [ ] All 6 existing frontend test suites continue to pass (`test_extension.js`, `test_secret_vault.js`, `test_dom_serializer_v2.js`, `test_goal_store.js`, `test_executor_v2.js`, `demo-site/test_fixtures.js`).
+
+
+## Follow-up — 2026-10-02T10:46:38Z
+
+# Teamwork Project Prompt — Draft
+
+> Status: Launched
+> Goal: Craft prompt → get user approval → delegate to teamwork_preview
+> Requested team: Multi-Agent Security & Resilience Audit Team (7 specialist subagents: Identity & Access, Secrets & Data Exposure, Injection & Runtime Exploitation, Supply Chain & Dependency, Configuration & Infrastructure, Resilience & Blast-Radius, Adversarial QA / Red Team, and Orchestrator Synthesis)
+
+Comprehensive multi-agent security and resilience audit across the entire Project Atlas codebase, orchestrating six parallel specialist subagents followed by adversarial red team chaining and a unified synthesis report with actionable remediations.
+
+Working directory: /media/abdelrahman-abdelrahman/Acer/Users/abdel/OneDrive/Desktop/Hackthon/shit2
+Integrity mode: development
+
+## Requirements
+
+### R1. Subagent 1 — Identity & Access Specialist Audit
+- Audit authentication mechanics: client-side-only checks, JWT validation (signature verification, algorithm pinning vs `alg:none`, claims validation `exp`/`nbf`/`iss`/`aud`), open-signup attack surfaces, authentication rate limiting, and account enumeration.
+- Audit authorization: missing checks on generated API endpoints (CWE-862), IDOR-by-default (CWE-639) across CRUD operations, inverted access-control logic, object-level authorization on chat/goal/messaging channels (preventing cross-session/thread access), multi-tenancy isolation, and function-level authorization on state-changing actions.
+- Audit session management: token entropy/predictability, expiration handling, and server-side session invalidation on logout.
+- Audit data access controls: verify database/storage security rules (e.g., RLS) are actively enforced on all tables/stores and enforce tenant ownership rather than mere authentication.
+- Verification Method: Test/trace access claims across unauthenticated, alternative authenticated, and target identity states.
+- Deliverable: Findings table (`Vulnerability | Location | Severity | Evidence | Verified behaviorally Y/N`) plus identification of the least trusted access-control mechanism with justification.
+
+### R2. Subagent 2 — Secrets & Data Exposure Specialist Audit
+- Inspect production bundles and client assets for embedded secrets: service keys, third-party payment/provider tokens, LLM API keys, private keys, and high-entropy secret patterns.
+- Audit server-to-client serialization pipelines for data leakage (e.g., server state passed unredacted to client components or extensions).
+- Review git commit history for inadvertently committed credentials, tokens, or private configuration files.
+- Audit object/blob storage configurations and local cache artifacts for unauthenticated access or public directory listing.
+- Inspect file handling pipelines for data stripping (e.g., EXIF/GPS metadata on file uploads).
+- Verify data retention and deletion lifecycles across storage layers, background workers, and caches.
+- Audit sensitive token exposure in URLs, query parameters, console/server logs, and PII/PHI handling.
+- Deliverable: Findings table with exact strings/patterns and locations, explicitly flagging any finding enabling unauthorized spending (cloud/LLM compute) or third-party account takeover.
+
+### R3. Subagent 3 — Injection & Runtime Exploitation Specialist Audit
+- Audit for injection vectors: SQL/NoSQL, OS command injection, template injection, XPath, and prototype pollution across all input vectors.
+- Audit DOM manipulation and client rendering for XSS vulnerabilities (e.g., unescaped `innerHTML`, dynamic script injection, unvalidated message passing).
+- Audit code injection and unsafe execution paths: `eval()`, `exec()`, `Function()`, `pickle.loads()`, unsafe YAML/JSON loading, or unvalidated dynamic dispatch on user-controlled input.
+- Audit file handling: path traversal, unrestricted file upload, SSRF via URL navigation or fetching endpoints, XXE, decompression bombs, and open redirects.
+- Audit business logic and state machine transitions: race conditions (TOCTOU), workflow-step skipping via direct endpoint invocation, and privilege bypasses.
+- Verification Method: Formulate benign non-destructive canary payloads to prove or disprove exploitability.
+- Deliverable: Findings table noting whether each vulnerability was confirmed via execution or static analysis requiring dynamic validation.
+
+### R4. Subagent 4 — Supply Chain & Dependency Specialist Audit
+- Audit direct and transitive dependencies in lockfiles (`package-lock.json`, `requirements.txt`, etc.) against known CVE databases, focusing on prototype pollution, ReDoS, and path traversal.
+- Analyze dependency staleness relative to the current date and identify outdated pinned versions from AI generation.
+- Cross-reference all external packages against authoritative registry records (npm, PyPI) to detect hallucinated or typosquatted dependencies.
+- Inspect CI/CD pipeline definitions for unpinned action versions, unverified remote scripts, or supply chain tampering risks.
+- Audit agentic tooling and execution loops for infrastructure isolation (sandboxing, egress controls, least privilege credentials) versus prompt-only boundaries.
+- Inspect untrusted content processing pipelines (DOM extraction, external web text) fed to LLMs with tool access for indirect prompt injection attack surfaces.
+- Deliverable: Findings table plus a dedicated roster of unverified/suspect packages requiring manual registry validation.
+
+### R5. Subagent 5 — Configuration & Infrastructure Specialist Audit
+- Audit security headers: HSTS, CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, and Permissions-Policy (both presence and defensive strength).
+- Audit CORS configuration, allowed origins, and CSRF defense mechanisms on state-changing endpoints.
+- Audit rate limiting and throttling on authentication endpoints and upstream paid LLM/API gateways.
+- Check for debug mode toggles, verbose stack trace exposure, exposed development/inspection endpoints, and default credentials.
+- Audit container and local deployment configurations (Dockerfiles, compose files, process permissions, exposed ports, non-root execution).
+- Audit transport security, TLS configuration, cryptographic primitives, and entropy sources (insecure RNG).
+- Deliverable: Findings table plus a "Hardening Checklist" of zero-cost configuration toggles (<30 min quick wins).
+
+### R6. Subagent 6 — Resilience & Blast-Radius Specialist Audit
+- Identify single points of failure (SPOFs): hard dependencies on external cloud providers, single LLM vendors, third-party auth, or unbuffered external services.
+- Verify whether monitoring, telemetry, and rollback infrastructure share dependencies with the primary execution path.
+- Audit configuration change management and state mutation safety (staged rollouts vs global instant updates).
+- Audit asynchronous race conditions in agent execution, background stores, and persistent browser storage.
+- Evaluate graceful degradation pathways: verify the system degrades safely and diagnostically during upstream API outages (e.g., 429 rate limits, 5xx server errors).
+- Audit recovery and state replay mechanisms under unexpected tab closure, process crashes, or network disconnects.
+- Deliverable: Findings table (`Single Point of Failure | Location | Blast Radius | Recommended Mitigation`) ordered by blast-radius impact.
+
+### R7. Subagent 7 — Adversarial QA / Red Team Specialist Audit
+- Run after Subagents 1–6 conclude their initial analysis.
+- Review and correlate findings across all six domain reports to identify multi-step attack chains (e.g., combining information disclosure with access control or prompt injection).
+- Conduct targeted adversarial reviews for unconventional business logic flaws, agent bypasses, or novel attack surfaces uncaptured by standard security checklists.
+- Sanity-check and recalibrate severity rankings across all subagent reports based on actual end-to-end exploitability.
+- Deliverable: Attack Chains section detailing multi-hop exploit scenarios, a recalibrated severity adjustment log with rationale, and any newly uncovered novel vulnerabilities.
+
+### R8. Orchestrator Synthesis Report & Remediation Roadmap
+- Aggregate and deduplicate findings from all specialist subagents, recording multi-agent convergence as a confidence signal.
+- Produce a unified **Executive Summary** highlighting overall risk posture, top 3 urgent vulnerabilities, and identified attack chains.
+- Construct the **Master Findings Table**: `Vulnerability | Location | Severity | CWE/OWASP Ref | Found By | Verified Behaviorally (Y/N)`.
+- Construct the **Resilience Findings Table** detailing SPOFs and blast radii.
+- Formulate a prioritized **Remediation Plan** sorted by severity, detailing proposed fixes, estimated effort, and breaking-change impact.
+- Compile a list of **Quick Wins** (<30 minute implementations).
+- Generate a **CI Verification Checklist** containing regression tests and static analysis rules to enforce continuous compliance.
+- Highlight items requiring **Manual Review** (live infrastructure dependencies, human policy decisions).
+
+### R9. Universal Directives & Safety Constraints
+- Strictly follow the **Prime Directive**: All analysis, findings, and recommended fixes must be 100% universal across all websites, with zero domain or vendor hardcoding.
+- **Audit-Only Mandate**: Perform non-destructive audits, static analysis, and benign dynamic canary checks only. Do not alter production code, credentials, or databases during the audit.
+- Preserve existing test suite integrity: Any future remediation must maintain passing status on all 466 existing backend tests and 6 frontend test suites.
+
+## Acceptance Criteria
+
+### Specialist Audit Execution
+- [ ] Subagents 1 through 6 complete independent audits covering their assigned domains without cross-agent anchoring.
+- [ ] Subagent 7 ingests all reports from Subagents 1–6, verifies multi-step attack chains, and recalibrates severity ratings.
+- [ ] Every recorded finding includes exact file paths, line numbers, configuration keys, or verified request/response traces.
+
+### Synthesis & Deliverables
+- [ ] Executive Summary clearly outlines posture, top 3 critical issues, and attack chains.
+- [ ] Master Findings Table compiles all deduplicated security vulnerabilities with verified CWE/OWASP tags.
+- [ ] Resilience Findings Table maps all SPOFs and cascading failure risks.
+- [ ] Prioritized Remediation Plan details effort, breaking changes, and defensive architecture improvements.
+- [ ] CI Verification Checklist provides concrete automated test patterns to prevent regressions.
+- [ ] Hardening Checklist and Quick Wins outline actionable improvements achievable in under 30 minutes.
+
+### Architectural & Universal Compliance
+- [ ] No findings or proposed remediations suggest domain-specific hacks, website blacklists, or non-universal workarounds.
+- [ ] Full baseline of 466 backend tests and extension test suites remain untouched and green.
+
+
+## Follow-up — 2026-10-02T14:21:25Z
+
+The server has restarted and quota has reset. Please resume the security and resilience audit. Check on your orchestrator and subagents, recover state from .agents/teamwork, and proceed with Phase 1 audits through synthesis.
+
+## Follow-up — 2026-10-03T20:04:26Z
+
+# Teamwork Project Prompt — Draft
+
+> Status: Launched
+> Goal: Craft prompt → get user approval → delegate to teamwork_preview
+> Requested team: Multi-Agent Parallel Implementation Team (Wave 1 & Wave 2 coordination: B0 branch reconciliation, N1 Arabic normalization, 0b contract language fields, RTL bidi rendering, V1 dual-language voice input, V2 TTS voice matching, N2a intent synonyms, N2b prompt language mirroring, L1-lite declarativeNetRequest & GoalStore language header, L1-full planner language milestone)
+
+Implement Atlas v2.1 Dual-Language (Egyptian Arabic & English) and Intent Add-Ons: resolve branch reconciliation (B0), fix Arabic Unicode normalization and tokenization (N1), extend contracts with language signals (0b), implement chat bubble RTL rendering (RTL), dual-language voice input (V1) and TTS (V2), bilingual intent canonicalization (N2a), language-mirrored LLM prompts across 6 agent surfaces (N2b), and site-language-first navigation across client and planner (L1-lite & L1-full).
+
+Working directory: /media/abdelrahman-abdelrahman/Acer/Users/abdel/OneDrive/Desktop/Hackthon/shit2
+Integrity mode: development
+
+## Requirements
+
+### R1. Track B0: Branch Reconciliation Gate
+- Reconcile `origin/feat/assistant-experience` into `main`.
+- Resolve conflicts in `client-script/sidebar.css`, `sidebar.js`, `speech.js`, `websocket-client.js`, and `docs/contracts.md`.
+- Ensure `main` is clean, merged, and that all 466 backend tests and extension test suites pass cleanly before any client-side tracks (RTL, V1) merge.
+
+### R2. Track N1: Unicode & Arabic Normalization Fix
+- In `backend/app/agent/agentic_planner.py`:
+  - Upgrade `_normalize_text` to apply Unicode `NFKC` normalization, lowercase conversion, Arabic letter folding (alef variants `أ/إ/آ/ٱ` -> `ا`, `ى` -> `ي`, `ة` -> `ه`, `ؤ` -> `و`, `ئ` -> `ي`), Arabic-Indic & Persian digit conversion (`٠-٩` / `۰-۹` -> `0-9`), and strip tashkeel/tatweel (`[\u064B-\u065F\u0670\u0640]`).
+  - Upgrade `find_heuristic_match`: tokenize Arabic words via `[\u0600-\u06FF]+`, filter Arabic stop words, and compute normalized clean keywords alongside Latin tokens.
+  - Preserve exact behavior for Latin/English text.
+
+### R3. Track 0b: Contract Extension — Language Signal
+- In `backend/app/models/request.py`: Add `language: str | None = None` to `AgentMessage`.
+- In `backend/app/models/goal.py`: Add `language: str | None = None` to `GoalState`.
+- Default to `None` to maintain 100% backward compatibility with all existing callers and test fixtures.
+
+### R4. Track RTL: Sidebar Bidi Rendering
+- In `client-script/sidebar.css` and `sidebar.js`:
+  - Set `dir="auto"` per message bubble in `.atlas-chat-log`, allowing the browser's bidirectional algorithm to render Arabic and English messages naturally without flipping panel chrome.
+  - Convert bubble layout rules to CSS logical properties (`margin-inline-start`, `padding-inline-end`, `text-align: start`).
+  - Keep `#atlas-sidebar-root` and outer extension UI in fixed LTR orientation.
+
+### R5. Track V1 & V2: Dual-Language Voice Input & Output
+- **V1 (Speech Recognition):**
+  - In `client-script/speech.js`: Replace hardcoded `'en-US'` with `currentLang` initialized from `chrome.storage.local` key `atlas_voice_lang` (default `'en-US'`). Export `AtlasSpeech.setLanguage('ar-EG' | 'en-US')` and `getLanguage()`.
+  - In `client-script/sidebar.js`: Add a two-state "EN" / "AR" language pill next to the microphone button. Implement auto-sticky heuristic: if final transcript contains Arabic characters (`[\u0600-\u06FF]`), silently update stored language for subsequent turns.
+  - Forward active `language` with backend commands via `AgentMessage.language`.
+- **V2 (TTS Voice Output):**
+  - In `client-script/tts.js`: Detect reply language (`/[\u0600-\u06FF]/.test(text) ? 'ar-EG' : 'en-US'`). Match installed system voices via `speechSynthesis.getVoices()`. Log a warning without throwing if no Arabic voice is installed on the host OS.
+
+### R6. Track N2a & N2b: Bilingual Intent Canonicalization & Language-Mirrored Prompts
+- **N2a (Synonym Canonicalization):**
+  - Create `backend/app/agent/intent_synonyms.py` with `CANONICAL_INTENTS` mapping English, MSA, and Egyptian colloquial phrases to canonical keys (`add_to_cart`, `search`, `go_home`, `subscribe`).
+  - Implement `canonicalize_intent(user_message: str) -> str | None`. Wire it into `agentic_planner.py` before `find_heuristic_match()`.
+- **N2b (Language-Mirrored Prompts):**
+  - Add explicit language mirroring instructions to 6 system prompt surfaces: `agentic_planner.py`, `simplify_prompt.py`, `summary_prompt.py`, `planner.py`, `scout.py`, and `form_filler.py`.
+  - Instruct models: "Reply in the same language the user is using. If `language` is an Arabic locale (e.g. 'ar-EG'), reply in Egyptian colloquial Arabic — not Modern Standard Arabic, and not a literal translation. If unset, infer from script. If mixed, mirror the mix."
+  - Preserve all existing JSON response schemas.
+
+### R7. Track L1-lite & L1-full: Site-Language-First Navigation
+- **L1-lite (Client DNR & In-Page Switcher):**
+  - In `client-script/manifest.json`: Add `"declarativeNetRequest"` permission.
+  - In `client-script/background.js`: Add session-scoped tab-conditioned DNR rules injecting `Accept-Language: {lang};q=0.9, en;q=0.5` upon goal start (`GOAL_STATE_PUT`) and clearing upon goal completion (`GOAL_STATE_CLEAR`).
+  - In `client-script/content.js`: Pre-scan landing page DOM for language switchers (`aria-label`/`title` containing "language"/"لغة", language link text, `<select name="lang">`) and click when present.
+  - Store per-origin language choices in `chrome.storage.local` key `atlas_lang_pref:<origin>`.
+- **L1-full (Planner & Scout Integration):**
+  - In `backend/app/agent/scout.py`: Populate `detected_language` in page assessments.
+  - In `backend/app/agent/planner.py`: When `GoalState.language` is set and differs from `detected_language`, insert a synthetic first milestone: `"Switch the page language to {language}"` (`satisfied_by_navigation=False`).
+
+### R8. Universal Directive & Concurrency Waves
+- **Wave Execution Discipline**:
+  - Wave 1 (Zero-Collision Parallel Drafts): SA-B0, SA-N1, SA-N2a, SA-0b-g, SA-0b-r, SA-V2, SA-L1l, SA-N2b-A, SA-N2b-B.
+  - Wave 2 (Sequential Integration on Shared Files): SA-N2a-wire, SA-N2b-C, SA-RTL, SA-V1, SA-L1f, SA-V2wire.
+- **Universal Rule**: Zero domain or site-specific hardcoding. All DOM heuristics, language selectors, and matching rules must remain 100% universal across all websites.
+- **Zero Regression**: Preserve passing status on all 466 backend tests and 134 frontend tests across every merge.
+
+## Acceptance Criteria
+
+### Branch Reconciliation & Contracts
+- [ ] `git branch -a --merged main` verifies `feat/assistant-experience` is cleanly reconciled into `main`.
+- [ ] `AgentMessage` in `request.py` and `GoalState` in `goal.py` accept optional `language: str | None = None`.
+- [ ] `LLM_PROVIDER=mock pytest backend/tests -q` passes with >= 466 tests.
+
+### Arabic Normalization & Intent Matching
+- [ ] `_normalize_text("أضف إلى السلة")` returns `"اضفاليالسله"`, and `_normalize_text("iPhone ١٥")` returns `"iphone15"`.
+- [ ] `find_heuristic_match("افتح الصفحة الرئيسية", ...)` and `find_heuristic_match("دوس على اشتراك", ...)` match target elements with score 1.0.
+- [ ] `canonicalize_intent("اشتريلي الحاجه دي") == "add_to_cart"` and resolves against target DOM button `"أضف إلى السلة"`.
+
+### Bidi UI & Dual-Language Voice
+- [ ] Chat bubbles in `sidebar.js` have `dir="auto"`; Arabic messages flow RTL with correct logical padding while header/input chrome remains fixed LTR.
+- [ ] `speech.js` supports `setLanguage('ar-EG')` and persists choice across extension reloads.
+- [ ] `tts.js` detects Arabic text, selects Arabic voice if available, and warns gracefully without throwing if unavailable.
+
+### Site-Language-First Navigation
+- [ ] `manifest.json` contains `"declarativeNetRequest"`.
+- [ ] `background.js` applies tab-scoped `Accept-Language` DNR rule during goal execution and cleans up on goal end.
+- [ ] Planner inserts `"Switch the page language to {language}"` milestone when `GoalState.language` differs from Scout's `detected_language`.
+
+### System Integrity
+- [ ] Zero website/domain hardcoding across all added files.
+- [ ] All 466 backend tests and all 6 frontend extension test suites pass cleanly.
