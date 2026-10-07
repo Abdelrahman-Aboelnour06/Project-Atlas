@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Literal, Optional, Union
 from pydantic import BaseModel, Field
 
 from app.agent import llm_client
+from app.agent.jev_client import get_jev_client
 from app.models.dom import DomNode
 
 logger = logging.getLogger(__name__)
@@ -189,28 +190,31 @@ async def classify_page(
     if "captcha" in heuristic_fallback.blockers:
         return heuristic_fallback
 
-    # Build concise representation for LLM
+    # Build concise representation for LLM (capped to top 15 nodes, compact serialization)
     concise_dom = []
-    for n in raw_nodes[:50]:
-        concise_dom.append({
+    for n in raw_nodes[:15]:
+        lbl = (n.get("resolved_label") or n.get("aria_label") or n.get("inner_text") or "")[:50]
+        node_dict = {
             "id": n.get("id") or n.get("ref"),
             "tag": n.get("tag"),
-            "type": n.get("type"),
-            "name": n.get("name"),
             "role": n.get("role"),
-            "label": n.get("resolved_label") or n.get("aria_label") or n.get("inner_text"),
-            "form_id": n.get("form_id"),
-        })
+            "type": n.get("type"),
+        }
+        if lbl:
+            node_dict["label"] = lbl
+        if n.get("form_id"):
+            node_dict["form_id"] = n.get("form_id")
+        concise_dom.append(node_dict)
 
-    dom_json = json.dumps(concise_dom, indent=2)
-    summary_nonce = secrets.token_hex(8)
-    dom_nonce = secrets.token_hex(8)
+    dom_json = json.dumps(concise_dom, separators=(',', ':'))
+    summary_nonce = secrets.token_hex(6)
+    dom_nonce = secrets.token_hex(6)
 
     user_body = f"""PAGE CONTEXT:
 URL: {current_url or "Unknown"}
 
 --- BEGIN UNTRUSTED WEBPAGE SUMMARY (BOUNDARY_ID: {summary_nonce}) ---
-{(page_text or "").strip()[:1000] if page_text else "No page summary available"}
+{(page_text or "").strip()[:350] if page_text else "No page summary available"}
 --- END UNTRUSTED WEBPAGE SUMMARY (BOUNDARY_ID: {summary_nonce}) ---
 
 --- BEGIN UNTRUSTED DOM ELEMENTS (BOUNDARY_ID: {dom_nonce}) ---
@@ -251,5 +255,17 @@ JSON CLASSIFICATION:"""
         )
 
     except Exception as exc:
-        logger.warning("Scout LLM classification failed: %s. Using heuristic result.", exc)
+        logger.warning("Scout LLM classification failed: %s. Using Jev 3/heuristic fallback.", exc)
+        try:
+            jev = get_jev_client()
+            judge_res = await jev.judge(
+                state={"url": current_url, "dom_count": len(raw_nodes), "text": (page_text or "")[:200]},
+                statement="The page contains a captcha, turnstile, or bot challenge",
+            )
+            if judge_res.result and judge_res.confidence >= 0.85:
+                heuristic_fallback.page_kind = "captcha"
+                if "captcha" not in heuristic_fallback.blockers:
+                    heuristic_fallback.blockers.append("captcha")
+        except Exception:
+            pass
         return heuristic_fallback

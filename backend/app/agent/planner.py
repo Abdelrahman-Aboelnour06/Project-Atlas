@@ -79,12 +79,12 @@ async def plan_goal(
             )
         ]
 
-    summary_nonce = secrets.token_hex(8)
+    summary_nonce = secrets.token_hex(6)
 
     user_body = f"""PAGE CONTEXT:
 URL: {current_url or "Unknown"}
 --- BEGIN UNTRUSTED WEBPAGE SUMMARY (BOUNDARY_ID: {summary_nonce}) ---
-{(page_text or "").strip()[:1000] if page_text else "No page summary available"}
+{(page_text or "").strip()[:250] if page_text else "No page summary available"}
 --- END UNTRUSTED WEBPAGE SUMMARY (BOUNDARY_ID: {summary_nonce}) ---
 
 USER GOAL TO DECOMPOSE:
