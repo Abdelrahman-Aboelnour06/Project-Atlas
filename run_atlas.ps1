@@ -48,10 +48,10 @@ if ($Action -eq "stop") {
     foreach ($name in @("backend", "demo-site")) {
         $pidFile = Join-Path $StateDir "$name.pid"
         if (Test-Path $pidFile) {
-            $pId = Get-Content $pidFile
-            Stop-Process -Id $pId -Force -ErrorAction SilentlyContinue
+            $processId = Get-Content $pidFile
+            Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
             Remove-Item $pidFile -Force
-            Log "Stopped $name (PID $pId)"
+            Log "Stopped $name (PID $processId)"
         }
         $jobFile = Join-Path $StateDir "$name.jobid"
         if (Test-Path $jobFile) {
@@ -73,12 +73,21 @@ if ($Action -eq "stop") {
             }
         }
     }
+    $dockerActive = $false
     if (Get-Command docker -ErrorAction SilentlyContinue) {
-        $running = docker ps --format "{{.Names}}" | Select-String -Pattern "^$PgContainer$"
-        if ($running) {
-            docker stop $PgContainer | Out-Null
-            Log "Stopped Postgres container ($PgContainer)"
-        }
+        try {
+            $null = docker info 2>&1
+            if ($LASTEXITCODE -eq 0) { $dockerActive = $true }
+        } catch { $dockerActive = $false }
+    }
+    if ($dockerActive) {
+        try {
+            $running = docker ps --format "{{.Names}}" 2>&1 | Select-String -Pattern "^$PgContainer$"
+            if ($running) {
+                docker stop $PgContainer 2>&1 | Out-Null
+                Log "Stopped Postgres container ($PgContainer)"
+            }
+        } catch {}
     }
     Log "Everything stopped."
     exit 0
