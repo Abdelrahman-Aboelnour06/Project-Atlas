@@ -885,6 +885,8 @@
 
   // ── Public API ────────────────────────────────────────────────────────────────
   const mount = (cbs = {}) => {
+    // Only mount sidebar in top window frame
+    if (typeof window !== "undefined" && window !== window.top) return;
     handlers = cbs;
     groupOpenState = {};
     if (document.getElementById(ROOT_ID)) return;

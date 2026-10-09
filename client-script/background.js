@@ -3,7 +3,7 @@
 async function ensureContentScript(tabId) {
   try {
     await chrome.scripting.executeScript({
-      target: { tabId },
+      target: { tabId, allFrames: true },
       files: [
         "dom-serializer.js",
         "websocket-client.js",

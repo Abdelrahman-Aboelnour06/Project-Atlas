@@ -307,6 +307,32 @@ for (const domain of forbiddenDomains) {
   assert(!websocketCode.includes(`"${domain}"`) && !websocketCode.includes(`'${domain}'`), `websocket-client.js contains zero ${domain} hardcoded domain references`);
 }
 
+// 10. Universal Multi-Website Resilience & Perception Quality Gates
+console.log('\n[Unit: Universal Perception & Multi-Website Resilience Quality Gates]');
+
+
+// Unicode letter recognition in hasMeaningfulLabel
+assert(domSerializerCode.includes('/\\p{L}/u'), 'dom-serializer.js uses Unicode property escape \\p{L} with /u flag');
+assert(domSerializerCode.includes('/^[^\p{L}\p{N}]$/u') || domSerializerCode.includes('[^\\p{L}\\p{N}]'), 'dom-serializer.js uses Unicode-aware character class for single character filtering');
+
+// position: fixed offsetParent W3C fallback
+assert(domSerializerCode.includes('position === "fixed"') || domSerializerCode.includes("position === 'fixed'"), 'dom-serializer.js supports position: fixed elements when offsetParent is null');
+
+// Shadow DOM recursive collection
+assert(domSerializerCode.includes('collectInteractiveElements'), 'dom-serializer.js defines recursive collectInteractiveElements');
+assert(domSerializerCode.includes('.shadowRoot'), 'dom-serializer.js traverses open shadow roots');
+
+// Modal dialog focus trap and backdrop occlusion
+assert(domSerializerCode.includes('getActiveModalDialog'), 'dom-serializer.js defines getActiveModalDialog');
+assert(domSerializerCode.includes('aria-modal'), 'dom-serializer.js checks aria-modal per W3C APG');
+
+// allFrames in background.js
+assert(backgroundCode.includes('allFrames: true'), 'background.js injects content scripts with allFrames: true');
+
+// Top frame guard in sidebar.js
+assert(sidebarCode.includes('window !== window.top'), 'sidebar.js restricts UI mounting to top-level window');
+
 console.log(`\nExtension Tests Complete: ${passed} passed, ${failures} failed.\n`);
 process.exit(failures > 0 ? 1 : 0);
+
 

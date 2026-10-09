@@ -182,9 +182,11 @@ const NOISE_TEXT_PATTERNS = [
       return true;
     }
 
-    // Label must be more than 1 character and not purely punctuation/numbers
+    // Label must be more than 1 character
     if (text.length < 2) return false;
-    if (/^[\d\s\W]+$/.test(text)) return false;
+    // Discard if text contains NO letters (purely digits, punctuation, and symbols).
+    // Uses Unicode property escape \p{L} with /u flag to support Arabic, CJK, Cyrillic, Hebrew, Latin.
+    if (!/\p{L}/u.test(text)) return false;
 
     return true;
   };
@@ -283,7 +285,21 @@ const NOISE_TEXT_PATTERNS = [
     if (style.display === "none" || style.visibility === "hidden") return false;
     if (parseFloat(style.opacity) < 0.1) return false;
     if (parseFloat(style.fontSize) === 0) return false;
-    if (el.offsetParent === null && el.tagName !== "BODY") return false;
+    if (el.offsetParent === null && el.tagName !== "BODY") {
+      // W3C CSSOM: position: fixed elements always return offsetParent === null
+      let isFixed = style.position === "fixed";
+      if (!isFixed && el.parentElement) {
+        let curr = el.parentElement;
+        while (curr && curr !== document.body) {
+          if (window.getComputedStyle(curr).position === "fixed") {
+            isFixed = true;
+            break;
+          }
+          curr = curr.parentElement;
+        }
+      }
+      if (!isFixed) return false;
+    }
     const rect = el.getBoundingClientRect();
     return rect.width > 0 && rect.height > 0;
   };
@@ -365,7 +381,7 @@ const NOISE_TEXT_PATTERNS = [
     const text = (el.innerText || el.textContent || "")
       .trim()
       .replace(/\s+/g, " ");
-    if (text.length > 1 && !/^[\W\d]$/.test(text)) return truncate(text);
+    if (text.length > 1 && !/^[^\p{L}\p{N}]$/u.test(text)) return truncate(text);
 
     // 6. Wrapping <label>
     const wrapping = el.closest("label");
@@ -543,6 +559,40 @@ const NOISE_TEXT_PATTERNS = [
     return null;
   };
 
+  // ── Universal Shadow DOM & Modal Helpers ─────────────────────────────────────
+  const collectInteractiveElements = (root = document) => {
+    const results = [];
+    try {
+      const elements = Array.from(root.querySelectorAll(INTERACTIVE_SELECTOR));
+      results.push(...elements);
+    } catch (_) {}
+
+    // Recursively collect from open shadow roots across Web Components
+    try {
+      const all = root.querySelectorAll("*");
+      for (let i = 0; i < all.length; i++) {
+        const el = all[i];
+        if (el.shadowRoot) {
+          results.push(...collectInteractiveElements(el.shadowRoot));
+        }
+      }
+    } catch (_) {}
+    return results;
+  };
+
+  const getActiveModalDialog = () => {
+    try {
+      const dialogs = Array.from(
+        document.querySelectorAll('dialog[open], [role="dialog"][aria-modal="true"], [role="alertdialog"][aria-modal="true"]')
+      );
+      for (let i = 0; i < dialogs.length; i++) {
+        const d = dialogs[i];
+        if (isVisible(d)) return d;
+      }
+    } catch (_) {}
+    return null;
+  };
+
   // ── Two-Phase Layout-Safe Serializer (Feature 16 + v2) ─────────────────────────
   // Phase 1: Read all DOM & layout properties without modifying the DOM.
   // Phase 2: Batch-write data-atlas-id attributes to newly identified elements.
@@ -551,12 +601,17 @@ const NOISE_TEXT_PATTERNS = [
     seenLabels.clear(); // reset duplicate tracker on each scan
     const ordinalCounter = new Map();
 
-    // Phase 1: All DOM Reads
-    const candidates = Array.from(document.querySelectorAll(INTERACTIVE_SELECTOR));
+    // Check for active modal focus trap per W3C APG
+    const activeModal = getActiveModalDialog();
+
+    // Phase 1: All DOM Reads (piercing open shadow roots)
+    const candidates = collectInteractiveElements(document);
     const passedElements = [];
 
     for (let i = 0; i < candidates.length; i++) {
       const el = candidates[i];
+      // When a modal dialog is active, elements outside it are inert and occluded
+      if (activeModal && !activeModal.contains(el) && !el.closest("#atlas-sidebar-root")) continue;
       // Note: do NOT skip el.disabled; emit disabled: true (§11.2)
       if (!isVisible(el)) continue;
       if (isStructuralNoise(el)) continue;
@@ -676,8 +731,21 @@ const NOISE_TEXT_PATTERNS = [
     }));
   };
 
-  const getElementByAtlasId = (atlasId) =>
-    document.querySelector(`[${ATLAS_ID_ATTR}="${CSS.escape(atlasId)}"]`);
+  const getElementByAtlasId = (atlasId, root = document) => {
+    if (!atlasId) return null;
+    try {
+      const direct = root.querySelector(`[${ATLAS_ID_ATTR}="${CSS.escape(atlasId)}"]`);
+      if (direct) return direct;
+      const all = root.querySelectorAll("*");
+      for (let i = 0; i < all.length; i++) {
+        if (all[i].shadowRoot) {
+          const found = getElementByAtlasId(atlasId, all[i].shadowRoot);
+          if (found) return found;
+        }
+      }
+    } catch (_) {}
+    return null;
+  };
 
   // Pause/resume for content.js to suppress re-renders during interactions
   let paused = false;

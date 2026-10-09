@@ -1,0 +1,80 @@
+{
+  "timestamp": "2026-10-09T17:42:30.312Z",
+  "tests": [
+    {
+      "scenario": "Arabic & Non-ASCII Label Resolution",
+      "verdict": "PASS",
+      "defectType": "UNICODE_REGEX_DROPS_NON_ASCII_LABELS",
+      "rootCause": "dom-serializer.js line 187 uses /^[d\\s\\W]+$/ without /u flag or Unicode category \\p{L}. In standard JS regex, \\W matches all non-Latin characters (Arabic, Chinese, Cyrillic, Hebrew) as non-word punctuation.",
+      "evidence": {
+        "totalArabicElements": 6,
+        "droppedArabicElements": 0,
+        "retainedElements": [
+          "الرئيسية",
+          "أخبار العالم",
+          "تكنولوجيا",
+          "أضف إلى السلة",
+          "اشترك الآن",
+          "English Article",
+          "iPhone 15 جديد"
+        ]
+      }
+    },
+    {
+      "scenario": "Fixed & Sticky Chrome Navigation Elements",
+      "verdict": "PASS",
+      "defectType": "FIXED_ELEMENT_OFFSETPARENT_NULL_DROPOUT",
+      "rootCause": "dom-serializer.js line 286 checks if (el.offsetParent === null && el.tagName !== \"BODY\") return false. Per W3C CSSOM, all position:fixed elements return offsetParent === null, causing floating action buttons or fixed headers to be misidentified as hidden.",
+      "evidence": {
+        "droppedItems": []
+      }
+    },
+    {
+      "scenario": "Shadow DOM / Web Components Piercing",
+      "verdict": "PASS",
+      "defectType": "SHADOW_DOM_BOUNDARY_BLIND_SPOT",
+      "rootCause": "dom-serializer.js line 555 uses document.querySelectorAll(INTERACTIVE_SELECTOR), which never traverses into element.shadowRoot. Web Components (Shoelace, YouTube, Lit, modern GitHub) encapsulate their interactive controls inside open shadow roots.",
+      "evidence": {
+        "serializedCount": 4,
+        "serializedLabels": [
+          "Standard Light DOM Button",
+          "Submit Order in Shadow Root",
+          "View Details",
+          "Search inside Web Component"
+        ],
+        "lightDomCaptured": true,
+        "shadowBtnCaptured": true,
+        "shadowLinkCaptured": true
+      }
+    },
+    {
+      "scenario": "Modal Overlay Occlusion & Focus Trap",
+      "verdict": "PASS",
+      "defectType": "MODAL_BACKDROP_OCCLUSION_UNAWARENESS",
+      "rootCause": "dom-serializer.js checks isVisible() via boundingClientRect, computed opacity and display, but does NOT check if the element is occluded by an active modal dialog (role=\"dialog\", aria-modal=\"true\") or document.elementFromPoint backdrop trap. When a consent banner or modal appears, Atlas still attempts to click background buttons behind the dark backdrop.",
+      "evidence": {
+        "serializedCount": 2,
+        "serializedLabels": [
+          "Accept & Continue",
+          "Decline"
+        ],
+        "bgDeleteButtonSerialized": false,
+        "modalAcceptButtonSerialized": true,
+        "isDirectlyClickableByPointer": false,
+        "topElementAtPoint": "active-modal"
+      }
+    },
+    {
+      "scenario": "Textarea Combobox Execution",
+      "verdict": "PASS",
+      "evidence": {
+        "serializedCount": 1,
+        "atlasId": "el_883abc0bbb2450c9",
+        "fillResult": {
+          "ok": true
+        },
+        "textareaValue": "Project Atlas Automation"
+      }
+    }
+  ]
+}

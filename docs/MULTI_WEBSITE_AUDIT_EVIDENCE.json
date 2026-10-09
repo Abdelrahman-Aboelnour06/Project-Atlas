@@ -1,0 +1,1010 @@
+{
+  "timestamp": "2026-10-09T17:34:47.634Z",
+  "totalSitesAudited": 7,
+  "siteResults": [
+    {
+      "name": "Wikipedia (Web Accessibility)",
+      "url": "https://en.wikipedia.org/wiki/Web_accessibility",
+      "category": "Dense Content / Knowledge Base",
+      "navigationStatus": "OK",
+      "httpStatus": 200,
+      "metrics": {
+        "totalDomNodes": 3884,
+        "serializedCount": 482,
+        "serializationTimeMs": 66,
+        "shadowRootCount": 0,
+        "shadowElementsIgnored": 0,
+        "iframeCount": 0,
+        "fixedDroppedCount": 0,
+        "languageDetected": "en",
+        "dirDetected": "ltr"
+      },
+      "findings": [],
+      "extractedElementsSample": [
+        {
+          "id": "el_b3cc9daa2f6bd120",
+          "ref": "el_b3cc9daa2f6bd120",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "Jump to content",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_7c45bf27637c8e46",
+          "ref": "el_7c45bf27637c8e46",
+          "tag": "input",
+          "type": "search",
+          "role": null,
+          "label": "Search Wikipedia [alt-f]",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_8fe20db6a7a2c6fb",
+          "ref": "el_8fe20db6a7a2c6fb",
+          "tag": "button",
+          "type": null,
+          "role": null,
+          "label": "Search",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_358b6fc10ba701cd",
+          "ref": "el_358b6fc10ba701cd",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "Donate",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_c5d6f662058707fb",
+          "ref": "el_c5d6f662058707fb",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "You are encouraged to create an account and log in; however, it is not mandatory",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_28301ed68294cbb7",
+          "ref": "el_28301ed68294cbb7",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "You're encouraged to log in; however, it's not mandatory. [alt-o]",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_c6fcd71c35935b09",
+          "ref": "el_c6fcd71c35935b09",
+          "tag": "button",
+          "type": null,
+          "role": null,
+          "label": "Hide Contents",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_255dc9450dcbe302",
+          "ref": "el_255dc9450dcbe302",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "(Top)",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_c5628050144b7e2a",
+          "ref": "el_c5628050144b7e2a",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "Assistive technologies used for web browsing",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_1a5e5cab69a77f9a",
+          "ref": "el_1a5e5cab69a77f9a",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "Guidelines on accessible web design",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_378dd3010aae1c5e",
+          "ref": "el_378dd3010aae1c5e",
+          "tag": "button",
+          "type": null,
+          "role": null,
+          "label": "Toggle Guidelines on accessible web design subsection",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_5505c557739c4969",
+          "ref": "el_5505c557739c4969",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "Guidelines for different components",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_2302e31eb96fb9d3",
+          "ref": "el_2302e31eb96fb9d3",
+          "tag": "button",
+          "type": null,
+          "role": null,
+          "label": "Toggle Guidelines for different components subsection",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_14810a71e12d395d",
+          "ref": "el_14810a71e12d395d",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "Web accessibility legislation",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_59eb3da6228457af",
+          "ref": "el_59eb3da6228457af",
+          "tag": "button",
+          "type": null,
+          "role": null,
+          "label": "Toggle Web accessibility legislation subsection",
+          "disabled": false,
+          "sensitive": false
+        }
+      ],
+      "issues": [
+        {
+          "type": "PROMPT_TOKEN_BLOAT_RISK",
+          "severity": "MEDIUM",
+          "detail": "Page generated 482 interactive elements. Without strict backend top-K budgeting, this risks 429 TPM exhaustion on LLM calls."
+        },
+        {
+          "type": "INTERACTION_FAILURE",
+          "severity": "MEDIUM",
+          "detail": "Failed to interact with search input: undefined"
+        }
+      ]
+    },
+    {
+      "name": "Hacker News",
+      "url": "https://news.ycombinator.com/",
+      "category": "Legacy Table-Based / Minimalist Community",
+      "navigationStatus": "OK",
+      "httpStatus": 200,
+      "metrics": {
+        "totalDomNodes": 824,
+        "serializedCount": 152,
+        "serializationTimeMs": 13,
+        "shadowRootCount": 0,
+        "shadowElementsIgnored": 0,
+        "iframeCount": 0,
+        "fixedDroppedCount": 0,
+        "languageDetected": "en",
+        "dirDetected": ""
+      },
+      "findings": [],
+      "extractedElementsSample": [
+        {
+          "id": "el_676d8b7986520893",
+          "ref": "el_676d8b7986520893",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "Hacker News",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_c280b86732b14372",
+          "ref": "el_c280b86732b14372",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "new",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_7245f7c0ae0d90d4",
+          "ref": "el_7245f7c0ae0d90d4",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "past",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_fdc880d5af7d0ebe",
+          "ref": "el_fdc880d5af7d0ebe",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "comments",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_ab64c8652e09fb4b",
+          "ref": "el_ab64c8652e09fb4b",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "ask",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_6501c55660d5af83",
+          "ref": "el_6501c55660d5af83",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "show",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_6f9c879a6e838f70",
+          "ref": "el_6f9c879a6e838f70",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "jobs",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_eb3407adf9250cb8",
+          "ref": "el_eb3407adf9250cb8",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "submit",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_ecea0be42594e58f",
+          "ref": "el_ecea0be42594e58f",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "login",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_3ee0636df3c02a51",
+          "ref": "el_3ee0636df3c02a51",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "Deno Is Joining Cloudflare",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_5ef103404f2dc511",
+          "ref": "el_5ef103404f2dc511",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "deno.com",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_5594492f58bdac8a",
+          "ref": "el_5594492f58bdac8a",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "ilreb",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_732615955bf9fdb2",
+          "ref": "el_732615955bf9fdb2",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "4 hours ago",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_1f6bd0f2fe9ed6b0",
+          "ref": "el_1f6bd0f2fe9ed6b0",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "hide",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_f6b2ddb03c3f5880",
+          "ref": "el_f6b2ddb03c3f5880",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "363 comments",
+          "disabled": false,
+          "sensitive": false
+        }
+      ],
+      "issues": [
+        {
+          "type": "PROMPT_TOKEN_BLOAT_RISK",
+          "severity": "MEDIUM",
+          "detail": "Page generated 152 interactive elements. Without strict backend top-K budgeting, this risks 429 TPM exhaustion on LLM calls."
+        }
+      ]
+    },
+    {
+      "name": "GitHub (Public Repository)",
+      "url": "https://github.com/torvalds/linux",
+      "category": "Modern Web Components & Deep SPA",
+      "navigationStatus": "FAILED: page.goto: Timeout 25000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://github.com/torvalds/linux\", waiting until \"domcontentloaded\"\u001b[22m\n",
+      "httpStatus": null,
+      "metrics": {},
+      "findings": [],
+      "extractedElementsSample": [],
+      "issues": [
+        {
+          "type": "NAVIGATION_TIMEOUT_OR_BLOCKED",
+          "severity": "HIGH",
+          "detail": "page.goto: Timeout 25000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://github.com/torvalds/linux\", waiting until \"domcontentloaded\"\u001b[22m\n"
+        }
+      ]
+    },
+    {
+      "name": "BBC Arabic News",
+      "url": "https://www.bbc.com/arabic",
+      "category": "RTL Arabic Multimedia & International News",
+      "navigationStatus": "OK",
+      "httpStatus": 200,
+      "metrics": {
+        "totalDomNodes": 1832,
+        "serializedCount": 105,
+        "serializationTimeMs": 13,
+        "shadowRootCount": 0,
+        "shadowElementsIgnored": 0,
+        "iframeCount": 2,
+        "fixedDroppedCount": 0,
+        "languageDetected": "ar",
+        "dirDetected": "rtl"
+      },
+      "findings": [],
+      "extractedElementsSample": [
+        {
+          "id": "el_eb57fcdd29224501",
+          "ref": "el_eb57fcdd29224501",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "BBC News World Service",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_64f399d0c8d35998",
+          "ref": "el_64f399d0c8d35998",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "BBC News, عربي",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_6053c872978d22b2",
+          "ref": "el_6053c872978d22b2",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "إذهب الى المحتوى",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_937e4a187a4c68f2",
+          "ref": "el_937e4a187a4c68f2",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "الصفحة الحالية, رئيسية",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_cd8a4a2187b28c1d",
+          "ref": "el_cd8a4a2187b28c1d",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "شاهد",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_f726f715ec2b1196",
+          "ref": "el_f726f715ec2b1196",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "استمع",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_4c7cfba99c42dc51",
+          "ref": "el_4c7cfba99c42dc51",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "أخبار",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_d661fec1c922fcea",
+          "ref": "el_d661fec1c922fcea",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "اقتصاد",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_e23fb624e3e77b25",
+          "ref": "el_e23fb624e3e77b25",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "صحة وعلوم",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_a7a2aa020f4c9d23",
+          "ref": "el_a7a2aa020f4c9d23",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "ثقافة وفنون",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_83f2dbf615443faf",
+          "ref": "el_83f2dbf615443faf",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "رياضة",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_bc787ebcb53b7650",
+          "ref": "el_bc787ebcb53b7650",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "تحقيقات",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_7f3d95becd4a7bcb",
+          "ref": "el_7f3d95becd4a7bcb",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "أنباء عن انفجار قرب مطار عدن ومقتل ثلاثة سعوديين بهجمات على مطار الرياض",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_80ef47152ce8ccd5",
+          "ref": "el_80ef47152ce8ccd5",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "نافي بيلاي تفوز بنوبل للسلام تقديراً لجهودها في تعزيز القانون الدولي",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_6a59a76a433d6b5b",
+          "ref": "el_6a59a76a433d6b5b",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "سغال عبد الولي: أول امرأة من أصول صومالية في البرلمان البريطاني",
+          "disabled": false,
+          "sensitive": false
+        }
+      ],
+      "issues": [
+        {
+          "type": "IFRAME_ISOLATION",
+          "severity": "MEDIUM",
+          "detail": "Page contains 2 iframes whose interactive controls are unindexed by top-level DOM serialization."
+        }
+      ]
+    },
+    {
+      "name": "DuckDuckGo Search Engine",
+      "url": "https://duckduckgo.com/",
+      "category": "Search Engine SPA / Dynamic Autocomplete",
+      "navigationStatus": "OK",
+      "httpStatus": 200,
+      "metrics": {
+        "totalDomNodes": 1680,
+        "serializedCount": 87,
+        "serializationTimeMs": 9,
+        "shadowRootCount": 0,
+        "shadowElementsIgnored": 0,
+        "iframeCount": 0,
+        "fixedDroppedCount": 0,
+        "languageDetected": "en-US",
+        "dirDetected": ""
+      },
+      "findings": [],
+      "extractedElementsSample": [
+        {
+          "id": "el_84ca85c2bcb73721",
+          "ref": "el_84ca85c2bcb73721",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "Learn about DuckDuckGo",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_ba9d95c5d41e08e6",
+          "ref": "el_ba9d95c5d41e08e6",
+          "tag": "button",
+          "type": "button",
+          "role": "radio",
+          "label": "Search",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_8959acf439d324ad",
+          "ref": "el_8959acf439d324ad",
+          "tag": "button",
+          "type": "button",
+          "role": "radio",
+          "label": "Ask AI",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_8f8f8a42b1846c9e",
+          "ref": "el_8f8f8a42b1846c9e",
+          "tag": "textarea",
+          "type": null,
+          "role": "combobox",
+          "label": "Search with DuckDuckGo",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_83feea8dd9cc0bc5",
+          "ref": "el_83feea8dd9cc0bc5",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "Duck.ai",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_f67fb42563948534",
+          "ref": "el_f67fb42563948534",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "Homepage",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_fd1717c39abef47e",
+          "ref": "el_fd1717c39abef47e",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "Themes",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_cd88a000c205bebf",
+          "ref": "el_cd88a000c205bebf",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "Settings",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_683795e548c1cf8f",
+          "ref": "el_683795e548c1cf8f",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "iOS Browser",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_cf9639ea39f05de5",
+          "ref": "el_cf9639ea39f05de5",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "Android Browser",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_7900a7bd63f840b1",
+          "ref": "el_7900a7bd63f840b1",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "Mac Browser",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_1a47a6cfc44a064f",
+          "ref": "el_1a47a6cfc44a064f",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "Windows Browser",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_64579f1323dd4abe",
+          "ref": "el_64579f1323dd4abe",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "Browser Extensions",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_e09add34f4270b51",
+          "ref": "el_e09add34f4270b51",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "Email Protection",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_8953a7f144a5dcc1",
+          "ref": "el_8953a7f144a5dcc1",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "Newsletter",
+          "disabled": false,
+          "sensitive": false
+        }
+      ],
+      "issues": [
+        {
+          "type": "INTERACTION_FAILURE",
+          "severity": "MEDIUM",
+          "detail": "Failed to interact with search input: No search input found"
+        }
+      ]
+    },
+    {
+      "name": "Shoelace Design System",
+      "url": "https://shoelace.style/",
+      "category": "Shadow DOM & Custom Web Components",
+      "navigationStatus": "OK",
+      "httpStatus": 200,
+      "metrics": {
+        "totalDomNodes": 461,
+        "serializedCount": 118,
+        "serializationTimeMs": 7,
+        "shadowRootCount": 28,
+        "shadowElementsIgnored": 8,
+        "iframeCount": 0,
+        "fixedDroppedCount": 0,
+        "languageDetected": "en",
+        "dirDetected": ""
+      },
+      "findings": [],
+      "extractedElementsSample": [
+        {
+          "id": "el_147ab99983b4fe51",
+          "ref": "el_147ab99983b4fe51",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "View Shoelace on GitHub",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_b16b1eaa4570251d",
+          "ref": "el_b16b1eaa4570251d",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "Follow Shoelace on Twitter",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_6c34cdc8293855c3",
+          "ref": "el_6c34cdc8293855c3",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "Web Awesome",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_72f1220a40d66e9c",
+          "ref": "el_72f1220a40d66e9c",
+          "tag": "button",
+          "type": "button",
+          "role": null,
+          "label": "Press / to search",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_ebb71c193c2cbded",
+          "ref": "el_ebb71c193c2cbded",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "Home",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_6fbce2151474e8c8",
+          "ref": "el_6fbce2151474e8c8",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "Installation",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_385c493cb5b7ffd",
+          "ref": "el_385c493cb5b7ffd",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "Usage",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_fd1717c39abef47e",
+          "ref": "el_fd1717c39abef47e",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "Themes",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_30199542fb877cdc",
+          "ref": "el_30199542fb877cdc",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "Customizing",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_f5e757a271c74534",
+          "ref": "el_f5e757a271c74534",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "Form Controls",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_e90ac43501e4b76b",
+          "ref": "el_e90ac43501e4b76b",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "Localization",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_cc05f9ef5f8a70f5",
+          "ref": "el_cc05f9ef5f8a70f5",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "React",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_7a226e2357710030",
+          "ref": "el_7a226e2357710030",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "Vue",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_9444c043802b7bb2",
+          "ref": "el_9444c043802b7bb2",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "Angular",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_d87ad12a62b0653d",
+          "ref": "el_d87ad12a62b0653d",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "Svelte",
+          "disabled": false,
+          "sensitive": false
+        }
+      ],
+      "issues": [
+        {
+          "type": "SHADOW_DOM_BLIND_SPOT",
+          "severity": "HIGH",
+          "detail": "Found 28 shadow roots with 8 interactive elements ignored by document.querySelectorAll."
+        }
+      ]
+    },
+    {
+      "name": "TodoMVC React",
+      "url": "https://demo.playwright.dev/todomvc/",
+      "category": "Reactive SPA / Client-Side DOM Mutation",
+      "navigationStatus": "OK",
+      "httpStatus": 200,
+      "metrics": {
+        "totalDomNodes": 28,
+        "serializedCount": 2,
+        "serializationTimeMs": 2,
+        "shadowRootCount": 0,
+        "shadowElementsIgnored": 0,
+        "iframeCount": 0,
+        "fixedDroppedCount": 0,
+        "languageDetected": "en",
+        "dirDetected": ""
+      },
+      "findings": [],
+      "extractedElementsSample": [
+        {
+          "id": "el_28dfd98823b594d1",
+          "ref": "el_28dfd98823b594d1",
+          "tag": "a",
+          "type": null,
+          "role": null,
+          "label": "real TodoMVC app.",
+          "disabled": false,
+          "sensitive": false
+        },
+        {
+          "id": "el_1b522825dfe4aedb",
+          "ref": "el_1b522825dfe4aedb",
+          "tag": "input",
+          "type": null,
+          "role": null,
+          "label": "What needs to be done?",
+          "disabled": false,
+          "sensitive": false
+        }
+      ],
+      "issues": []
+    }
+  ],
+  "discoveredDefects": [
+    {
+      "type": "PROMPT_TOKEN_BLOAT_RISK",
+      "severity": "MEDIUM",
+      "affectedSites": [
+        "Wikipedia (Web Accessibility)",
+        "Hacker News"
+      ],
+      "details": "Page generated 482 interactive elements. Without strict backend top-K budgeting, this risks 429 TPM exhaustion on LLM calls.",
+      "evidence": []
+    },
+    {
+      "type": "INTERACTION_FAILURE",
+      "severity": "MEDIUM",
+      "affectedSites": [
+        "Wikipedia (Web Accessibility)",
+        "DuckDuckGo Search Engine"
+      ],
+      "details": "Failed to interact with search input: undefined",
+      "evidence": []
+    },
+    {
+      "type": "NAVIGATION_TIMEOUT_OR_BLOCKED",
+      "severity": "HIGH",
+      "affectedSites": [
+        "GitHub (Public Repository)"
+      ],
+      "details": "page.goto: Timeout 25000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://github.com/torvalds/linux\", waiting until \"domcontentloaded\"\u001b[22m\n",
+      "evidence": []
+    },
+    {
+      "type": "IFRAME_ISOLATION",
+      "severity": "MEDIUM",
+      "affectedSites": [
+        "BBC Arabic News"
+      ],
+      "details": "Page contains 2 iframes whose interactive controls are unindexed by top-level DOM serialization.",
+      "evidence": []
+    },
+    {
+      "type": "SHADOW_DOM_BLIND_SPOT",
+      "severity": "HIGH",
+      "affectedSites": [
+        "Shoelace Design System"
+      ],
+      "details": "Found 28 shadow roots with 8 interactive elements ignored by document.querySelectorAll.",
+      "evidence": []
+    }
+  ],
+  "empiricalEvidence": {}
+}
