@@ -12,12 +12,14 @@ on the current webpage. Strictly adheres to:
 
 import json
 import logging
+import os
 import re
 import secrets
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 from app.agent import llm_client
 from app.agent.agentic_planner import find_heuristic_match, _detect_click_action
+from app.agent.jev_client import get_jev_client
 from app.agent.sanitize import strip_pii_from_dom
 from app.models.action import ActionType
 from app.models.dom import DomNode
@@ -166,17 +168,19 @@ async def plan_milestone_step(
             or ""
         )
         if isinstance(label, str):
-            label = label.strip()
+            label = label.strip()[:50]
         category = node.get("group_label") or node.get("role") or node.get("tag")
-        concise_dom.append({
+        entry = {
             "id": node.get("id"),
             "tag": node.get("tag"),
-            "label": label,
-            "category": category,
             "role": node.get("role"),
-            "href": node.get("href"),
-            "sensitive": bool(node.get("sensitive")),
-        })
+            "category": category,
+        }
+        if label:
+            entry["label"] = label
+        if node.get("sensitive"):
+            entry["sensitive"] = True
+        concise_dom.append(entry)
 
     # Handle explicit user responses (e.g. confirmation prompts)
     if user_response:
@@ -192,17 +196,42 @@ async def plan_milestone_step(
 
     history_str = ""
     if history:
-        recent = history[-6:]
+        recent = history[-4:]
         history_str = "\n".join(f"{h.get('role', 'user').capitalize()}: {h.get('content', '')}" for h in recent)
 
     summary_nonce = secrets.token_hex(6)
     dom_nonce = secrets.token_hex(6)
-    dom_json = json.dumps(concise_dom, indent=2)
+
+    # Token budgeting: Rank candidates by relevance to goal/milestone to prevent 429 TPM exhaustion on dense pages
+    if len(concise_dom) > 20:
+        goal_tokens = set(re.findall(r'\w+', f"{goal} {milestone.description}".lower()))
+        def _score_candidate(n: Dict[str, Any]) -> float:
+            score = 1.0
+            tag = str(n.get("tag", "")).lower()
+            role = str(n.get("role", "")).lower()
+            lbl = str(n.get("label", "")).lower()
+            nid = str(n.get("id", "")).lower()
+
+            # Prioritize interactive input controls and buttons
+            if tag in ("button", "input", "textarea", "select") or role in ("button", "searchbox", "textbox", "combobox", "tab"):
+                score += 8.0
+            
+            # Boost keyword overlap with goal and milestone
+            tokens = set(re.findall(r'\w+', f"{lbl} {nid}"))
+            overlap = len(goal_tokens.intersection(tokens))
+            score += overlap * 12.0
+            return score
+
+        budgeted_dom = sorted(concise_dom, key=_score_candidate, reverse=True)[:20]
+    else:
+        budgeted_dom = concise_dom
+
+    dom_json = json.dumps(budgeted_dom, separators=(',', ':'))
 
     user_body = f"""PAGE URL: {current_url}
 
 --- BEGIN UNTRUSTED WEBPAGE SUMMARY (BOUNDARY_ID: {summary_nonce}) ---
-{(page_text or "").strip()[:1500] if page_text else "No page summary"}
+{(page_text or "").strip()[:350] if page_text else "No page summary"}
 --- END UNTRUSTED WEBPAGE SUMMARY (BOUNDARY_ID: {summary_nonce}) ---
 
 CONVERSATION HISTORY:
@@ -227,22 +256,74 @@ JSON RESPONSE:"""
     llm_requires_confirmation = False
     llm_confirmation_prompt: Optional[str] = None
 
-    try:
-        raw_llm = await llm_client.call_llm(
-            user_prompt=user_body,
-            system_prompt=NAVIGATOR_SYSTEM_PROMPT,
-            role="navigator",
-        )
-        cleaned = _clean_json_str(raw_llm)
-        parsed = json.loads(cleaned)
-        raw_steps = parsed.get("steps", [])
-        reply = parsed.get("reply") or reply
-        thought = parsed.get("thought", "")
-        raw_pending = parsed.get("pending_step")
-        llm_requires_confirmation = bool(parsed.get("requires_confirmation", False))
-        llm_confirmation_prompt = parsed.get("confirmation_prompt")
-    except Exception as exc:
-        logger.warning("Navigator LLM call or JSON parsing failed: %s. Using universal fallback.", exc)
+    # Jev 3 Fast-Path: evaluate immediate reflexive candidate (<100ms) in live mode
+    fast_path_enabled = os.getenv("ATLAS_SYSTEM1_FASTPATH", "true").lower() in ("true", "1", "yes")
+    use_fast_path = (
+        fast_path_enabled
+        and not llm_client._mock_canned_queue
+        and not user_response
+        and llm_client._get_current_provider() != "mock"
+    )
+    if use_fast_path and budgeted_dom:
+        try:
+            jev = get_jev_client()
+            target_q = milestone.description or goal
+            jev_fast = await jev.choose(
+                state={"url": current_url, "goal": goal, "milestone": milestone.description},
+                options=budgeted_dom,
+                question=f"Which element should be clicked or interacted with for: '{target_q}'?",
+            )
+            if jev_fast and jev_fast.confidence >= 0.90 and jev_fast.selected_id in valid_ids:
+                fast_node = id_to_node.get(jev_fast.selected_id, {})
+                fast_tag = str(fast_node.get("tag", "")).lower()
+                fast_role = str(fast_node.get("role", "")).lower()
+                fast_lbl = fast_node.get("resolved_label") or fast_node.get("inner_text") or jev_fast.selected_id
+                click_act, click_count = _detect_click_action(target_q)
+
+                if click_act in {"double_click", "triple_click"}:
+                    f_act = click_act
+                elif fast_node.get("category") in {"folder", "file"} or fast_role in {"row", "gridcell"}:
+                    f_act = "open"
+                else:
+                    f_act = "click"
+
+                f_val = None
+                if fast_tag in ("input", "textarea") or fast_role in ("textbox", "searchbox"):
+                    m_val = re.search(r'["\']([^"\']+)["\']', target_q)
+                    if m_val:
+                        f_act = "input_text"
+                        f_val = m_val.group(1)
+
+                raw_steps = [{
+                    "action": f_act,
+                    "element_id": jev_fast.selected_id,
+                    "value": f_val,
+                    "click_count": click_count if click_act in {"double_click", "triple_click"} else None,
+                    "description": f"{f_act} on {fast_lbl}",
+                    "delay_ms": 400,
+                }]
+                reply = f"Interacting with {fast_lbl}."
+                thought = f"Jev 3 System 1 reflex selected '{fast_lbl}' (confidence {jev_fast.confidence:.2f}) in {jev_fast.latency_ms:.1f}ms"
+        except Exception as fast_exc:
+            logger.debug("Jev 3 fast path bypass: %s", fast_exc)
+
+    if not raw_steps:
+        try:
+            raw_llm = await llm_client.call_llm(
+                user_prompt=user_body,
+                system_prompt=NAVIGATOR_SYSTEM_PROMPT,
+                role="navigator",
+            )
+            cleaned = _clean_json_str(raw_llm)
+            parsed = json.loads(cleaned)
+            raw_steps = parsed.get("steps", [])
+            reply = parsed.get("reply") or reply
+            thought = parsed.get("thought", "")
+            raw_pending = parsed.get("pending_step")
+            llm_requires_confirmation = bool(parsed.get("requires_confirmation", False))
+            llm_confirmation_prompt = parsed.get("confirmation_prompt")
+        except Exception as exc:
+            logger.warning("Navigator LLM call or JSON parsing failed: %s. Using universal fallback.", exc)
 
     # Strictly enforce zero hallucination on steps
     validated_steps: List[PlanStep] = []
@@ -311,6 +392,20 @@ JSON RESPONSE:"""
     if not validated_steps and not validated_pending:
         target_query = milestone.description or goal
         matched_node, score = find_heuristic_match(target_query, concise_dom)
+        if (not matched_node or score < 0.5) and budgeted_dom:
+            try:
+                jev = get_jev_client()
+                jev_res = await jev.choose(
+                    state={"url": current_url, "goal": goal, "milestone": milestone.description},
+                    options=budgeted_dom,
+                    question=f"Which element should be clicked or interacted with for: '{target_query}'?",
+                )
+                if jev_res and jev_res.confidence >= 0.65 and jev_res.selected_id in valid_ids:
+                    matched_node = id_to_node.get(jev_res.selected_id)
+                    score = jev_res.confidence
+            except Exception as jev_exc:
+                logger.debug("Jev System 1 fallback candidate selection error: %s", jev_exc)
+
         if matched_node and str(matched_node.get("id")) in valid_ids:
             mid = str(matched_node["id"])
             lbl = matched_node.get("label") or mid

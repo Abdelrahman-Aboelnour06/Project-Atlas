@@ -5,12 +5,23 @@ Tier 3.5: Replay scenarios driving /v1/chat/goal_step with mock provider (§13.2
 """
 
 import pytest
+from app.agent import llm_client
 from tests.replay.runner import (
     Scenario,
     Hop,
     HopExpectation,
     replay,
 )
+
+
+@pytest.fixture(autouse=True)
+def setup_mock_llm(monkeypatch):
+    """Enforce deterministic mock provider for replay tests."""
+    monkeypatch.setattr(llm_client, "LLM_PROVIDER", "mock")
+    monkeypatch.setenv("LLM_PROVIDER", "mock")
+    llm_client.clear_mock_llm()
+    yield
+    llm_client.clear_mock_llm()
 
 
 @pytest.mark.asyncio

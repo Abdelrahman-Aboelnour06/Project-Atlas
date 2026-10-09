@@ -33,10 +33,11 @@ yarn-debug.log*
 *.sqlite
 *.db
 
-# Logs
+# Logs and runtime
 *.log
 *.agents
 agents/
+.atlas-run/
 backend/.env.example
 backend/env.example
 

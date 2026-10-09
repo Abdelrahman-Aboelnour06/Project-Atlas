@@ -1,0 +1,114 @@
+[
+  {
+    "name": "DuckDuckGo Search Engine",
+    "url": "https://html.duckduckgo.com/html/?q=web+accessibility",
+    "status": "PASS",
+    "failures": [],
+    "metrics": {
+      "status_code": 200,
+      "html_bytes": 33788,
+      "raw_interactive_elements": 50,
+      "scout_latency_ms": 0.66,
+      "scout_page_kind": "captcha",
+      "scout_blockers": [
+        "captcha"
+      ],
+      "planner_latency_ms": 3570.96,
+      "milestones_count": 2,
+      "jev_latency_ms": 0.16,
+      "jev_selected_id": "ref_web-node-17",
+      "jev_confidence": 0.65,
+      "navigator_latency_ms": 2.21,
+      "planned_steps_count": 1,
+      "total_turn_ms": 5374.81
+    }
+  },
+  {
+    "name": "Wikipedia Article (Web Accessibility)",
+    "url": "https://en.wikipedia.org/wiki/Web_accessibility",
+    "status": "PASS",
+    "failures": [],
+    "metrics": {
+      "status_code": 200,
+      "html_bytes": 461544,
+      "raw_interactive_elements": 979,
+      "scout_latency_ms": 1662.02,
+      "scout_page_kind": "article",
+      "scout_blockers": [],
+      "planner_latency_ms": 1790.77,
+      "milestones_count": 1,
+      "jev_latency_ms": 0.17,
+      "jev_selected_id": "ref_web-node-1",
+      "jev_confidence": 0.65,
+      "navigator_latency_ms": 2269.4,
+      "planned_steps_count": 2,
+      "total_turn_ms": 6522.19
+    }
+  },
+  {
+    "name": "Hacker News Portal",
+    "url": "https://news.ycombinator.com/",
+    "status": "PASS",
+    "failures": [],
+    "metrics": {
+      "status_code": 200,
+      "html_bytes": 34718,
+      "raw_interactive_elements": 231,
+      "scout_latency_ms": 855.1,
+      "scout_page_kind": "other",
+      "scout_blockers": [],
+      "planner_latency_ms": 5543.87,
+      "milestones_count": 1,
+      "jev_latency_ms": 0.31,
+      "jev_selected_id": "ref_web-node-10",
+      "jev_confidence": 0.65,
+      "navigator_latency_ms": 10602.72,
+      "planned_steps_count": 1,
+      "total_turn_ms": 17799.56
+    }
+  },
+  {
+    "name": "W3C Web Accessibility Initiative",
+    "url": "https://www.w3.org/WAI/",
+    "status": "PASS",
+    "failures": [],
+    "metrics": {
+      "status_code": 200,
+      "html_bytes": 41633,
+      "raw_interactive_elements": 81,
+      "scout_latency_ms": 8453.08,
+      "scout_page_kind": "other",
+      "scout_blockers": [],
+      "planner_latency_ms": 7897.74,
+      "milestones_count": 1,
+      "jev_latency_ms": 0.12,
+      "jev_selected_id": "ref_web-node-1",
+      "jev_confidence": 0.65,
+      "navigator_latency_ms": 7127.06,
+      "planned_steps_count": 1,
+      "total_turn_ms": 23708.9
+    }
+  },
+  {
+    "name": "Local University Portal (Atlas Fixture)",
+    "url": "http://127.0.0.1:5500/signup.html",
+    "status": "PASS",
+    "failures": [],
+    "metrics": {
+      "status_code": "fallback",
+      "html_bytes": 172,
+      "raw_interactive_elements": 3,
+      "scout_latency_ms": 6191.09,
+      "scout_page_kind": "other",
+      "scout_blockers": [],
+      "planner_latency_ms": 3723.25,
+      "milestones_count": 1,
+      "jev_latency_ms": 0.04,
+      "jev_selected_id": "ref_web-node-1",
+      "jev_confidence": 0.5,
+      "navigator_latency_ms": 7226.59,
+      "planned_steps_count": 0,
+      "total_turn_ms": 19173.71
+    }
+  }
+]

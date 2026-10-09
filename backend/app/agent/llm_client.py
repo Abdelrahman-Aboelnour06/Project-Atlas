@@ -1,9 +1,12 @@
 import os
+import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import httpx
 import asyncio
 from dotenv import load_dotenv
+
+logger = logging.getLogger("atlas.agent.llm")
 
 # Ensure .env is loaded regardless of working directory
 _env_candidates = [
@@ -306,10 +309,22 @@ def _generate_deterministic_mock_response(
         })
 
     def _mock_navigator() -> str:
-        found_ids = re.findall(r'["\'](atlas-\d+)["\']', full_prompt)
+        found_ids = re.findall(r'["\']id["\']:\s*["\']([^"\']+)["\']', full_prompt)
+        if not found_ids:
+            found_ids = re.findall(r'["\']ref["\']:\s*["\']([^"\']+)["\']', full_prompt)
+        if not found_ids:
+            found_ids = re.findall(r'["\'](atlas-[^"\']+)["\']', full_prompt)
         if not found_ids:
             found_ids = re.findall(r'(atlas-\d+)', full_prompt)
+
         target_id = found_ids[0] if found_ids else "atlas-001"
+        lower_user = user_prompt.lower()
+        for eid in found_ids:
+            eid_clean = eid.lower().replace("atlas-", "").replace("ref_", "").replace("-", " ").replace("_", " ")
+            words = [w for w in eid_clean.split() if len(w) > 2]
+            if any(w in lower_user for w in words):
+                target_id = eid
+                break
 
         lower_user = user_prompt.lower()
         is_consequential = any(w in lower_user for w in ("delete", "purchase", "buy", "order", "remove", "pay", "submit payment"))
@@ -477,6 +492,17 @@ async def call_llm(
     provider = _get_current_provider()
     effective_model = get_model_for_role(role=role, model_override=model)
 
+    if _mock_canned_queue:
+        call_record = {
+            "user_prompt": user_prompt,
+            "system_prompt": system_prompt,
+            "reasoning": reasoning,
+            "role": role,
+            "model": effective_model,
+        }
+        _mock_call_history.append(call_record)
+        return _mock_canned_queue.pop(0)
+
     # BRANCH 0: Deterministic Mock Provider
     if provider == "mock":
         call_record = {
@@ -487,9 +513,6 @@ async def call_llm(
             "model": effective_model,
         }
         _mock_call_history.append(call_record)
-
-        if _mock_canned_queue:
-            return _mock_canned_queue.pop(0)
 
         return _generate_deterministic_mock_response(
             user_prompt=user_prompt,
@@ -586,14 +609,22 @@ async def call_llm(
                     ra = e.response.headers.get("retry-after") or e.response.headers.get("x-ratelimit-reset-requests")
                     if ra:
                         retry_after_val = float(ra)
-                    if retry_after_val <= 2.5 and attempt < max_retries:
-                        retry_wait = retry_after_val + 0.5
+                    if retry_after_val <= 6.0 and attempt < max_retries:
+                        retry_wait = retry_after_val + 0.2
                 except Exception:
                     pass
 
                 if retry_wait is not None:
+                    logger.info("LLM rate limited (429). Retrying after %.2fs backoff (attempt %d/%d)...", retry_wait, attempt + 1, max_retries)
                     await asyncio.sleep(retry_wait)
                     continue
+
+                # Auto-fallback to secondary lighter model on Groq when primary model hits rate limit
+                if provider == "groq" and effective_model != "openai/gpt-oss-20b" and attempt < max_retries:
+                    logger.info("Primary Groq model %s rate limited. Falling back to openai/gpt-oss-20b...", effective_model)
+                    effective_model = "openai/gpt-oss-20b"
+                    continue
+
                 raise LLMRateLimited(
                     f"LLM rate limit (429): {e.response.text}",
                     retry_after=retry_after_val,

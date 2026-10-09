@@ -36,13 +36,34 @@ from app.models.goal import PlanStep, AgenticPlan
 
 def _clean_json_str(raw: str) -> str:
     text = (raw or "").strip()
-    if text.startswith("```"):
-        lines = text.splitlines()
-        start = 1
-        end = len(lines) - 1 if lines and lines[-1].strip() == "```" else len(lines)
-        text = "\n".join(lines[start:end])
+    # Strip <think>...</think> reasoning blocks from modern open LLMs
+    text = re.sub(r"<think>[\s\S]*?</think>", "", text, flags=re.IGNORECASE).strip()
+    if "<think>" in text.lower():
+        text = re.sub(r"<think>[\s\S]*", "", text, flags=re.IGNORECASE).strip()
+    if "```" in text:
+        match_block = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text, flags=re.IGNORECASE)
+        if match_block:
+            text = match_block.group(1).strip()
     match = re.search(r"\{[\s\S]*\}", text)
-    return match.group(0) if match else text.strip()
+    if match:
+        return match.group(0)
+    return text.strip()
+
+
+def _stem(w: str) -> str:
+    """Simple universal English suffix stemmer for robust keyword matching."""
+    w = w.lower()
+    if len(w) > 4 and w.endswith("ies"):
+        return w[:-3] + "y"
+    if len(w) > 3 and w.endswith("es"):
+        return w[:-2]
+    if len(w) > 3 and w.endswith("s"):
+        return w[:-1]
+    if len(w) > 4 and w.endswith("ing"):
+        return w[:-3]
+    if len(w) > 4 and w.endswith("ed"):
+        return w[:-2]
+    return w
 
 
 def _get_valid_element_ids(dom_map: List[Dict[str, Any]]) -> set:
@@ -270,19 +291,24 @@ def find_heuristic_match(user_message: str, concise_dom: List[Dict[str, Any]]) -
         tuple[Optional[Dict[str, Any]], float]: Best matching node and match score (0.0 to 1.0).
     """
     clean_user = _normalize_text(user_message)
-    # Universal intent, conversational, prepositions, & generic UI structural stop words to strip
+    # Universal intent, conversational, prepositions, platform containers, & generic UI structural stop words
     stop_words = {
         "want", "to", "check", "show", "open", "click", "my", "the", "go",
         "find", "navigate", "please", "see", "view", "take", "me", "look", "at",
         "can", "you", "i", "need", "would", "like", "select", "press",
         "double", "triple", "twice", "thrice", "times",
-        # Prepositions, conjunctions, and conversational particles
+        "bring", "lead", "jump", "switch", "head",
+        # Prepositions, conjunctions, pronouns, and conversational particles
         "on", "in", "into", "onto", "at", "by", "for", "with", "about", "to",
         "from", "up", "down", "over", "under", "off", "of", "and", "or",
+        "our", "your", "his", "her", "their", "all", "some", "any", "each",
         "just", "hey", "atlas", "let", "us", "now", "there", "here", "this", "that",
-        # Generic UI component and hierarchy nouns
-        "bar", "box", "button", "tab", "link", "field", "input", "item", "icon",
-        "section", "page", "row", "folder", "file", "document", "menu",
+        # Generic UI component, hierarchy, platform & container nouns
+        "bar", "box", "button", "tab", "link", "field", "input", "item", "items", "icon",
+        "section", "page", "row", "folder", "folders", "file", "files", "document", "documents",
+        "doc", "docs", "menu", "menus", "list", "lists", "panel", "pane", "screen",
+        "drive", "drives", "cloud", "storage", "disk", "view", "views", "area", "window",
+        "site", "website", "webpage", "app", "application", "option", "options",
         # Arabic action verbs, conversational tokens, & prepositions (MSA & Egyptian)
         "افتح", "اضغط", "دوس", "انقر", "اختار", "حدد", "شوف", "وريني", "هات",
         "وديني", "روح", "خش", "ادخل", "اعمل", "عايز", "عاوز", "حابب", "ياريت",
@@ -321,17 +347,37 @@ def find_heuristic_match(user_message: str, concise_dom: List[Dict[str, Any]]) -
         if clean_user == clean_lbl or (clean_keyword and clean_keyword == clean_lbl):
             return node, 1.0
 
-        # 2. Substring match
+        # 2. Check if any distinctive keyword in user message matches the element label exactly or via stem
+        stemmed_lbl = _stem(clean_lbl)
+        matched_distinctive = False
+        for w in words:
+            stemmed_w = _stem(w)
+            if (len(w) >= 3 and (w == clean_lbl or stemmed_w == stemmed_lbl or stemmed_w == clean_lbl)) or \
+               (len(clean_lbl) >= 3 and clean_lbl in words):
+                candidates.append((node, 0.90))
+                matched_distinctive = True
+                break
+        if matched_distinctive:
+            continue
+
+        # 3. Substring match
         if clean_keyword and (clean_keyword in clean_lbl or clean_lbl in clean_keyword):
             candidates.append((node, 0.85))
             continue
 
-        # 3. Token-set overlap
-        token_matches = sum(1 for nw in norm_words if nw in clean_lbl)
-        if norm_words and token_matches == len(norm_words):
-            candidates.append((node, 0.75))
+        # 4. Token-set overlap with stemming (handling English & Arabic normalized tokens)
+        token_matches = 0
+        target_tokens = norm_words if norm_words else words
+        for tok in target_tokens:
+            stemmed_tok = _stem(tok)
+            if tok in clean_lbl or (len(stemmed_tok) >= 3 and stemmed_tok in clean_lbl):
+                token_matches += 1
+
+        if target_tokens and token_matches == len(target_tokens):
+            candidates.append((node, 0.80))
         elif token_matches > 0:
-            candidates.append((node, 0.45 * (token_matches / len(norm_words))))
+            candidates.append((node, 0.50 * (token_matches / len(target_tokens))))
+
 
     if candidates:
         candidates.sort(key=lambda x: x[1], reverse=True)
@@ -542,8 +588,28 @@ async def plan_agentic_action(
             for h in recent
         )
 
-    # Compact DOM: top 30 elements, labels at most 40 chars, no indent JSON
-    prompt_dom = concise_dom[:30]
+    # Smartly rank DOM elements so primary content and navigation are always included
+    def _rank_element(node: Dict[str, Any]) -> int:
+        cat = (node.get("category") or "").lower()
+        role = (node.get("role") or "").lower()
+        tag = (node.get("tag") or "").lower()
+        lbl = (node.get("label") or "").lower()
+        # High priority 1: Content files, folders, rows, items
+        if cat in ("folder", "file") or role in ("row", "gridcell", "treeitem") or any(ext in lbl for ext in (".pdf", ".pptx", ".docx", ".xlsx", ".txt")):
+            return 1
+        # High priority 2: Primary navigation (tabs, links, main sections)
+        if role in ("tab", "link") or tag == "a" or any(n in lbl for n in ("starred", "trash", "recent", "shared", "drive", "home")):
+            return 2
+        # High priority 3: Inputs and search
+        if tag in ("input", "textarea") or role in ("searchbox", "combobox", "textbox"):
+            return 3
+        # Priority 4: Action buttons
+        if tag == "button" or role == "button":
+            return 4
+        return 5
+
+    ranked_dom = sorted(concise_dom, key=_rank_element)
+    prompt_dom = ranked_dom[:65]
     dom_json = json.dumps(prompt_dom, separators=(",", ":"))
 
     import secrets
@@ -577,7 +643,7 @@ JSON RESPONSE:"""
 
     try:
         try:
-            raw_llm = await llm_client.call_llm(prompt, max_tokens=512)
+            raw_llm = await llm_client.call_llm(prompt, max_tokens=2048)
         except TypeError:
             raw_llm = await llm_client.call_llm(prompt)
         cleaned = _clean_json_str(raw_llm)
@@ -651,8 +717,16 @@ JSON RESPONSE:"""
                 steps=[]
             )
 
-        # 1. Conversational question answering fallback (e.g. "what is this page?")
-        if any(q in lower_msg for q in ("what is this", "what page", "summarize", "about this", "where am i")):
+        # 1. Dynamic conversational page QA (e.g. "what do you see", "what is on this page", "describe", "summarize")
+        is_page_inquiry = any(q in lower_msg for q in (
+            "what do you see", "what you see", "what's visible", "what is visible",
+            "what do you notice", "what's here", "what is here", "what is on this",
+            "what's on this", "what is this", "what page", "summarize", "overview",
+            "describe", "tell me about", "what can i click", "what are my files",
+            "what files", "what folders", "show me what", "read the page", "where am i"
+        ))
+        if is_page_inquiry:
+            # Dynamically inspect actual DOM elements to construct a 100% accurate, rich description
             domain = ""
             if url:
                 try:
@@ -660,15 +734,54 @@ JSON RESPONSE:"""
                     domain = urllib.parse.urlparse(url).netloc.replace("www.", "")
                 except Exception:
                     pass
-            if "youtube.com" in (url or "") or "youtu.be" in (url or ""):
-                reply = "This is YouTube. You can search for videos, browse channels, and watch tutorials or entertainment."
-            elif domain:
-                reply = f"You are currently on {domain}. " + (f"Page highlights: {page_text[:180].strip()}..." if page_text else "You can search, browse content, or ask me to click any button.")
+
+            nav_items = [n["label"] for n in concise_dom if (n.get("role") in ("link", "tab", "treeitem") or n.get("tag") == "a") and n.get("label")]
+            folders = [n["label"] for n in concise_dom if (n.get("category") == "folder" or "folder" in (n.get("label") or "").lower()) and n.get("label")]
+            files = [n["label"] for n in concise_dom if (n.get("category") == "file" or any(ext in (n.get("label") or "").lower() for ext in (".pdf", ".pptx", ".docx", ".xlsx", ".txt", ".png", ".jpg", ".csv"))) and n.get("label")]
+            action_btns = [n["label"] for n in concise_dom if (n.get("tag") == "button" or n.get("role") == "button") and n.get("label") and len(n.get("label")) <= 25]
+            inputs = [n["label"] for n in concise_dom if n.get("tag") in ("input", "textarea") or n.get("role") in ("searchbox", "combobox", "textbox")]
+
+            def _dedup(items):
+                seen = set()
+                out = []
+                for it in items:
+                    if it and it.lower() not in seen:
+                        seen.add(it.lower())
+                        out.append(it)
+                return out
+
+            nav_items = _dedup(nav_items)
+            folders = _dedup(folders)
+            files = _dedup(files)
+            action_btns = _dedup(action_btns)
+
+            desc_parts = []
+            if domain:
+                desc_parts.append(f"I see the {domain} page.")
             else:
-                reply = "You are viewing a webpage. You can search, browse content, or ask me to interact with elements on this page."
+                desc_parts.append("I see the current webpage.")
+
+            if nav_items:
+                desc_parts.append(f"In navigation, you have {', '.join(nav_items[:7])}.")
+            if folders:
+                desc_parts.append(f"Folders include '{', '.join(folders[:4])}'.")
+            if files:
+                desc_parts.append(f"Files visible include {', '.join(repr(f) for f in files[:5])}.")
+            if inputs:
+                desc_parts.append(f"There is a search box ({inputs[0]}).")
+            if action_btns:
+                desc_parts.append(f"Actions you can take include '{', '.join(action_btns[:3])}'.")
+
+            if len(desc_parts) > 1:
+                reply = " ".join(desc_parts)
+            elif page_text:
+                reply = f"I see this webpage: {page_text[:220].strip()}..."
+            else:
+                reply = "I'm viewing this page. Tell me what you'd like to click, search for, or open!"
+
             return AgenticPlan(
                 type="conversation",
-                thought="Answered page question via contextual fallback.",
+                thought="Answered page inquiry using dynamic DOM inspection.",
                 reply=reply,
                 steps=[]
             )
@@ -738,9 +851,25 @@ JSON RESPONSE:"""
                 steps=[]
             )
 
+        # Context-aware fallback: instead of static canned greeting, explain what was searched
+        # and suggest real visible items on this specific page
+        sample_labels = [n["label"] for n in concise_dom if n.get("label") and len(n["label"]) <= 30][:4]
+        if sample_labels:
+            reply_msg = (
+                f"I reviewed the page, but couldn't find an element matching '{user_message}'. "
+                f"On this screen, you can click items like '{', '.join(sample_labels)}', "
+                f"or tell me what to search for."
+            )
+        else:
+            reply_msg = (
+                f"I couldn't locate '{user_message}' on this page. "
+                "You can tell me to click any visible button, scroll, or fill in a search box."
+            )
+
         return AgenticPlan(
             type="conversation",
-            reply="I'm here to help you navigate this webpage. You can ask me questions about the page, or tell me what to click, search, or fill in.",
+            thought="Contextual guidance after no match found.",
+            reply=reply_msg,
             steps=[]
         )
 

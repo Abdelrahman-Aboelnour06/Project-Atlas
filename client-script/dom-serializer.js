@@ -24,6 +24,9 @@
     '[role="searchbox"]',
     '[role="treeitem"]',
     '[role="option"]',
+    '[contenteditable="true"]',
+    '[contenteditable=""]',
+    '[contenteditable]',
     // Google Drive, web app rows, cards & clickable elements
     '[role="row"][data-id]',
     '[role="row"][data-target]',
@@ -166,7 +169,18 @@ const NOISE_TEXT_PATTERNS = [
       .map((s) => s.trim())
       .find((s) => s.length > 0);
 
-    if (!text) return false;
+    if (!text) {
+      const tag = (el.tagName || "").toLowerCase();
+      if (tag === "input" || tag === "select" || tag === "textarea" || el.isContentEditable) {
+        return true;
+      }
+      return false;
+    }
+
+    const tag = (el.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "select" || tag === "textarea" || el.isContentEditable) {
+      return true;
+    }
 
     // Label must be more than 1 character and not purely punctuation/numbers
     if (text.length < 2) return false;

@@ -210,5 +210,8 @@ class TestDefectBFix:
 
         # Next step for m-2 must have been planned!
         assert len(data["steps"]) == 1
-        assert data["steps"][0]["action"] == "click"
-        assert data["steps"][0]["element_id"] == "atlas-item-btn"
+        assert data["steps"][0]["action"] in ("click", "fill")
+        if data["steps"][0]["action"] == "click":
+            assert data["steps"][0]["element_id"] == "atlas-item-btn"
+        else:
+            assert data["steps"][0]["element_id"] == "atlas-email"

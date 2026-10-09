@@ -43,15 +43,32 @@ function Log  ($msg) { Write-Host "[atlas] $msg" -ForegroundColor Cyan }
 function Warn ($msg) { Write-Host "[atlas] $msg" -ForegroundColor Yellow }
 function Err  ($msg) { Write-Host "[atlas] $msg" -ForegroundColor Red }
 
+function Test-PortOpen ($targetHost, $port) {
+    try {
+        $client = New-Object System.Net.Sockets.TcpClient
+        $iar = $client.BeginConnect($targetHost, $port, $null, $null)
+        $wait = $iar.AsyncWaitHandle.WaitOne(600, $false)
+        if ($wait) {
+            $client.EndConnect($iar)
+            $client.Close()
+            return $true
+        }
+        $client.Close()
+        return $false
+    } catch {
+        return $false
+    }
+}
+
 # -- stop mode -----------------------------------------------------------------
 if ($Action -eq "stop") {
     foreach ($name in @("backend", "demo-site")) {
         $pidFile = Join-Path $StateDir "$name.pid"
         if (Test-Path $pidFile) {
-            $pId = Get-Content $pidFile
-            Stop-Process -Id $pId -Force -ErrorAction SilentlyContinue
+            $processId = Get-Content $pidFile
+            Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
             Remove-Item $pidFile -Force
-            Log "Stopped $name (PID $pId)"
+            Log "Stopped $name (PID $processId)"
         }
         $jobFile = Join-Path $StateDir "$name.jobid"
         if (Test-Path $jobFile) {
@@ -73,12 +90,21 @@ if ($Action -eq "stop") {
             }
         }
     }
+    $dockerActive = $false
     if (Get-Command docker -ErrorAction SilentlyContinue) {
-        $running = docker ps --format "{{.Names}}" | Select-String -Pattern "^$PgContainer$"
-        if ($running) {
-            docker stop $PgContainer | Out-Null
-            Log "Stopped Postgres container ($PgContainer)"
-        }
+        try {
+            $null = docker info 2>&1
+            if ($LASTEXITCODE -eq 0) { $dockerActive = $true }
+        } catch { $dockerActive = $false }
+    }
+    if ($dockerActive) {
+        try {
+            $running = docker ps --format "{{.Names}}" 2>&1 | Select-String -Pattern "^$PgContainer$"
+            if ($running) {
+                docker stop $PgContainer 2>&1 | Out-Null
+                Log "Stopped Postgres container ($PgContainer)"
+            }
+        } catch {}
     }
     Log "Everything stopped."
     exit 0
@@ -107,13 +133,16 @@ if (Get-Command docker -ErrorAction SilentlyContinue) {
     }
 }
 
-$pgListening = Test-NetConnection -ComputerName localhost -Port 5432 -WarningAction SilentlyContinue -InformationLevel Quiet
+$pgListening = (Test-PortOpen "127.0.0.1" 5432) -or (Test-PortOpen "localhost" 5432)
 if (-not $hasDocker -and -not $pgListening) {
     if (Get-Command wsl -ErrorAction SilentlyContinue) {
         Log "Starting PostgreSQL inside WSL Ubuntu..."
         wsl -d Ubuntu -u root /usr/sbin/service postgresql start 2>&1 | Out-Null
-        Start-Sleep -Seconds 2
-        $pgListening = Test-NetConnection -ComputerName localhost -Port 5432 -WarningAction SilentlyContinue -InformationLevel Quiet
+        for ($i = 0; $i -lt 5; $i++) {
+            Start-Sleep -Seconds 1
+            $pgListening = (Test-PortOpen "127.0.0.1" 5432) -or (Test-PortOpen "localhost" 5432)
+            if ($pgListening) { break }
+        }
     }
 }
 
@@ -165,9 +194,13 @@ $VenvPython = Join-Path $VenvDir "Scripts\python.exe"
 $VenvPip    = Join-Path $VenvDir "Scripts\pip.exe"
 $VenvUvicorn = Join-Path $VenvDir "Scripts\uvicorn.exe"
 
-Log "Installing backend dependencies (this can take a minute)..."
-& $VenvPython -m pip install -q --upgrade pip
-& $VenvPython -m pip install -q -r requirements.txt
+if (-not (Test-Path $VenvUvicorn)) {
+    Log "Installing backend dependencies (this can take a minute)..."
+    & $VenvPython -m pip install -q --upgrade pip
+    & $VenvPython -m pip install -q -r requirements.txt
+} else {
+    Log "Backend venv dependencies ready."
+}
 
 $EnvFile = Join-Path $BackendDir ".env"
 if (-not (Test-Path $EnvFile)) {
@@ -226,7 +259,7 @@ Log "Seeding demo tenant + API key..."
 & $VenvPython -m app.migrations.seed
 
 # -- 4. Start backend server ---------------------------------------------------
-$backendListening = Test-NetConnection -ComputerName localhost -Port $BackendPort -WarningAction SilentlyContinue -InformationLevel Quiet
+$backendListening = Test-PortOpen "127.0.0.1" $BackendPort
 if ($backendListening) {
     try {
         $check = Invoke-WebRequest -Uri "http://localhost:$BackendPort/health" -UseBasicParsing -TimeoutSec 3
@@ -270,13 +303,19 @@ Log "Backend is healthy."
 Pop-Location
 
 # -- 5. Start demo-site server -------------------------------------------------
-$demoListening = Test-NetConnection -ComputerName localhost -Port $DemoPort -WarningAction SilentlyContinue -InformationLevel Quiet
+$demoListening = Test-PortOpen "127.0.0.1" $DemoPort
 if ($demoListening) {
     Warn "Something is already listening on port $DemoPort - assuming demo-site is up."
 } else {
     Log "Starting demo-site on http://localhost:$DemoPort ..."
-    $proc = Start-Process -FilePath "python.exe" -ArgumentList "-m http.server $DemoPort" -WorkingDirectory $DemoDir -WindowStyle Hidden -PassThru
+    $serverScript = Join-Path $DemoDir "server.py"
+    $proc = Start-Process -FilePath $VenvPython -ArgumentList "`"$serverScript`" $DemoPort" -WorkingDirectory $DemoDir -WindowStyle Hidden -PassThru
     $proc.Id | Out-File (Join-Path $StateDir "demo-site.pid")
+    for ($i = 0; $i -lt 10; $i++) {
+        if (Test-PortOpen "127.0.0.1" $DemoPort) { break }
+        Start-Sleep -Milliseconds 500
+    }
+    Log "Demo site is ready on port $DemoPort."
 }
 
 # -- done - print manual steps -------------------------------------------------
