@@ -613,6 +613,13 @@ async def call_llm(
                     logger.info("LLM rate limited (429). Retrying after %.2fs backoff (attempt %d/%d)...", retry_wait, attempt + 1, max_retries)
                     await asyncio.sleep(retry_wait)
                     continue
+
+                # Auto-fallback to secondary lighter model on Groq when primary model hits rate limit
+                if provider == "groq" and effective_model != "openai/gpt-oss-20b" and attempt < max_retries:
+                    logger.info("Primary Groq model %s rate limited. Falling back to openai/gpt-oss-20b...", effective_model)
+                    effective_model = "openai/gpt-oss-20b"
+                    continue
+
                 raise LLMRateLimited(
                     f"LLM rate limit (429): {e.response.text}",
                     retry_after=retry_after_val,
