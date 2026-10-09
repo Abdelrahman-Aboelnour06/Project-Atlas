@@ -14,13 +14,21 @@ Supports:
 import json
 import logging
 import re
+import unicodedata
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 from app.agent import llm_client
+from app.agent.intent_synonyms import canonicalize_intent, match_canonical_intent
 from app.agent.sanitize import strip_pii_from_dom
 
 logger = logging.getLogger(__name__)
+
+LANGUAGE_MIRRORING_DIRECTIVE = (
+    "Reply in the same language the user is using. If language is an Arabic locale (e.g. 'ar-EG'), "
+    "reply in Egyptian colloquial Arabic — not Modern Standard Arabic, and not a literal translation. "
+    "If unset, infer from script. If mixed, mirror the mix."
+)
 
 VALID_ACTIONS = {"click", "open", "double_click", "triple_click", "fill", "scroll", "focus"}
 from app.models.goal import PlanStep, AgenticPlan
@@ -46,9 +54,41 @@ def _get_valid_element_ids(dom_map: List[Dict[str, Any]]) -> set:
     return ids
 
 
+# Arabic character mapping tables for Unicode normalization and folding (§Track N1)
+_ARABIC_DIGITS_TRANS = str.maketrans(
+    "٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹",
+    "01234567890123456789"
+)
+_ARABIC_FOLD_TRANS = str.maketrans({
+    "أ": "ا",
+    "إ": "ا",
+    "آ": "ا",
+    "ٱ": "ا",
+    "ى": "ي",
+    "ة": "ه",
+    "ؤ": "و",
+    "ئ": "ي",
+})
+
+
 def _normalize_text(s: str) -> str:
-    """Universal alphanumeric normalization (lowercased, punctuation removed)."""
-    return re.sub(r"[^a-z0-9]", "", s.lower())
+    """
+    Universal alphanumeric and Arabic normalization (§Track N1):
+    - Unicode NFKC normalization
+    - Arabic-Indic & Persian digit conversion (٠-٩ / ۰-۹ -> 0-9)
+    - Stripping tashkeel (diacritics) and tatweel (kashida) [\u064B-\u065F\u0670\u0640]
+    - Arabic letter folding (أ/إ/آ/ٱ -> ا, ى -> ي, ة -> ه, ؤ -> و, ئ -> ي)
+    - Lowercase Latin characters
+    - Preserves standard alphanumeric Latin and Arabic base letters
+    """
+    if not s or not isinstance(s, str):
+        return ""
+    norm = unicodedata.normalize("NFKC", s)
+    norm = norm.translate(_ARABIC_DIGITS_TRANS)
+    norm = re.sub(r"[\u064B-\u065F\u0670\u0640]", "", norm)
+    norm = norm.translate(_ARABIC_FOLD_TRANS)
+    norm = norm.lower()
+    return re.sub(r"[^a-z0-9\u0621-\u064A]", "", norm)
 
 
 def _detect_click_action(user_message: str) -> tuple[str, Optional[int]]:
@@ -220,7 +260,7 @@ def find_heuristic_match(user_message: str, concise_dom: List[Dict[str, Any]]) -
     """
     Universal semantic heuristic matcher.
     Matches user intent against interactive DOM element labels on any website
-    without domain-specific hardcoding.
+    without domain-specific hardcoding. Supports English and Arabic (MSA & Egyptian).
 
     Args:
         user_message: Raw user command or query.
@@ -242,10 +282,31 @@ def find_heuristic_match(user_message: str, concise_dom: List[Dict[str, Any]]) -
         "just", "hey", "atlas", "let", "us", "now", "there", "here", "this", "that",
         # Generic UI component and hierarchy nouns
         "bar", "box", "button", "tab", "link", "field", "input", "item", "icon",
-        "section", "page", "row", "folder", "file", "document", "menu"
+        "section", "page", "row", "folder", "file", "document", "menu",
+        # Arabic action verbs, conversational tokens, & prepositions (MSA & Egyptian)
+        "افتح", "اضغط", "دوس", "انقر", "اختار", "حدد", "شوف", "وريني", "هات",
+        "وديني", "روح", "خش", "ادخل", "اعمل", "عايز", "عاوز", "حابب", "ياريت",
+        "ارجوك", "أرجوك", "دور", "ابحث",
+        "في", "على", "علي", "من", "الى", "الي", "إلى", "عن", "مع", "حتى",
+        "ده", "دي", "دا", "دول", "هنا", "هناك", "لو", "سمحت", "فضلك",
+        "يا", "اطلس", "أطلس", "بتاع", "بتاعت", "بتاعة",
+        # Arabic UI component and structural nouns
+        "زر", "زرار", "زرائر", "ازرار", "أزرار", "قائمة", "قايمه", "شريط",
+        "خانة", "خانه", "حقل", "مربع", "ايقونة", "ايقونه", "رمز", "لينك", "رابط"
     }
-    words = [w.lower() for w in re.findall(r"[a-zA-Z0-9]+", user_message) if w.lower() not in stop_words]
-    clean_keyword = "".join(words)
+    normalized_stop_words = stop_words | {_normalize_text(w) for w in stop_words if _normalize_text(w)}
+
+    raw_tokens = re.findall(r"[a-zA-Z0-9]+|[\u0600-\u06FF]+", user_message)
+    words = []
+    norm_words = []
+    for tok in raw_tokens:
+        tok_lower = tok.lower()
+        norm_tok = _normalize_text(tok)
+        if tok_lower not in normalized_stop_words and norm_tok not in normalized_stop_words:
+            words.append(tok_lower)
+            if norm_tok:
+                norm_words.append(norm_tok)
+    clean_keyword = "".join(norm_words)
 
     candidates = []
     for node in concise_dom:
@@ -266,11 +327,11 @@ def find_heuristic_match(user_message: str, concise_dom: List[Dict[str, Any]]) -
             continue
 
         # 3. Token-set overlap
-        token_matches = sum(1 for w in words if w in clean_lbl)
-        if words and token_matches == len(words):
+        token_matches = sum(1 for nw in norm_words if nw in clean_lbl)
+        if norm_words and token_matches == len(norm_words):
             candidates.append((node, 0.75))
         elif token_matches > 0:
-            candidates.append((node, 0.45 * (token_matches / len(words))))
+            candidates.append((node, 0.45 * (token_matches / len(norm_words))))
 
     if candidates:
         candidates.sort(key=lambda x: x[1], reverse=True)
@@ -326,6 +387,9 @@ YOUR CAPABILITIES ON ANY WEBSITE:
    - If the user says "no", "cancel", "stop", "never mind":
      - Return `type: "conversation"` confirming the action was cancelled with no changes made.
 
+6. Language Mirroring:
+   - Reply in the same language the user is using. If `language` is an Arabic locale (e.g. 'ar-EG'), reply in Egyptian colloquial Arabic — not Modern Standard Arabic, and not a literal translation. If unset, infer from script. If mixed, mirror the mix.
+
 CRITICAL SECURITY RULE:
 Only use element IDs that actually exist in the provided DOM MAP. Never invent or hallucinate element IDs.
 
@@ -356,6 +420,49 @@ Return ONLY valid raw JSON with this exact schema:
   "confirmation_success_message": "message after confirmed execution"
 }
 """
+
+
+def _build_canonical_plan(
+    intent_key: str,
+    matched_node: Dict[str, Any],
+    confidence: float,
+    user_message: str,
+) -> AgenticPlan:
+    """
+    Builds a deterministic AgenticPlan for a canonically matched intent and DOM element (§Track N2a-wire).
+    """
+    lbl = matched_node.get("label") or matched_node.get("resolved_label") or "the selected item"
+    click_act, click_count = _detect_click_action(user_message)
+    if click_act in {"double_click", "triple_click"}:
+        action = click_act
+    elif matched_node.get("category") in {"folder", "file"} or matched_node.get("role") in {"row", "gridcell"}:
+        action = "open"
+    else:
+        action = "click"
+
+    if action in {"open", "double_click"}:
+        action_desc = f"Double click '{lbl}'"
+    elif action == "triple_click":
+        action_desc = f"Triple click '{lbl}'"
+    elif click_count and click_count > 1:
+        action_desc = f"Click '{lbl}' {click_count} times"
+    else:
+        action_desc = f"Click '{lbl}'"
+
+    return AgenticPlan(
+        type="plan",
+        thought=f"Canonical intent '{intent_key}' matched element '{lbl}' (id={matched_node.get('id')}, confidence={confidence:.2f})",
+        reply=f"I found '{lbl}' on the page. {action_desc} for you now!",
+        steps=[PlanStep(
+            action=action,
+            element_id=str(matched_node["id"]),
+            click_count=click_count,
+            description=action_desc,
+            delay_ms=600,
+        )],
+        requires_confirmation=False,
+        confirmation_success_message=f"Done! Completed {action_desc}."
+    )
 
 
 async def plan_agentic_action(
@@ -405,6 +512,27 @@ async def plan_agentic_action(
                 "category": category,
                 "role": node.get("role"),
             })
+
+    # 0. Fast-path: Search typing & Canonical intent resolution (§Track N2a-wire)
+    # If the user command matches a search query to type or a high-frequency canonical intent,
+    # resolve it directly with high confidence without needing LLM fallback.
+    search_match = _detect_search_or_fill_action(user_message, concise_dom, valid_ids)
+    if search_match and search_match[1]:  # Explicit search query text to type
+        search_steps, query = search_match
+        return AgenticPlan(
+            type="plan",
+            thought=f"Universal heuristic matched search intent for '{query}'",
+            reply=f"Typing '{query}' into search for you now!",
+            steps=search_steps,
+            requires_confirmation=False,
+            confirmation_success_message=f"Searched for '{query}'."
+        )
+
+    canonical_intent = canonicalize_intent(user_message)
+    if canonical_intent:
+        matched_node, conf = match_canonical_intent(canonical_intent, concise_dom)
+        if matched_node and str(matched_node.get("id")) in valid_ids:
+            return _build_canonical_plan(canonical_intent, matched_node, conf, user_message)
 
     history_str = ""
     if history:
@@ -559,7 +687,14 @@ JSON RESPONSE:"""
                 confirmation_success_message=f"Searched for '{query}'." if query else "Focused search bar."
             )
 
-        # 3. Universal heuristic intent matching fallback across all websites (clicks, double clicks, triple clicks)
+        # 3. Universal canonical intent matching fallback (§Track N2a-wire)
+        canonical_intent = canonicalize_intent(user_message)
+        if canonical_intent:
+            matched_node, conf = match_canonical_intent(canonical_intent, concise_dom)
+            if matched_node and str(matched_node.get("id")) in valid_ids:
+                return _build_canonical_plan(canonical_intent, matched_node, conf, user_message)
+
+        # 4. Universal heuristic intent matching fallback across all websites (clicks, double clicks, triple clicks)
         matched_node, score = find_heuristic_match(user_message, concise_dom)
         if matched_node and str(matched_node.get("id")) in valid_ids:
             lbl = matched_node.get("label") or "the selected item"
@@ -608,3 +743,8 @@ JSON RESPONSE:"""
             reply="I'm here to help you navigate this webpage. You can ask me questions about the page, or tell me what to click, search, or fill in.",
             steps=[]
         )
+
+
+# Module-level aliases
+plan = plan_agentic_action
+

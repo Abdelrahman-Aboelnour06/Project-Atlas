@@ -9,7 +9,8 @@
     "scripting",
     "webNavigation",
     "downloads",
-    "tabs"
+    "tabs",
+    "declarativeNetRequest"
   ],
   "host_permissions": [
     "http://localhost:8000/*",

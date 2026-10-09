@@ -31,6 +31,12 @@ def _clean_json_str(raw: str) -> str:
     return match.group(0) if match else text.strip()
 
 
+LANGUAGE_MIRRORING_DIRECTIVE = (
+    "Reply in the same language the user is using. If language is an Arabic locale (e.g. 'ar-EG'), "
+    "reply in Egyptian colloquial Arabic — not Modern Standard Arabic, and not a literal translation. "
+    "If unset, infer from script. If mixed, mirror the mix."
+)
+
 PLANNER_SYSTEM_PROMPT = """You are Atlas Planner, an intelligent AI accessibility planner for web navigation and task completion.
 Your job is to decompose the user's high-level goal into an ordered sequence of discrete Milestones.
 
@@ -41,6 +47,7 @@ RULES:
 4. Mark the ultimate completion milestone with `is_final: true`. Earlier milestones must have `is_final: false`.
 5. NEVER invent element IDs or site-specific selectors. Milestones are semantic checkpoints (e.g. "Sign up for an account", "Navigate to pricing table", "Download schedule").
 6. If the goal is a single action, emit exactly ONE milestone marked `is_final: true`.
+7. Language mirroring: Reply in the same language the user is using. If language is an Arabic locale (e.g. 'ar-EG'), reply in Egyptian colloquial Arabic — not Modern Standard Arabic, and not a literal translation. If unset, infer from script. If mixed, mirror the mix.
 
 RESPONSE JSON SCHEMA:
 {
@@ -63,6 +70,8 @@ async def plan_goal(
     goal: str,
     current_url: Optional[str] = None,
     page_text: Optional[str] = None,
+    language: Optional[str] = None,
+    detected_language: Optional[str] = None,
 ) -> List[Milestone]:
     """
     Decomposes a user goal into an ordered list of Milestones.
@@ -81,8 +90,10 @@ async def plan_goal(
 
     summary_nonce = secrets.token_hex(8)
 
+    lang_context = f"\nREQUESTED USER LANGUAGE: {language}" if language else ""
+
     user_body = f"""PAGE CONTEXT:
-URL: {current_url or "Unknown"}
+URL: {current_url or "Unknown"}{lang_context}
 --- BEGIN UNTRUSTED WEBPAGE SUMMARY (BOUNDARY_ID: {summary_nonce}) ---
 {(page_text or "").strip()[:1000] if page_text else "No page summary available"}
 --- END UNTRUSTED WEBPAGE SUMMARY (BOUNDARY_ID: {summary_nonce}) ---
@@ -128,6 +139,21 @@ JSON RESPONSE:"""
             # Ensure at least the last milestone is marked is_final
             if not any(m.is_final for m in milestones):
                 milestones[-1].is_final = True
+
+            # If requested language differs from page detected language, insert synthetic switch milestone
+            if language and detected_language and language.split("-")[0].lower() != detected_language.split("-")[0].lower():
+                switch_milestone = Milestone(
+                    id="m-0",
+                    description=f"Switch the page language to {language}",
+                    is_final=False,
+                    satisfied_by_navigation=False,
+                    branch_id="b-0",
+                    success_criteria=f"Page language updated to {language}",
+                )
+                for idx, m in enumerate(milestones, start=1):
+                    m.id = f"m-{idx}"
+                milestones.insert(0, switch_milestone)
+
             return milestones
 
     except Exception as exc:
@@ -137,7 +163,7 @@ JSON RESPONSE:"""
         )
 
     # Graceful fallback: single milestone wrapping the goal
-    return [
+    fallback_milestones = [
         Milestone(
             id="m-0",
             description=cleaned_goal,
@@ -145,3 +171,14 @@ JSON RESPONSE:"""
             branch_id="b-0",
         )
     ]
+    if language and detected_language and language.split("-")[0].lower() != detected_language.split("-")[0].lower():
+        fallback_milestones[0].id = "m-1"
+        fallback_milestones.insert(0, Milestone(
+            id="m-0",
+            description=f"Switch the page language to {language}",
+            is_final=False,
+            satisfied_by_navigation=False,
+            branch_id="b-0",
+            success_criteria=f"Page language updated to {language}",
+        ))
+    return fallback_milestones

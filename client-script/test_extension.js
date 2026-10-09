@@ -35,6 +35,7 @@ try {
   assert(manifest.permissions.includes('storage'), 'Permissions includes storage');
   assert(manifest.permissions.includes('scripting'), 'Permissions includes scripting');
   assert(manifest.permissions.includes('activeTab'), 'Permissions includes activeTab');
+  assert(manifest.permissions.includes('declarativeNetRequest'), 'Permissions includes declarativeNetRequest');
   assert(Array.isArray(manifest.host_permissions) && manifest.host_permissions.length > 0, 'Host permissions defined');
   assert(manifest.background && manifest.background.service_worker === 'background.js', 'Service worker defined as background.js');
   assert(manifest.options_page === 'options.html', 'Options page is defined');
@@ -158,6 +159,153 @@ assert(executorCode.includes('doTripleClick'), 'executor.js implements doTripleC
 assert(executorCode.includes('doMultiClick'), 'executor.js implements doMultiClick');
 assert(executorCode.includes('triple_click'), 'executor.js supports triple_click in action set and dispatch');
 assert(executorCode.includes('click_count'), 'executor.js parses and honors click_count');
+
+// 8. Track V2 & L1-lite Localization, DNR & Language Switcher Quality Gates
+console.log('\n[Unit: Track V2 & L1-lite Dual-Language & DNR Quality Gates]');
+
+const ttsCode = fs.readFileSync(path.join(__dirname, 'tts.js'), 'utf8');
+assert(ttsCode.includes('0600') && ttsCode.includes('06FF'), 'tts.js detects Arabic Unicode block [\\u0600-\\u06FF]');
+assert(ttsCode.includes('ar-EG'), 'tts.js targets ar-EG locale for Arabic');
+assert(ttsCode.includes('getVoices'), 'tts.js queries speechSynthesis.getVoices() for installed voices');
+assert(ttsCode.includes('console.warn'), 'tts.js logs warning when Arabic voice is missing without throwing');
+assert(ttsCode.includes('utterance.voice = matchedVoice'), 'tts.js attaches matched voice to utterance');
+assert(ttsCode.includes('utterance.lang = targetLang'), 'tts.js sets utterance.lang to target language');
+
+// Behavioral execution test for tts.detectLanguage and cleanSpeechText
+const ttsModule = require('./tts.js');
+assert(typeof ttsModule.detectLanguage === 'function', 'tts.js exports detectLanguage helper');
+assert(ttsModule.detectLanguage('مرحبا بك') === 'ar-EG', 'tts.detectLanguage correctly identifies Arabic text');
+assert(ttsModule.detectLanguage('Hello, welcome to Atlas') === 'en-US', 'tts.detectLanguage correctly identifies English text');
+assert(ttsModule.detectLanguage('ابحث عن منتج') === 'ar-EG', 'tts.detectLanguage correctly identifies Egyptian colloquial Arabic');
+assert(ttsModule.cleanSpeechText('https://example.com مرحبا #bold *italic*') === 'مرحبا bold italic', 'cleanSpeechText cleans markdown/urls while preserving Arabic');
+
+// Background DNR rules checks
+assert(backgroundCode.includes('declarativeNetRequest'), 'background.js utilizes declarativeNetRequest');
+assert(backgroundCode.includes('updateSessionRules'), 'background.js calls updateSessionRules');
+assert(backgroundCode.includes('Accept-Language'), 'background.js configures Accept-Language header');
+assert(backgroundCode.includes('applyDnrLanguageRule'), 'background.js defines applyDnrLanguageRule');
+assert(backgroundCode.includes('clearDnrLanguageRule'), 'background.js defines clearDnrLanguageRule');
+assert(backgroundCode.includes('onRemoved'), 'background.js cleans up rules on tab removal');
+
+// Content.js Universal Language Switcher checks
+assert(contentCode.includes('AtlasLanguageSwitcher'), 'content.js defines AtlasLanguageSwitcher');
+assert(contentCode.includes('atlas_lang_pref:'), 'content.js stores per-origin preference in atlas_lang_pref:<origin>');
+assert(contentCode.includes('detectAndSwitch'), 'AtlasLanguageSwitcher defines detectAndSwitch');
+assert(contentCode.includes('scan'), 'AtlasLanguageSwitcher defines scan');
+assert(contentCode.includes('hreflang'), 'content.js pre-scans hreflang attributes');
+assert(contentCode.includes('العربية') || contentCode.includes('عربي'), 'content.js matches Arabic text labels');
+
+// Universal Rule verification: zero hardcoded domain checks in newly modified files
+const forbiddenDomains = ['google.com', 'amazon.com', 'wikipedia.org', 'github.com', 'drive.google.com'];
+for (const domain of forbiddenDomains) {
+  assert(!contentCode.includes(domain), `content.js contains zero ${domain} hardcoded domain references`);
+  assert(!backgroundCode.includes(`"${domain}"`) && !backgroundCode.includes(`'${domain}'`), `background.js contains zero target ${domain} hardcoded site references`);
+  assert(!ttsCode.includes(domain), `tts.js contains zero ${domain} hardcoded domain references`);
+}
+
+// Behavioral execution test for AtlasLanguageSwitcher
+const contentModule = require('./content.js');
+assert(typeof contentModule.AtlasLanguageSwitcher === 'object', 'content.js exports AtlasLanguageSwitcher');
+assert(typeof contentModule.AtlasLanguageSwitcher.scan === 'function', 'AtlasLanguageSwitcher provides scan method');
+assert(typeof contentModule.AtlasLanguageSwitcher.detectAndSwitch === 'function', 'AtlasLanguageSwitcher provides detectAndSwitch method');
+assert(typeof contentModule.AtlasLanguageSwitcher.getStoredOriginPref === 'function', 'AtlasLanguageSwitcher provides getStoredOriginPref method');
+assert(typeof contentModule.AtlasLanguageSwitcher.setStoredOriginPref === 'function', 'AtlasLanguageSwitcher provides setStoredOriginPref method');
+const scanResult = contentModule.AtlasLanguageSwitcher.scan('ar-EG');
+assert(scanResult && scanResult.found === false, 'AtlasLanguageSwitcher scan safely returns { found: false } in non-DOM environment');
+
+// 9. Track RTL, Track V1 Dual-Language Voice & Track V2wire Quality Gates
+console.log('\n[Unit: Track RTL, V1 Dual-Language Voice & V2wire Quality Gates]');
+
+const speechCode = fs.readFileSync(path.join(__dirname, 'speech.js'), 'utf8');
+const websocketCode = fs.readFileSync(path.join(__dirname, 'websocket-client.js'), 'utf8');
+
+// RTL Quality Gates: sidebar.css and sidebar.js
+assert(/#atlas-sidebar-root\s*\{[^}]*direction\s*:\s*ltr\s*;/s.test(sidebarCss), 'Outer #atlas-sidebar-root has direction: ltr in sidebar.css');
+assert(sidebarCss.includes('margin-inline-start'), 'sidebar.css defines margin-inline-start on message bubbles');
+assert(sidebarCss.includes('padding-inline-end'), 'sidebar.css defines padding-inline-end on message bubbles');
+assert(sidebarCss.includes('text-align: start'), 'sidebar.css defines text-align: start on message bubbles');
+assert(sidebarCss.includes('border-end-end-radius: 4px'), 'sidebar.css defines border-end-end-radius: 4px on user message bubbles');
+assert(sidebarCss.includes('border-end-start-radius: 4px'), 'sidebar.css defines border-end-start-radius: 4px on agent message bubbles');
+
+// dir="auto" on chat message bubbles
+assert(/bubble\.setAttribute\(\s*["']dir["']\s*,\s*["']auto["']\s*\)/.test(sidebarCode), 'sidebar.js sets dir="auto" on .atlas-msg-bubble');
+assert(/textNode\.setAttribute\(\s*["']dir["']\s*,\s*["']auto["']\s*\)/.test(sidebarCode), 'sidebar.js sets dir="auto" on .atlas-msg-text');
+assert(sidebarCode.includes('dir="auto"'), 'sidebar.js applies dir="auto" bidirectional attribute');
+
+// V1 Speech Recognition Language Quality Gates
+const speechModule = require('./speech.js');
+assert(typeof speechModule.setLanguage === 'function', 'speech.js exports setLanguage');
+assert(typeof speechModule.getLanguage === 'function', 'speech.js exports getLanguage');
+assert(speechModule.getLanguage() === 'en-US', 'speech.js defaults to en-US');
+
+// Speech language toggle and storage sync
+let mockStoredLang = null;
+global.chrome = {
+  storage: {
+    local: {
+      get: (keys, cb) => cb && cb({ atlas_voice_lang: mockStoredLang || 'en-US' }),
+      set: (obj) => { if (obj.atlas_voice_lang) mockStoredLang = obj.atlas_voice_lang; },
+    },
+    onChanged: {
+      addListener: () => {},
+    },
+  },
+};
+
+speechModule.setLanguage('ar-EG');
+assert(speechModule.getLanguage() === 'ar-EG', 'speech.js setLanguage updates current language to ar-EG');
+assert(mockStoredLang === 'ar-EG', 'speech.js setLanguage syncs with chrome.storage.local key atlas_voice_lang');
+speechModule.setLanguage('en-US');
+assert(speechModule.getLanguage() === 'en-US', 'speech.js setLanguage switches back to en-US');
+assert(mockStoredLang === 'en-US', 'speech.js syncs en-US to storage');
+
+// Auto-sticky Arabic detection in speech.js
+assert(speechCode.includes('0600') && speechCode.includes('06FF'), 'speech.js contains Arabic character range check [\\u0600-\\u06FF]');
+assert(speechCode.includes("recognition.lang = currentLang"), 'speech.js sets recognition.lang from currentLang');
+
+// Sidebar language toggle pill and auto-sticky heuristic
+assert(sidebarCode.includes('atlas-lang-pill'), 'sidebar.js defines .atlas-lang-pill class');
+assert(sidebarCode.includes('atlas-lang-toggle'), 'sidebar.js defines #atlas-lang-toggle button');
+assert(sidebarCss.includes('.atlas-lang-pill'), 'sidebar.css styles .atlas-lang-pill');
+
+const sidebarModule = require('./sidebar.js');
+assert(typeof sidebarModule.getVoiceLanguage === 'function', 'sidebar.js exports getVoiceLanguage');
+assert(typeof sidebarModule.setVoiceLanguage === 'function', 'sidebar.js exports setVoiceLanguage');
+assert(typeof sidebarModule.toggleVoiceLanguage === 'function', 'sidebar.js exports toggleVoiceLanguage');
+assert(typeof sidebarModule.handleSpeechTranscript === 'function', 'sidebar.js exports handleSpeechTranscript');
+
+sidebarModule.setVoiceLanguage('en-US');
+assert(sidebarModule.getVoiceLanguage() === 'en-US', 'sidebar.js voice language initializes to en-US');
+sidebarModule.toggleVoiceLanguage();
+assert(sidebarModule.getVoiceLanguage() === 'ar-EG', 'sidebar.js toggleVoiceLanguage switches to ar-EG');
+sidebarModule.toggleVoiceLanguage();
+assert(sidebarModule.getVoiceLanguage() === 'en-US', 'sidebar.js toggleVoiceLanguage switches back to en-US');
+
+// Auto-sticky Arabic heuristic execution test
+sidebarModule.setVoiceLanguage('en-US');
+const stickyTriggered = sidebarModule.handleSpeechTranscript('افتح الصفحة الرئيسية');
+assert(stickyTriggered === true, 'sidebar.js auto-sticky Arabic heuristic detects Arabic transcript');
+assert(sidebarModule.getVoiceLanguage() === 'ar-EG', 'sidebar.js auto-sticky Arabic heuristic updates language to ar-EG');
+
+const nonStickyResult = sidebarModule.handleSpeechTranscript('hello world navigate to settings');
+assert(nonStickyResult === false, 'sidebar.js auto-sticky heuristic ignores English transcript');
+assert(sidebarModule.getVoiceLanguage() === 'ar-EG', 'sidebar.js maintains sticky ar-EG until explicitly toggled');
+
+// V2wire TTS Toggle Quality Gates
+assert(sidebarCode.includes('atlas-header-tts'), 'sidebar.js maintains #atlas-header-tts button in header');
+assert(sidebarCode.includes('AtlasTTS') && sidebarCode.includes('toggleMute'), 'sidebar.js wires #atlas-header-tts to window.AtlasTTS?.toggleMute?.()');
+
+// Language forwarding in commands and requests
+assert(websocketCode.includes('language: activeLang'), 'websocket-client.js forwards language in socket payloads');
+assert(contentCode.includes('language: activeLang'), 'content.js forwards active language to AtlasSocket.sendCommand');
+
+// Zero hardcoded domains across all touched frontend files
+for (const domain of forbiddenDomains) {
+  assert(!sidebarCode.includes(domain), `sidebar.js contains zero ${domain} hardcoded domain references`);
+  assert(!sidebarCss.includes(domain), `sidebar.css contains zero ${domain} hardcoded domain references`);
+  assert(!speechCode.includes(domain), `speech.js contains zero ${domain} hardcoded domain references`);
+  assert(!websocketCode.includes(`"${domain}"`) && !websocketCode.includes(`'${domain}'`), `websocket-client.js contains zero ${domain} hardcoded domain references`);
+}
 
 console.log(`\nExtension Tests Complete: ${passed} passed, ${failures} failed.\n`);
 process.exit(failures > 0 ? 1 : 0);

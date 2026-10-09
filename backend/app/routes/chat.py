@@ -233,6 +233,7 @@ async def goal_step_endpoint(
             max_hops=8,
             status="in_progress",
             current_url=payload.current_url,
+            language=payload.language,
         )
 
     # Prior URL before update
@@ -240,14 +241,32 @@ async def goal_step_endpoint(
     goal_state.current_url = payload.current_url
     if payload.goal and not goal_state.goal:
         goal_state.goal = payload.goal
+    if payload.language and not goal_state.language:
+        goal_state.language = payload.language
+
+    # Track scout result if classified during initial milestone planning (§Track L1-full)
+    scout_res: Optional[ScoutResult] = None
 
     # First hop milestone decomposition (Track 1m / Defect C fix)
     if not goal_state.milestones:
+        try:
+            scout_res = await classify_page(
+                dom_map=payload.dom_map,
+                current_url=payload.current_url,
+                page_text=payload.page_text,
+            )
+            detected_lang = scout_res.detected_language
+        except Exception as exc:
+            logger.warning("Scout page classification failed prior to planning: %s", exc)
+            detected_lang = None
+
         try:
             planned_milestones = await plan_goal(
                 goal=goal_state.goal,
                 current_url=payload.current_url,
                 page_text=payload.page_text,
+                language=goal_state.language,
+                detected_language=detected_lang,
             )
         except Exception as exc:
             logger.warning("Planner execution failed: %s. Using fallback milestone.", exc)
@@ -359,11 +378,16 @@ async def goal_step_endpoint(
 
     prior_dom_ids = (goal_state.dom_state or {}).get("ids", [])
 
-    scout_task = classify_page(
-        dom_map=payload.dom_map,
-        current_url=payload.current_url,
-        page_text=payload.page_text,
-    )
+    if scout_res is not None:
+        async def _resolved_scout():
+            return scout_res
+        scout_task = _resolved_scout()
+    else:
+        scout_task = classify_page(
+            dom_map=payload.dom_map,
+            current_url=payload.current_url,
+            page_text=payload.page_text,
+        )
 
     if has_prior_action:
         last_step = goal_state.plan_steps[-1] if goal_state.plan_steps else None

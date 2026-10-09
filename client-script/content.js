@@ -8,7 +8,7 @@
   let active = false;
   let stopObserving = null;
   let stopUrlWatcher = null;
-  let lastUrl = location.href;
+  let lastUrl = typeof location !== "undefined" ? location.href : "";
 
   const getStoredSettings = () =>
     new Promise((resolve) => {
@@ -67,6 +67,197 @@
     if (currentMode === "voice" && window.AtlasTTS?.isSupported()) {
       window.AtlasTTS.speak(text);
     }
+  };
+
+  // ── Universal Language Switcher Pre-Scanner (W3C / Prime Directive) ──────
+  const AtlasLanguageSwitcher = {
+    getStoredOriginPref: async () => {
+      if (typeof chrome === "undefined" || !chrome.storage?.local) return null;
+      const origin =
+        typeof window !== "undefined" && window.location?.origin
+          ? window.location.origin
+          : "";
+      if (!origin) return null;
+      const key = `atlas_lang_pref:${origin}`;
+      return new Promise((resolve) => {
+        chrome.storage.local.get([key], (res) => resolve(res?.[key] || null));
+      });
+    },
+
+    setStoredOriginPref: async (lang) => {
+      if (typeof chrome === "undefined" || !chrome.storage?.local || !lang)
+        return;
+      const origin =
+        typeof window !== "undefined" && window.location?.origin
+          ? window.location.origin
+          : "";
+      if (!origin) return;
+      const key = `atlas_lang_pref:${origin}`;
+      return new Promise((resolve) => {
+        chrome.storage.local.set({ [key]: lang }, () => resolve());
+      });
+    },
+
+    scan: (targetLang) => {
+      if (!targetLang || typeof document === "undefined" || !document.body) {
+        return { found: false, element: null, type: null };
+      }
+      const isArabic =
+        targetLang === "ar" ||
+        targetLang.startsWith("ar-") ||
+        targetLang.startsWith("ar_") ||
+        /[\u0600-\u06FF]/.test(targetLang);
+
+      // 1. Scan dropdown select elements
+      const selects = Array.from(
+        document.querySelectorAll(
+          'select[name*="lang" i], select[id*="lang" i], select[aria-label*="lang" i], select[aria-label*="لغة" i], select[title*="lang" i], select[title*="لغة" i], select[data-action*="lang" i], select',
+        ),
+      );
+      for (const sel of selects) {
+        if (sel.closest("#atlas-sidebar-root")) continue;
+        for (const opt of Array.from(sel.options)) {
+          const val = (opt.value || "").toLowerCase().trim();
+          const txt = (opt.text || opt.textContent || "").toLowerCase().trim();
+          const matches = isArabic
+            ? val === "ar" ||
+              val.startsWith("ar-") ||
+              val.startsWith("ar_") ||
+              val === "ara" ||
+              txt.includes("عربي") ||
+              txt.includes("العربية") ||
+              /\barabic\b/i.test(txt)
+            : val === "en" ||
+              val.startsWith("en-") ||
+              val.startsWith("en_") ||
+              val === "eng" ||
+              txt.includes("english") ||
+              txt.includes("إنجليزي") ||
+              txt.includes("انجليزي") ||
+              /\benglish\b/i.test(txt);
+
+          if (matches) {
+            return {
+              found: true,
+              element: sel,
+              type: "select",
+              optionValue: opt.value,
+              alreadyActive: sel.value === opt.value,
+            };
+          }
+        }
+      }
+
+      // 2. Scan hreflang attributes on links
+      const hrefLinks = Array.from(document.querySelectorAll("a[hreflang]"));
+      for (const el of hrefLinks) {
+        if (el.closest("#atlas-sidebar-root")) continue;
+        const hreflang = (
+          el.getAttribute("hreflang") || ""
+        )
+          .toLowerCase()
+          .trim();
+        const matches = isArabic
+          ? hreflang === "ar" ||
+            hreflang.startsWith("ar-") ||
+            hreflang.startsWith("ar_")
+          : hreflang === "en" ||
+            hreflang.startsWith("en-") ||
+            hreflang.startsWith("en_");
+        if (matches) {
+          return { found: true, element: el, type: "link" };
+        }
+      }
+
+      // 3. Scan lang attributes on interactive elements
+      const langEls = Array.from(
+        document.querySelectorAll(
+          'a[lang], button[lang], [role="button"][lang], [role="link"][lang], [role="menuitem"][lang]',
+        ),
+      );
+      for (const el of langEls) {
+        if (el.closest("#atlas-sidebar-root")) continue;
+        const langAttr = (el.getAttribute("lang") || "").toLowerCase().trim();
+        const matches = isArabic
+          ? langAttr === "ar" ||
+            langAttr.startsWith("ar-") ||
+            langAttr.startsWith("ar_")
+          : langAttr === "en" ||
+            langAttr.startsWith("en-") ||
+            langAttr.startsWith("en_");
+        if (matches) {
+          return { found: true, element: el, type: "lang_attr" };
+        }
+      }
+
+      // 4. Scan interactive elements with ARIA / text indicators
+      const candidates = Array.from(
+        document.querySelectorAll(
+          'a, button, [role="button"], [role="link"], [role="menuitem"], [data-action*="lang" i], [data-lang], [data-language]',
+        ),
+      );
+      for (const el of candidates) {
+        if (el.closest("#atlas-sidebar-root")) continue;
+        const text = (el.innerText || el.textContent || "").trim();
+        const aria = (el.getAttribute("aria-label") || "").trim();
+        const title = (el.getAttribute("title") || "").trim();
+        const dataLang = (
+          el.getAttribute("data-lang") ||
+          el.getAttribute("data-language") ||
+          ""
+        )
+          .toLowerCase()
+          .trim();
+
+        const combined = `${text} ${aria} ${title}`.toLowerCase();
+
+        const matches = isArabic
+          ? dataLang === "ar" ||
+            dataLang.startsWith("ar-") ||
+            dataLang.startsWith("ar_") ||
+            /^(العربية|عربي|arabic|ar)$/i.test(text) ||
+            combined.includes("العربية") ||
+            combined.includes("عربي") ||
+            /\barabic\b/i.test(combined)
+          : dataLang === "en" ||
+            dataLang.startsWith("en-") ||
+            dataLang.startsWith("en_") ||
+            /^(english|en|انجليزي|إنجليزي)$/i.test(text) ||
+            combined.includes("english") ||
+            combined.includes("انجليزي") ||
+            combined.includes("إنجليزي") ||
+            /\benglish\b/i.test(combined);
+
+        if (matches) {
+          return { found: true, element: el, type: "interactive" };
+        }
+      }
+
+      return { found: false, element: null, type: null };
+    },
+
+    detectAndSwitch: async (targetLang) => {
+      if (!targetLang) return false;
+      const match = AtlasLanguageSwitcher.scan(targetLang);
+      if (!match.found || !match.element) return false;
+
+      try {
+        if (match.type === "select") {
+          if (!match.alreadyActive && match.optionValue !== undefined) {
+            match.element.value = match.optionValue;
+            match.element.dispatchEvent(new Event("change", { bubbles: true }));
+            match.element.dispatchEvent(new Event("input", { bubbles: true }));
+          }
+        } else {
+          match.element.click();
+        }
+        await AtlasLanguageSwitcher.setStoredOriginPref(targetLang);
+        return true;
+      } catch (err) {
+        console.warn("Atlas: Failed to switch language", err);
+        return false;
+      }
+    },
   };
 
   // ── Unified Agentic Conversation & Multi-Step Execution Pipeline ─────────
@@ -155,6 +346,7 @@
         dom_map: domMap,
         history: trimmedHistory,
         api_key: apiKey || "",
+        language: window.AtlasSpeech?.getLanguage?.() || "en-US",
       };
 
       let responseData = null;
@@ -375,10 +567,12 @@ const runCommand = async (command) => {
       const tokenized = await window.AtlasSecretVault.tokenizeCommand(origin, command, domMap);
       commandToSend = tokenized.command;
     }
+    const activeLang = window.AtlasSpeech?.getLanguage?.() || window.AtlasSidebar?.getVoiceLanguage?.() || "en-US";
     const response = await window.AtlasSocket.sendCommand({
       url: window.location.href,
       domMap,
       command: commandToSend,
+      language: activeLang,
     });
     const result = await window.AtlasExecutor.execute(response);
     window.AtlasSidebar.setStatus(result.message, result.ok ? "ok" : "error");
@@ -441,6 +635,7 @@ const handleElementClick = async (atlasId) => {
       },
       onResult: (transcript) => {
         if (inputField) inputField.value = "";
+        window.AtlasSidebar?.handleSpeechTranscript?.(transcript);
         window.AtlasSidebar.addChatMessage("user", transcript);
         handleChatInput(transcript);
       },
@@ -556,6 +751,27 @@ const handleElementClick = async (atlasId) => {
 
       // ── Page summary on activation ──────────────────────────────────
       await fetchPageSummary({ showThinking: true });
+
+      // ── Check stored origin language preference ──────────────────────
+      AtlasLanguageSwitcher.getStoredOriginPref()
+        .then((storedPref) => {
+          if (storedPref) {
+            const docLang = (
+              document.documentElement.lang || ""
+            ).toLowerCase();
+            const isAr =
+              storedPref.startsWith("ar") ||
+              storedPref.startsWith("ar_") ||
+              storedPref === "ar";
+            if (
+              (isAr && !docLang.startsWith("ar")) ||
+              (!isAr && docLang.startsWith("ar"))
+            ) {
+              AtlasLanguageSwitcher.detectAndSwitch(storedPref);
+            }
+          }
+        })
+        .catch(() => {});
     } catch (err) {
       console.error("Atlas: Connection failed:", err);
       window.AtlasSidebar.setStatus(
@@ -585,15 +801,38 @@ const handleElementClick = async (atlasId) => {
 
   const toggle = () => (active ? deactivate() : activate());
 
-  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.type === "ATLAS_PING") {
-      sendResponse({ status: "ok" });
-      return true;
-    }
-    if (message.type === "ATLAS_TOGGLE") {
-      toggle();
-      sendResponse({ status: "ok", active });
-      return true;
-    }
-  });
+  if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      if (message.type === "ATLAS_PING") {
+        sendResponse({ status: "ok" });
+        return true;
+      }
+      if (message.type === "ATLAS_TOGGLE") {
+        toggle();
+        sendResponse({ status: "ok", active });
+        return true;
+      }
+      if (message.type === "ATLAS_SWITCH_LANGUAGE") {
+        AtlasLanguageSwitcher.detectAndSwitch(message.language)
+          .then((switched) => sendResponse({ ok: true, switched }))
+          .catch((err) => sendResponse({ ok: false, error: err.message }));
+        return true;
+      }
+      if (message.type === "ATLAS_GET_LANG_PREF") {
+        AtlasLanguageSwitcher.getStoredOriginPref()
+          .then((pref) => sendResponse({ ok: true, pref }))
+          .catch((err) => sendResponse({ ok: false, error: err.message }));
+        return true;
+      }
+    });
+  }
+
+  if (typeof window !== "undefined") {
+    window.AtlasLanguageSwitcher = AtlasLanguageSwitcher;
+  }
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = {
+      AtlasLanguageSwitcher,
+    };
+  }
 })();

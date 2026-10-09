@@ -173,13 +173,14 @@ const ensureConnected = async () => {
   }
 }
 
-const sendCommand = async ({ url, domMap, command }) => {
+const sendCommand = async ({ url, domMap, command, language }) => {
+    const activeLang = language || (typeof window !== 'undefined' && window.AtlasSpeech?.getLanguage?.()) || 'en-US';
     if (hasBgProxy()) {
         return new Promise((resolve, reject) => {
             chrome.runtime.sendMessage(
                 {
                     type: 'ATLAS_SOCKET_SEND',
-                    payload: { url, dom_map: domMap, command, type: 'command' },
+                    payload: { url, dom_map: domMap, command, type: 'command', language: activeLang },
                 },
                 (res) => {
                     if (chrome.runtime.lastError) {
@@ -218,6 +219,7 @@ const sendCommand = async ({ url, domMap, command }) => {
                 dom_map: domMap,
                 command,
                 type: 'command',
+                language: activeLang,
             })
         )
     })
@@ -225,14 +227,17 @@ const sendCommand = async ({ url, domMap, command }) => {
 
 // Simplify pipeline (Contract 5) — same connection, same one-at-a-time
 // request/response queue as sendCommand, just a different `type` and an
+// Simplify pipeline (Contract 5) — same connection, same one-at-a-time
+// request/response queue as sendCommand, just a different `type` and an
 // empty `command`.
-const sendSimplify = async ({ url, domMap }) => {
+const sendSimplify = async ({ url, domMap, language }) => {
+  const activeLang = language || (typeof window !== 'undefined' && window.AtlasSpeech?.getLanguage?.()) || 'en-US';
   if (hasBgProxy()) {
     return new Promise((resolve, reject) => {
       chrome.runtime.sendMessage(
         {
           type: 'ATLAS_SOCKET_SEND',
-          payload: { url, dom_map: domMap, command: '', type: 'simplify' },
+          payload: { url, dom_map: domMap, command: '', type: 'simplify', language: activeLang },
         },
         (res) => {
           if (chrome.runtime.lastError) {
@@ -271,19 +276,21 @@ const sendSimplify = async ({ url, domMap }) => {
         dom_map: domMap,
         command: '',
         type: 'simplify',
+        language: activeLang,
       })
     )
   })
 }
 
 // Chat Q&A pipeline (Contract 1 / Contract 6)
-const sendChat = async ({ url, domMap, command, pageText }) => {
+const sendChat = async ({ url, domMap, command, pageText, language }) => {
+  const activeLang = language || (typeof window !== 'undefined' && window.AtlasSpeech?.getLanguage?.()) || 'en-US';
   if (hasBgProxy()) {
     return new Promise((resolve, reject) => {
       chrome.runtime.sendMessage(
         {
           type: 'ATLAS_SOCKET_SEND',
-          payload: { url, dom_map: domMap, command, page_text: pageText || '', type: 'chat' },
+          payload: { url, dom_map: domMap, command, page_text: pageText || '', type: 'chat', language: activeLang },
         },
         (res) => {
           if (chrome.runtime.lastError) {
@@ -323,19 +330,21 @@ const sendChat = async ({ url, domMap, command, pageText }) => {
         command,
         page_text: pageText || '',
         type: 'chat',
+        language: activeLang,
       })
     )
   })
 }
 
 // Page summary pipeline (Contract 1 / Contract 6)
-const sendSummary = async ({ url, domMap, pageText }) => {
+const sendSummary = async ({ url, domMap, pageText, language }) => {
+  const activeLang = language || (typeof window !== 'undefined' && window.AtlasSpeech?.getLanguage?.()) || 'en-US';
   if (hasBgProxy()) {
     return new Promise((resolve, reject) => {
       chrome.runtime.sendMessage(
         {
           type: 'ATLAS_SOCKET_SEND',
-          payload: { url, dom_map: domMap, command: '', page_text: pageText || '', type: 'summary' },
+          payload: { url, dom_map: domMap, command: '', page_text: pageText || '', type: 'summary', language: activeLang },
         },
         (res) => {
           if (chrome.runtime.lastError) {
@@ -375,6 +384,7 @@ const sendSummary = async ({ url, domMap, pageText }) => {
         command: '',
         page_text: pageText || '',
         type: 'summary',
+        language: activeLang,
       })
     )
   })

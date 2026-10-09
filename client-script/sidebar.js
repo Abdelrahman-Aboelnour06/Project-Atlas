@@ -14,6 +14,7 @@
   let chatInputEl = null;
   let searchEl = null;
   let micBtn = null;
+  let langPill = null;
   let modeBtn = null;
   let chatLogEl = null;
   let badgeEl = null;
@@ -22,6 +23,7 @@
   let currentItems = [];
   let groupOpenState = {};
   let currentMode = "chat"; // 'chat' | 'voice'
+  let currentVoiceLang = "en-US";
   let isCollapsed = false;
 
   // Drag state cleanup ref
@@ -488,6 +490,7 @@
         </button>
         <input class="atlas-chat-input" type="text"
           placeholder="Ask anything or give a command..." />
+        <button class="atlas-lang-pill" id="atlas-lang-toggle" aria-label="Toggle voice input language" title="Voice Language: English (click for Arabic)">EN</button>
         <button class="atlas-mic-btn" aria-label="Speak a command" title="Voice command">🎤</button>
       </div>
     </div>
@@ -521,10 +524,32 @@
     chatInputEl = rootEl.querySelector(".atlas-chat-input");
     searchEl = rootEl.querySelector(".atlas-search");
     micBtn = rootEl.querySelector(".atlas-mic-btn");
+    langPill = rootEl.querySelector("#atlas-lang-toggle");
     modeBtn = rootEl.querySelector("#atlas-mode-toggle");
     chatLogEl = rootEl.querySelector("#atlas-chat-log");
     badgeEl = rootEl.querySelector(".atlas-collapsed-badge");
     badgeStatusDot = rootEl.querySelector(".atlas-badge-status-dot");
+
+    // Wire language toggle pill (EN / AR)
+    langPill?.addEventListener("click", () => {
+      toggleVoiceLanguage();
+    });
+
+    // Sync initial voice input language with storage or AtlasSpeech
+    if (typeof chrome !== "undefined" && chrome.storage?.local?.get) {
+      try {
+        chrome.storage.local.get(["atlas_voice_lang"], (res) => {
+          const stored = res?.atlas_voice_lang;
+          if (stored) {
+            setVoiceLanguage(stored);
+          } else if (window.AtlasSpeech?.getLanguage) {
+            updateLangPillUI(window.AtlasSpeech.getLanguage());
+          }
+        });
+      } catch (_) {}
+    } else if (window.AtlasSpeech?.getLanguage) {
+      updateLangPillUI(window.AtlasSpeech.getLanguage());
+    }
 
     const headerEl = rootEl.querySelector(".atlas-header");
     cleanUpDrag = setupDragging(headerEl, badgeEl);
@@ -637,8 +662,10 @@
 
     const bubble = document.createElement("div");
     bubble.className = "atlas-msg-bubble";
+    bubble.setAttribute("dir", "auto");
     const textNode = document.createElement("div");
     textNode.className = "atlas-msg-text";
+    textNode.setAttribute("dir", "auto");
     textNode.textContent = text;
     bubble.appendChild(textNode);
     if (actionsEl) {
@@ -675,7 +702,7 @@
     msg.className = "atlas-msg atlas-msg-agent atlas-msg-thinking";
     msg.id = "atlas-thinking-indicator";
     msg.innerHTML = `
-      <div class="atlas-msg-bubble">
+      <div class="atlas-msg-bubble" dir="auto">
         <div class="atlas-typing-indicator" aria-label="Atlas is thinking">
           <span class="atlas-dot"></span>
           <span class="atlas-dot"></span>
@@ -871,6 +898,7 @@
     rootEl = null;
     badgeEl = null;
     badgeStatusDot = null;
+    langPill = null;
     currentItems = [];
     groupOpenState = {};
     isCollapsed = false;
@@ -910,7 +938,61 @@
     );
   };
 
-  window.AtlasSidebar = {
+  // ── Dual-Language Voice Input & Auto-Sticky Heuristic (Track V1) ──────────────
+  const updateLangPillUI = (lang) => {
+    currentVoiceLang = (lang === "ar-EG" || (typeof lang === "string" && lang.startsWith("ar"))) ? "ar-EG" : "en-US";
+    if (!langPill) return;
+    const isAr = currentVoiceLang === "ar-EG";
+    langPill.textContent = isAr ? "AR" : "EN";
+    langPill.classList.toggle("atlas-lang-ar", isAr);
+    langPill.setAttribute(
+      "aria-label",
+      isAr
+        ? "Voice input language: Arabic (click to switch to English)"
+        : "Voice input language: English (click to switch to Arabic)"
+    );
+    langPill.title = isAr ? "Voice Language: Arabic (click for English)" : "Voice Language: English (click for Arabic)";
+  };
+
+  const setVoiceLanguage = (lang) => {
+    const targetLang = (lang === "ar-EG" || (typeof lang === "string" && lang.startsWith("ar"))) ? "ar-EG" : "en-US";
+    currentVoiceLang = targetLang;
+    updateLangPillUI(targetLang);
+    if (typeof window !== "undefined" && window.AtlasSpeech?.setLanguage) {
+      window.AtlasSpeech.setLanguage(targetLang);
+    }
+    if (typeof chrome !== "undefined" && chrome.storage?.local?.set) {
+      try {
+        chrome.storage.local.set({ atlas_voice_lang: targetLang });
+      } catch (_) {}
+    }
+    return targetLang;
+  };
+
+  const toggleVoiceLanguage = () => {
+    const next = currentVoiceLang === "ar-EG" ? "en-US" : "ar-EG";
+    return setVoiceLanguage(next);
+  };
+
+  const handleSpeechTranscript = (transcript) => {
+    if (typeof transcript === "string" && /[\u0600-\u06FF]/.test(transcript)) {
+      setVoiceLanguage("ar-EG");
+      return true;
+    }
+    return false;
+  };
+
+  if (typeof chrome !== "undefined" && chrome.storage?.onChanged?.addListener) {
+    try {
+      chrome.storage.onChanged.addListener((changes, area) => {
+        if (area === "local" && changes.atlas_voice_lang) {
+          updateLangPillUI(changes.atlas_voice_lang.newValue);
+        }
+      });
+    } catch (_) {}
+  }
+
+  const AtlasSidebar = {
     mount,
     unmount,
     collapse,
@@ -928,5 +1010,17 @@
     removeThinking,
     getMode: () => currentMode,
     setMode: updateModeUI,
+    getVoiceLanguage: () => currentVoiceLang,
+    setVoiceLanguage,
+    toggleVoiceLanguage,
+    handleSpeechTranscript,
+    checkAutoStickyArabic: handleSpeechTranscript,
   };
+
+  if (typeof window !== "undefined") {
+    window.AtlasSidebar = AtlasSidebar;
+  }
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = AtlasSidebar;
+  }
 })();

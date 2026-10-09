@@ -7,6 +7,8 @@
 // Public API (window.AtlasSpeech):
 //   AtlasSpeech.isSupported() -> boolean
 //   AtlasSpeech.isListening() -> boolean
+//   AtlasSpeech.getLanguage() -> string
+//   AtlasSpeech.setLanguage(lang: 'ar-EG' | 'en-US') -> string
 //   AtlasSpeech.start({ onResult, onInterim, onEnd, onError }) -> Promise<void>
 //   AtlasSpeech.stop() -> void
 
@@ -16,6 +18,47 @@ const SpeechRecognitionImpl =
 
 let recognition = null
 let listening = false
+let currentLang = 'en-US'
+
+// Load stored language on initialization from chrome.storage.local key atlas_voice_lang
+const loadStoredLanguage = () => {
+    if (typeof chrome !== 'undefined' && chrome.storage?.local?.get) {
+        try {
+            const res = chrome.storage.local.get(['atlas_voice_lang'], (items) => {
+                if (chrome.runtime?.lastError) return
+                if (items && items.atlas_voice_lang) {
+                    currentLang = items.atlas_voice_lang
+                }
+            })
+            if (res && typeof res.then === 'function') {
+                res.then((items) => {
+                    if (items && items.atlas_voice_lang) {
+                        currentLang = items.atlas_voice_lang
+                    }
+                }).catch(() => {})
+            }
+        } catch (_) {}
+    }
+}
+loadStoredLanguage()
+
+const getLanguage = () => currentLang
+
+const setLanguage = (lang) => {
+    if (lang === 'ar-EG' || lang === 'en-US') {
+        currentLang = lang
+    } else if (typeof lang === 'string' && (lang.startsWith('ar') || lang === 'ar-EG')) {
+        currentLang = 'ar-EG'
+    } else {
+        currentLang = 'en-US'
+    }
+    if (typeof chrome !== 'undefined' && chrome.storage?.local?.set) {
+        try {
+            chrome.storage.local.set({ atlas_voice_lang: currentLang })
+        } catch (_) {}
+    }
+    return currentLang
+}
 
 const isSupported = () => Boolean(SpeechRecognitionImpl)
 const isListening = () => listening
@@ -77,7 +120,7 @@ const start = async ({ onResult, onInterim, onEnd, onError } = {}) => {
 
     try {
         recognition = new SpeechRecognitionImpl()
-        recognition.lang = 'en-US'
+        recognition.lang = currentLang
         recognition.interimResults = true
         recognition.maxAlternatives = 1
         recognition.continuous = false
@@ -99,7 +142,13 @@ const start = async ({ onResult, onInterim, onEnd, onError } = {}) => {
                 onInterim(current)
             }
             if (finalTranscript) {
-                onResult?.(finalTranscript.trim())
+                const trimmedFinal = finalTranscript.trim()
+                // Auto-sticky Arabic heuristic: if final transcript contains Arabic characters,
+                // silently update stored language to 'ar-EG' for subsequent turns.
+                if (/[\u0600-\u06FF]/.test(trimmedFinal)) {
+                    setLanguage('ar-EG')
+                }
+                onResult?.(trimmedFinal)
             }
         }
 
@@ -134,5 +183,19 @@ const stop = () => {
     listening = false
 }
 
-window.AtlasSpeech = { isSupported, isListening, start, stop }
+const AtlasSpeech = {
+    isSupported,
+    isListening,
+    start,
+    stop,
+    getLanguage,
+    setLanguage,
+}
+
+if (typeof window !== 'undefined') {
+    window.AtlasSpeech = AtlasSpeech
+}
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = AtlasSpeech
+}
 })();

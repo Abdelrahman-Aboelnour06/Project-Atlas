@@ -11,3 +11,4 @@ class AgentMessage(BaseModel):
     command:    str
     type:       Literal["command", "simplify", "chat", "summary"]
     page_text:  str = ""
+    language:   str | None = None

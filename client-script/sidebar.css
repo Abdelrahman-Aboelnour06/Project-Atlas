@@ -2,6 +2,7 @@
 
 #atlas-sidebar-root {
   all: initial;
+  direction: ltr;
   position: fixed;
   z-index: 2147483647;
   width: 348px;
@@ -361,6 +362,8 @@
 #atlas-sidebar-root .atlas-msg-bubble {
   max-width: 86%;
   padding: 8px 12px;
+  padding-inline-end: 12px;
+  text-align: start;
   border-radius: 15px;
   font-size: 13px;
   line-height: 1.42;
@@ -370,14 +373,16 @@
 #atlas-sidebar-root .atlas-msg-user .atlas-msg-bubble {
   background: var(--atlas-msg-user-bg);
   color: var(--atlas-msg-user-text);
-  border-bottom-right-radius: 4px;
+  margin-inline-start: auto;
+  border-end-end-radius: 4px;
 }
 
 #atlas-sidebar-root .atlas-msg-agent .atlas-msg-bubble {
   background: var(--atlas-msg-agent-bg);
   color: var(--atlas-msg-agent-text);
   border: 1px solid var(--atlas-msg-agent-border);
-  border-bottom-left-radius: 4px;
+  margin-inline-start: 0;
+  border-end-start-radius: 4px;
 }
 
 /* Quick action chips/buttons inside chat messages */
@@ -593,6 +598,39 @@
 #atlas-sidebar-root .atlas-chat-input:focus {
   border-color: var(--atlas-accent);
   background: var(--atlas-control-bg-hover);
+}
+
+/* ── Language Pill (Voice Input Toggle EN / AR) ── */
+#atlas-sidebar-root .atlas-lang-pill {
+  background: var(--atlas-control-bg);
+  border: 1px solid var(--atlas-control-border);
+  border-radius: 12px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--atlas-secondary-label);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+  user-select: none;
+  min-width: 32px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#atlas-sidebar-root .atlas-lang-pill:hover {
+  background: var(--atlas-control-bg-hover);
+  color: var(--atlas-label);
+  border-color: var(--atlas-accent);
+}
+
+#atlas-sidebar-root .atlas-lang-pill.atlas-lang-ar {
+  background: rgba(10, 132, 255, 0.15);
+  border-color: rgba(10, 132, 255, 0.4);
+  color: var(--atlas-accent);
 }
 
 #atlas-sidebar-root .atlas-mic-btn {

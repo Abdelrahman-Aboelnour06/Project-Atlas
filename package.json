@@ -1,0 +1,11 @@
+{
+  "name": "atlas-workspace",
+  "version": "0.2.0",
+  "private": true,
+  "scripts": {
+    "test:e2e": "node ci/e2e/harness.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.0"
+  }
+}

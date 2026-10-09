@@ -226,13 +226,15 @@ def _generate_deterministic_mock_response(
 
     def _mock_scout() -> str:
         lower_user = user_prompt.lower()
+        detected_lang = "ar" if re.search(r"[\u0600-\u06FF]", user_prompt) else "en"
         if any(w in lower_user for w in ("captcha", "robot", "human verification", "recaptcha", "hcaptcha", "turnstile")):
             return json.dumps({
                 "page_kind": "captcha",
                 "blockers": ["captcha"],
                 "form_inventory": [],
                 "primary_cta": None,
-                "summary": "CAPTCHA challenge page"
+                "summary": "CAPTCHA challenge page",
+                "detected_language": detected_lang,
             })
         if any(w in lower_user for w in ("two_factor_code", "verification code", "two-factor", "2fa", "security code", "otp")):
             return json.dumps({
@@ -240,7 +242,8 @@ def _generate_deterministic_mock_response(
                 "blockers": ["otp"],
                 "form_inventory": ["verify-form"],
                 "primary_cta": "verify-btn",
-                "summary": "OTP verification page"
+                "summary": "OTP verification page",
+                "detected_language": detected_lang,
             })
         has_form_input = len(re.findall(r'"tag":\s*"(input|select|textarea)"', lower_user)) >= 2
         if has_form_input:
@@ -256,14 +259,16 @@ def _generate_deterministic_mock_response(
                 "blockers": [],
                 "form_inventory": form_inv,
                 "primary_cta": cta,
-                "summary": "Interactive form page"
+                "summary": "Interactive form page",
+                "detected_language": detected_lang,
             })
         return json.dumps({
             "page_kind": "other",
             "blockers": [],
             "form_inventory": [],
             "primary_cta": None,
-            "summary": "Standard web page"
+            "summary": "Standard web page",
+            "detected_language": detected_lang,
         })
 
     def _mock_form_filler() -> str:

@@ -162,6 +162,7 @@ class GoalState(BaseModel):
     trace_id: Optional[str] = None
     page_kind: Optional[str] = None
     form_plan: Optional[FormPlan] = None
+    language: Optional[str] = Field(default=None, description="Preferred language locale e.g. 'ar-EG'")
 
     def is_terminal(self) -> bool:
         """Returns True if goal execution has reached a terminal state."""
@@ -220,6 +221,7 @@ class GoalStepRequest(BaseModel):
     user_response: Optional[str] = Field(default=None, max_length=1000, description="User response to confirmation prompt (e.g. 'yes', 'no')")
     session_id: Optional[str] = Field(default=None, max_length=256, description="Session ID for tracking and correlation")
     api_key: Optional[str] = Field(default=None, max_length=256, description="Optional inline tenant API key")
+    language: Optional[str] = Field(default=None, max_length=32, description="Preferred language locale e.g. 'ar-EG'")
 
 
 class GoalStepResponse(BaseModel):

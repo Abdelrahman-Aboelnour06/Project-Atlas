@@ -59,7 +59,48 @@
 
     try {
       const utterance = new SpeechSynthesisUtterance(sanitized);
-      utterance.lang = "en-US";
+
+      // Detect language: Arabic Unicode block [\u0600-\u06FF]
+      const isArabic = /[\u0600-\u06FF]/.test(sanitized);
+      const targetLang = isArabic ? "ar-EG" : "en-US";
+
+      let matchedVoice = null;
+      const voices =
+        typeof window !== "undefined" && window.speechSynthesis?.getVoices
+          ? window.speechSynthesis.getVoices()
+          : [];
+
+      if (isArabic) {
+        matchedVoice =
+          voices.find((v) => v.lang === "ar-EG" || v.lang === "ar_EG") ||
+          voices.find(
+            (v) =>
+              v.lang &&
+              (v.lang.startsWith("ar-") ||
+                v.lang.startsWith("ar_") ||
+                v.lang.toLowerCase() === "ar"),
+          );
+        if (!matchedVoice) {
+          console.warn(
+            "AtlasTTS: No Arabic voice installed on host OS. Using default voice.",
+          );
+        }
+      } else {
+        matchedVoice =
+          voices.find((v) => v.lang === "en-US" || v.lang === "en_US") ||
+          voices.find(
+            (v) =>
+              v.lang &&
+              (v.lang.startsWith("en-") ||
+                v.lang.startsWith("en_") ||
+                v.lang.toLowerCase() === "en"),
+          );
+      }
+
+      utterance.lang = targetLang;
+      if (matchedVoice) {
+        utterance.voice = matchedVoice;
+      }
       utterance.rate = 0.9;
       utterance.pitch = 1.0;
 
@@ -88,12 +129,26 @@
     }
   };
 
-  window.AtlasTTS = {
+  const detectLanguage = (text) => {
+    const sanitized = cleanSpeechText(text);
+    return /[\u0600-\u06FF]/.test(sanitized) ? "ar-EG" : "en-US";
+  };
+
+  const AtlasTTS = {
     isSupported,
     speak,
     stop,
     isMuted,
     setMuted,
     toggleMute,
+    detectLanguage,
+    cleanSpeechText,
   };
+
+  if (typeof window !== "undefined") {
+    window.AtlasTTS = AtlasTTS;
+  }
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = AtlasTTS;
+  }
 })();

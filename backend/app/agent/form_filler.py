@@ -31,6 +31,12 @@ CONSENT_TERMS_KEYWORDS: Set[str] = {
     "acknowledge",
 }
 
+LANGUAGE_MIRRORING_DIRECTIVE = (
+    "Reply in the same language the user is using. If language is an Arabic locale (e.g. 'ar-EG'), "
+    "reply in Egyptian colloquial Arabic — not Modern Standard Arabic, and not a literal translation. "
+    "If unset, infer from script. If mixed, mirror the mix."
+)
+
 FORM_FILLER_SYSTEM_PROMPT = """You are Atlas Form Filler. Map each field to a value.
 
 HARD RULES:
@@ -44,6 +50,7 @@ HARD RULES:
 6. Consent/terms/privacy checkboxes MUST NEVER be checked by the agent. Place their refs in missing_required.
 7. Put the submit control in submit_ref. NEVER place it in fields[].
 8. If you observe a CAPTCHA, OTP prompt, or file upload requirement, list it in blockers.
+9. Language mirroring: Reply in the same language the user is using. If language is an Arabic locale (e.g. 'ar-EG'), reply in Egyptian colloquial Arabic — not Modern Standard Arabic, and not a literal translation. If unset, infer from script. If mixed, mirror the mix.
 
 RESPONSE JSON SCHEMA:
 {
@@ -110,6 +117,7 @@ async def plan_form_fill(
     goal: str,
     profile_hints: Optional[List[str]] = None,
     prior_errors: Optional[Dict[str, str]] = None,
+    language: Optional[str] = None,
 ) -> FormPlan:
     """
     Produces a complete FormPlan for the specified form.
@@ -160,8 +168,10 @@ async def plan_form_fill(
     inventory_json = json.dumps(form_inventory, indent=2)
     nonce = secrets.token_hex(8)
 
+    lang_context = f"\nREQUESTED USER LANGUAGE: {language}" if language else ""
+
     user_body = f"""USER GOAL:
-"{goal}"
+"{goal}"{lang_context}
 
 TARGET FORM ID:
 "{form_id}"

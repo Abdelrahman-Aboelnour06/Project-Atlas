@@ -24,31 +24,33 @@ async function ensureContentScript(tabId) {
   }
 }
 
-chrome.action.onClicked.addListener(async (tab) => {
-  if (!tab.id) return;
+if (typeof chrome !== "undefined" && chrome.action?.onClicked) {
+  chrome.action.onClicked.addListener(async (tab) => {
+    if (!tab.id) return;
 
-  // Internal chrome/edge/extension pages disallow script injection
-  if (tab.url && (tab.url.startsWith("chrome://") || tab.url.startsWith("edge://") || tab.url.startsWith("chrome-extension://") || tab.url.startsWith("about:"))) {
-    console.warn("Atlas: Cannot run on internal page:", tab.url);
-    return;
-  }
+    // Internal chrome/edge/extension pages disallow script injection
+    if (tab.url && (tab.url.startsWith("chrome://") || tab.url.startsWith("edge://") || tab.url.startsWith("chrome-extension://") || tab.url.startsWith("about:"))) {
+      console.warn("Atlas: Cannot run on internal page:", tab.url);
+      return;
+    }
 
-  try {
-    // If content script is already loaded, toggle it directly
-    const res = await chrome.tabs.sendMessage(tab.id, { type: 'ATLAS_TOGGLE' });
-    if (res && res.status === 'ok') return;
-  } catch (_) {
-    // Not loaded yet, proceed to inject
-  }
+    try {
+      // If content script is already loaded, toggle it directly
+      const res = await chrome.tabs.sendMessage(tab.id, { type: 'ATLAS_TOGGLE' });
+      if (res && res.status === 'ok') return;
+    } catch (_) {
+      // Not loaded yet, proceed to inject
+    }
 
-  try {
-    await ensureContentScript(tab.id);
-    // Content script is now loaded; send the toggle command
-    await chrome.tabs.sendMessage(tab.id, { type: 'ATLAS_TOGGLE' });
-  } catch (err) {
-    console.error("Atlas: toggle after injection failed", err);
-  }
-});
+    try {
+      await ensureContentScript(tab.id);
+      // Content script is now loaded; send the toggle command
+      await chrome.tabs.sendMessage(tab.id, { type: 'ATLAS_TOGGLE' });
+    } catch (err) {
+      console.error("Atlas: toggle after injection failed", err);
+    }
+  });
+}
 
 // ── Backend Proxy (Bypasses Brave Shields, Mixed Content, and host-page CSP) ──
 let bgSocket = null;
@@ -246,11 +248,12 @@ async function bgSendMessage(msg) {
   });
 }
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === "ATLAS_OPEN_OPTIONS") {
-    chrome.runtime.openOptionsPage();
-    return;
-  }
+if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === "ATLAS_OPEN_OPTIONS") {
+      chrome.runtime.openOptionsPage();
+      return;
+    }
 
   if (message.type === "ATLAS_SOCKET_CONNECT") {
     bgConnect({ baseUrl: message.baseUrl, apiKey: message.apiKey })
@@ -316,14 +319,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message.type === "ATLAS_GOAL_STORE_PUT") {
+  if (message.type === "ATLAS_GOAL_STORE_PUT" || message.type === "ATLAS_GOAL_STATE_PUT") {
     GoalStore.put(message.tabId || sender.tab?.id, message.goalState)
       .then((state) => sendResponse({ ok: true, state }))
       .catch((err) => sendResponse({ ok: false, error: err.message }));
     return true;
   }
 
-  if (message.type === "ATLAS_GOAL_STORE_CLEAR") {
+  if (message.type === "ATLAS_GOAL_STORE_CLEAR" || message.type === "ATLAS_GOAL_STATE_CLEAR") {
     GoalStore.clear(message.tabId || sender.tab?.id)
       .then(() => sendResponse({ ok: true }))
       .catch((err) => sendResponse({ ok: false, error: err.message }));
@@ -336,7 +339,59 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch((err) => sendResponse({ ok: false, error: err.message }));
     return true;
   }
-});
+  });
+}
+
+// ── DeclarativeNetRequest Session Rules (Track L1-lite) ──────────────────────
+async function applyDnrLanguageRule(tabId, language) {
+  if (!tabId || !language) return;
+  if (typeof chrome === "undefined" || !chrome.declarativeNetRequest?.updateSessionRules) return;
+  const ruleId = Number(tabId);
+  if (!Number.isInteger(ruleId) || ruleId <= 0) return;
+
+  const rule = {
+    id: ruleId,
+    priority: 1,
+    action: {
+      type: "modifyHeaders",
+      requestHeaders: [
+        {
+          header: "Accept-Language",
+          operation: "set",
+          value: `${language};q=0.9, en;q=0.5`,
+        },
+      ],
+    },
+    condition: {
+      tabIds: [ruleId],
+      resourceTypes: ["main_frame", "sub_frame", "xmlhttprequest", "other"],
+    },
+  };
+
+  try {
+    await chrome.declarativeNetRequest.updateSessionRules({
+      removeRuleIds: [ruleId],
+      addRules: [rule],
+    });
+  } catch (err) {
+    console.warn("Atlas: Error updating DNR session rules", err);
+  }
+}
+
+async function clearDnrLanguageRule(tabId) {
+  if (!tabId) return;
+  if (typeof chrome === "undefined" || !chrome.declarativeNetRequest?.updateSessionRules) return;
+  const ruleId = Number(tabId);
+  if (!Number.isInteger(ruleId) || ruleId <= 0) return;
+
+  try {
+    await chrome.declarativeNetRequest.updateSessionRules({
+      removeRuleIds: [ruleId],
+    });
+  } catch (err) {
+    console.warn("Atlas: Error clearing DNR session rules", err);
+  }
+}
 
 // ── GoalStore Implementation (§12.2) ──────────────────────────────────────────
 const GoalStore = {
@@ -352,6 +407,9 @@ const GoalStore = {
   },
   async put(tabId, goalState) {
     if (!tabId) return goalState;
+    if (goalState?.language) {
+      await applyDnrLanguageRule(tabId, goalState.language);
+    }
     if (!chrome?.storage?.session) return goalState;
     const key = `atlas_goal_tab_${tabId}`;
     try {
@@ -364,7 +422,9 @@ const GoalStore = {
     }
   },
   async clear(tabId) {
-    if (!tabId || !chrome?.storage?.session) return;
+    if (!tabId) return;
+    await clearDnrLanguageRule(tabId);
+    if (!chrome?.storage?.session) return;
     const key = `atlas_goal_tab_${tabId}`;
     try {
       await chrome.storage.session.remove(key);
@@ -409,11 +469,20 @@ if (typeof chrome !== "undefined" && chrome.webNavigation?.onCompleted) {
   });
 }
 
+// ── Tab Cleanup Listener ─────────────────────────────────────────────────────
+if (typeof chrome !== "undefined" && chrome.tabs?.onRemoved) {
+  chrome.tabs.onRemoved.addListener(async (closedTabId) => {
+    await GoalStore.clear(closedTabId);
+  });
+}
+
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     GoalStore,
     sanitizeBaseUrl,
     recordDownloadEvidence,
     downloadEvidenceList,
+    applyDnrLanguageRule,
+    clearDnrLanguageRule,
   };
 }

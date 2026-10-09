@@ -32,6 +32,13 @@ PageKind = Literal[
 ]
 
 
+LANGUAGE_MIRRORING_DIRECTIVE = (
+    "Reply in the same language the user is using. If language is an Arabic locale (e.g. 'ar-EG'), "
+    "reply in Egyptian colloquial Arabic — not Modern Standard Arabic, and not a literal translation. "
+    "If unset, infer from script. If mixed, mirror the mix."
+)
+
+
 class ScoutResult(BaseModel):
     """Classification assessment of the current webpage."""
     page_kind: PageKind = Field(default="other", description="High-level category of page")
@@ -39,6 +46,7 @@ class ScoutResult(BaseModel):
     form_inventory: List[str] = Field(default_factory=list, description="IDs or labels of forms detected on page")
     primary_cta: Optional[str] = Field(default=None, description="Element ID/ref of primary call-to-action button")
     summary: Optional[str] = Field(default=None, description="Concise description of page contents")
+    detected_language: Optional[str] = Field(default=None, description="Detected page language code, e.g. 'ar' or 'en'")
 
 
 def _clean_json_str(raw: str) -> str:
@@ -136,12 +144,24 @@ def _analyze_dom_heuristics(
     else:
         page_kind = "other"
 
+    # 5. Language detection heuristic
+    detected_lang: Optional[str] = None
+    sample_text = f"{page_text or ''} {' '.join(str(n.get('resolved_label') or n.get('aria_label') or n.get('inner_text') or '') for n in dom_nodes)}"
+    if sample_text.strip():
+        arabic_chars = len(re.findall(r"[\u0600-\u06FF]", sample_text))
+        total_letters = len(re.findall(r"[a-zA-Z\u0600-\u06FF]", sample_text))
+        if total_letters > 0 and (arabic_chars / total_letters) > 0.15:
+            detected_lang = "ar"
+        elif total_letters > 0:
+            detected_lang = "en"
+
     return ScoutResult(
         page_kind=page_kind,
         blockers=blockers,
         form_inventory=form_inventory,
         primary_cta=primary_cta,
         summary=f"Heuristic classification: {page_kind} with {len(form_inventory)} form(s)",
+        detected_language=detected_lang,
     )
 
 
@@ -163,13 +183,17 @@ Identify if any of these active blockers prevent automated progress:
 - "otp": Requires human SMS/email one-time verification code.
 - "auth_wall": Requires human account authentication.
 
+LANGUAGE MIRRORING:
+Reply in the same language the user is using. If language is an Arabic locale (e.g. 'ar-EG'), reply in Egyptian colloquial Arabic — not Modern Standard Arabic, and not a literal translation. If unset, infer from script. If mixed, mirror the mix.
+
 RESPONSE JSON SCHEMA:
 {
   "page_kind": "form" | "list" | "article" | "auth_wall" | "captcha" | "confirmation" | "other",
   "blockers": ["captcha", "otp", "auth_wall"],
   "form_inventory": ["form_id_1", "form_id_2"],
   "primary_cta": "element_id_or_ref",
-  "summary": "Brief summary of page and key interactive components"
+  "summary": "Brief summary of page and key interactive components",
+  "detected_language": "ar" | "en" | null
 }"""
 
 
@@ -177,6 +201,7 @@ async def classify_page(
     current_url: Optional[str],
     dom_map: List[Union[DomNode, Dict[str, Any]]],
     page_text: Optional[str] = None,
+    language: Optional[str] = None,
 ) -> ScoutResult:
     """
     Classifies the page kind, identifies blockers, and collects form inventory.
@@ -206,8 +231,10 @@ async def classify_page(
     summary_nonce = secrets.token_hex(8)
     dom_nonce = secrets.token_hex(8)
 
+    lang_context = f"\nREQUESTED USER LANGUAGE: {language}" if language else ""
+
     user_body = f"""PAGE CONTEXT:
-URL: {current_url or "Unknown"}
+URL: {current_url or "Unknown"}{lang_context}
 
 --- BEGIN UNTRUSTED WEBPAGE SUMMARY (BOUNDARY_ID: {summary_nonce}) ---
 {(page_text or "").strip()[:1000] if page_text else "No page summary available"}
@@ -241,6 +268,7 @@ JSON CLASSIFICATION:"""
         forms = list(parsed.get("form_inventory") or heuristic_fallback.form_inventory)
         primary_cta = parsed.get("primary_cta") or heuristic_fallback.primary_cta
         summary = parsed.get("summary") or heuristic_fallback.summary
+        detected_language = parsed.get("detected_language") or heuristic_fallback.detected_language
 
         return ScoutResult(
             page_kind=page_kind,  # type: ignore
@@ -248,6 +276,7 @@ JSON CLASSIFICATION:"""
             form_inventory=forms,
             primary_cta=primary_cta,
             summary=summary,
+            detected_language=detected_language,
         )
 
     except Exception as exc:
