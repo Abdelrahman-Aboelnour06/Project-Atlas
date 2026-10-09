@@ -142,6 +142,55 @@ CANONICAL_INTENTS: Dict[str, Dict[str, List[str]]] = {
             "النشرة البريدية", "النشره البريديه", "النشرة الإخبارية", "النشره الاخباريه",
         ],
     },
+    "traffic_inquiry": {
+        "triggers": [
+            # English
+            "check car fees", "check if my car has any fees", "car fees", "check traffic violations",
+            "check traffic fines", "vehicle violations", "car violations", "traffic violations",
+            "traffic fines", "traffic fees", "license fees", "vehicle fees", "check my car fees in egypt",
+            "car fees in egypt", "check vehicle fines", "traffic services", "traffic tickets",
+            "check traffic tickets", "car fine", "car fines", "check car fees in egypt",
+            # MSA
+            "الاستعلام عن المخالفات", "الاستعلام عن المخالفات المرورية", "مخالفات المرور",
+            "مخالفات رخص المركبات", "مخالفات رخصة المركبة", "رسوم رخصة المركبة", "رسوم المركبة",
+            "فحص مخالفات السيارة", "الاستعلام عن مخالفات السيارة", "مخالفات السيارة",
+            "مخالفات المركبات", "الاستعلام عن مخالفات المرور",
+            # Egyptian Colloquial
+            "مخالفات عربيتي", "مخالفات العربية", "شوفيلي لو في مخالفات على عربيتي",
+            "شوف مخالفات عربيتي", "شوفلي مخالفات العربية", "عايز اعرف مخالفات العربية",
+            "عليها مخالفات", "عليها فلوس", "رسوم العربية", "رسوم رخصة العربية",
+            "استعلام عن مخالفات", "مخالفات رخصتي", "شوفيلي مخالفات العربية",
+            "شوفلي لو في مخالفات", "شوفيلي لو في مخالفات", "شوف لو في مخالفات على عربيتي",
+            "شوفيلي لو في مخالفات على عربيتي في مصر", "شوفلي لو في مخالفات على عربيتي في مصر",
+        ],
+        "dom_labels": [
+            # English
+            "traffic violations", "traffic fines", "vehicle violations", "traffic fees",
+            "traffic services", "check violations", "check fines",
+            # Arabic
+            "الاستعلام عن المخالفات المرورية", "الاستعلام عن المخالفات", "مخالفات المرور",
+            "مخالفات رخص المركبات", "مخالفات رخصة المركبة", "مخالفات المركبات", "مخالفات السيارة",
+        ],
+    },
+    "license_renewal": {
+        "triggers": [
+            # English
+            "renew vehicle license", "renew car license", "license renewal", "renew license",
+            "renew my vehicle", "vehicle registration renewal",
+            # MSA
+            "تجديد رخصة المركبة", "تجديد رخصة السيارة", "تجديد الرخصة", "تجديد رخصتي",
+            "تجديد رخص المركبات",
+            # Egyptian Colloquial
+            "جدد رخصة عربيتي", "عايز اجدد الرخصة", "عاوز اجدد الرخصة", "تجديد رخصة العربية",
+            "عاوز اجدد رخصة العربية", "عايز اجدد رخصة عربيتي",
+        ],
+        "dom_labels": [
+            # English
+            "vehicle license renewal", "renew vehicle license", "renew license", "license renewal",
+            # Arabic
+            "تجديد رخصة المركبة", "تجديد رخصة السيارة", "تجديد الرخصة", "تجديد رخص المركبات",
+        ],
+    },
 }
 
 

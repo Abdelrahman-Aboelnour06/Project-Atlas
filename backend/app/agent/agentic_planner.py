@@ -310,12 +310,12 @@ def find_heuristic_match(user_message: str, concise_dom: List[Dict[str, Any]]) -
         "drive", "drives", "cloud", "storage", "disk", "view", "views", "area", "window",
         "site", "website", "webpage", "app", "application", "option", "options",
         # Arabic action verbs, conversational tokens, & prepositions (MSA & Egyptian)
-        "افتح", "اضغط", "دوس", "انقر", "اختار", "حدد", "شوف", "وريني", "هات",
+        "افتح", "اضغط", "دوس", "انقر", "اختار", "حدد", "شوف", "شوفيلي", "شوفلي", "شوفيلنا", "وريني", "هات",
         "وديني", "روح", "خش", "ادخل", "اعمل", "عايز", "عاوز", "حابب", "ياريت",
-        "ارجوك", "أرجوك", "دور", "ابحث",
+        "ارجوك", "أرجوك", "دور", "ابحث", "قولي", "قوليلي", "عرفني", "عرفيني",
         "في", "على", "علي", "من", "الى", "الي", "إلى", "عن", "مع", "حتى",
         "ده", "دي", "دا", "دول", "هنا", "هناك", "لو", "سمحت", "فضلك",
-        "يا", "اطلس", "أطلس", "بتاع", "بتاعت", "بتاعة",
+        "يا", "اطلس", "أطلس", "بتاع", "بتاعت", "بتاعة", "مصر", "مصرية", "مصريه",
         # Arabic UI component and structural nouns
         "زر", "زرار", "زرائر", "ازرار", "أزرار", "قائمة", "قايمه", "شريط",
         "خانة", "خانه", "حقل", "مربع", "ايقونة", "ايقونه", "رمز", "لينك", "رابط"
@@ -486,19 +486,40 @@ def _build_canonical_plan(
     else:
         action = "click"
 
-    if action in {"open", "double_click"}:
-        action_desc = f"Double click '{lbl}'"
-    elif action == "triple_click":
-        action_desc = f"Triple click '{lbl}'"
-    elif click_count and click_count > 1:
-        action_desc = f"Click '{lbl}' {click_count} times"
+    is_ar = bool(re.search(r"[\u0600-\u06FF]", user_message))
+    if is_ar:
+        if action in {"open", "double_click"}:
+            reply_text = f"لقيت '{lbl}' في الصفحة. هفتحها لك دلوقتي!"
+            action_desc = f"فتح '{lbl}'"
+            success_msg = f"تم! فتحت '{lbl}'."
+        elif action == "triple_click":
+            reply_text = f"لقيت '{lbl}' في الصفحة. هضغط عليها 3 مرات دلوقتي!"
+            action_desc = f"الضغط 3 مرات على '{lbl}'"
+            success_msg = f"تم! تم الضغط 3 مرات على '{lbl}'."
+        elif click_count and click_count > 1:
+            reply_text = f"لقيت '{lbl}' في الصفحة. هضغط عليها {click_count} مرات دلوقتي!"
+            action_desc = f"الضغط على '{lbl}' {click_count} مرات"
+            success_msg = f"تم! تم الضغط على '{lbl}' {click_count} مرات."
+        else:
+            reply_text = f"لقيت '{lbl}' في الصفحة. هضغط عليها دلوقتي!"
+            action_desc = f"الضغط على '{lbl}'"
+            success_msg = f"تمام! ضغطت على '{lbl}'."
     else:
-        action_desc = f"Click '{lbl}'"
+        if action in {"open", "double_click"}:
+            action_desc = f"Double click '{lbl}'"
+        elif action == "triple_click":
+            action_desc = f"Triple click '{lbl}'"
+        elif click_count and click_count > 1:
+            action_desc = f"Click '{lbl}' {click_count} times"
+        else:
+            action_desc = f"Click '{lbl}'"
+        reply_text = f"I found '{lbl}' on the page. {action_desc} for you now!"
+        success_msg = f"Done! Completed {action_desc}."
 
     return AgenticPlan(
         type="plan",
         thought=f"Canonical intent '{intent_key}' matched element '{lbl}' (id={matched_node.get('id')}, confidence={confidence:.2f})",
-        reply=f"I found '{lbl}' on the page. {action_desc} for you now!",
+        reply=reply_text,
         steps=[PlanStep(
             action=action,
             element_id=str(matched_node["id"]),
@@ -507,7 +528,7 @@ def _build_canonical_plan(
             delay_ms=600,
         )],
         requires_confirmation=False,
-        confirmation_success_message=f"Done! Completed {action_desc}."
+        confirmation_success_message=success_msg,
     )
 
 

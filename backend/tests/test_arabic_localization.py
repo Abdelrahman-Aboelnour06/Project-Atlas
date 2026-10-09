@@ -232,3 +232,78 @@ class TestModelLanguageSignalContracts:
             language="ar-EG",
         )
         assert req_ar.language == "ar-EG"
+
+
+# ── Universal Government & Traffic Portal Intent Tests ───────────────────────
+
+class TestTrafficPortalInquiry:
+    """Verifies bilingual car fee and traffic violation inquiries on real portals."""
+
+    def test_canonicalize_traffic_inquiry_phrases(self):
+        # English
+        assert canonicalize_intent("check if my car has any fees in egypt") == "traffic_inquiry"
+        assert canonicalize_intent("check traffic violations") == "traffic_inquiry"
+        assert canonicalize_intent("car fees") == "traffic_inquiry"
+        # MSA
+        assert canonicalize_intent("الاستعلام عن المخالفات المرورية") == "traffic_inquiry"
+        assert canonicalize_intent("مخالفات رخص المركبات") == "traffic_inquiry"
+        # Egyptian Colloquial
+        assert canonicalize_intent("شوفيلي لو في مخالفات على عربيتي في مصر") == "traffic_inquiry"
+        assert canonicalize_intent("مخالفات عربيتي") == "traffic_inquiry"
+        assert canonicalize_intent("شوفيلي لو في مخالفات على عربيتي") == "traffic_inquiry"
+
+    def test_canonicalize_license_renewal_phrases(self):
+        # English
+        assert canonicalize_intent("renew vehicle license") == "license_renewal"
+        assert canonicalize_intent("car license renewal") == "license_renewal"
+        # MSA
+        assert canonicalize_intent("تجديد رخصة المركبة") == "license_renewal"
+        # Egyptian Colloquial
+        assert canonicalize_intent("عايز اجدد رخصة عربيتي") == "license_renewal"
+        assert canonicalize_intent("جدد رخصة عربيتي") == "license_renewal"
+
+    @pytest.mark.asyncio
+    async def test_egypt_traffic_portal_real_dom_snapshot(self):
+        import json
+        from pathlib import Path
+        from app.agent.agentic_planner import plan_agentic_action
+
+        dom_file = Path(__file__).parent / "egypt_traffic_dom.json"
+        assert dom_file.exists(), "egypt_traffic_dom.json snapshot must exist"
+
+        with open(dom_file, "r", encoding="utf-8") as f:
+            dom = json.load(f)
+
+        # 1. Egyptian colloquial query: "شوفيلي لو في مخالفات على عربيتي في مصر"
+        plan_ar = await plan_agentic_action(
+            dom,
+            "شوفيلي لو في مخالفات على عربيتي في مصر",
+            url="https://traffic.moi.gov.eg/Arabic/OurServices/Pages/EServices.aspx"
+        )
+        assert plan_ar.type == "plan"
+        assert len(plan_ar.steps) == 1
+        assert plan_ar.steps[0].element_id == "el_d81efb208233e8e8"
+        assert "الاستعلام عن المخالفات المرورية" in plan_ar.steps[0].description
+        assert "لقيت" in plan_ar.reply or "الاستعلام عن المخالفات المرورية" in plan_ar.reply
+
+        # 2. English query: "check if my car has any fees in egypt"
+        plan_en = await plan_agentic_action(
+            dom,
+            "check if my car has any fees in egypt",
+            url="https://traffic.moi.gov.eg/Arabic/OurServices/Pages/EServices.aspx"
+        )
+        assert plan_en.type == "plan"
+        assert len(plan_en.steps) == 1
+        assert plan_en.steps[0].element_id == "el_d81efb208233e8e8"
+        assert "الاستعلام عن المخالفات المرورية" in plan_en.steps[0].description
+
+        # 3. Egyptian license renewal: "عايز اجدد رخصة عربيتي"
+        plan_renewal = await plan_agentic_action(
+            dom,
+            "عايز اجدد رخصة عربيتي",
+            url="https://traffic.moi.gov.eg/Arabic/OurServices/Pages/EServices.aspx"
+        )
+        assert plan_renewal.type == "plan"
+        assert len(plan_renewal.steps) == 1
+        assert plan_renewal.steps[0].element_id == "el_fcac03b8c7b39e01"
+        assert "تجديد رخصة المركبة" in plan_renewal.steps[0].description
