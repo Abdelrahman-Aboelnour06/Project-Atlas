@@ -238,3 +238,53 @@ jobs:
       - name: Run End-to-End Multi-Service System Tests
         working-directory: ./backend
         run: pytest tests/test_system_e2e.py -v --tb=short
+
+  extension-and-compliance:
+    name: "Tier 4: Extension Packaging & WCAG AAA Accessibility"
+    needs: [system-tests]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Python Dependencies
+        working-directory: ./backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r tests/requirements-test.txt
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run Node Extension Unit Tests
+        run: |
+          node client-script/test_secret_vault.js
+          node client-script/test_goal_store.js
+          node client-script/test_executor_v2.js
+          node client-script/test_dom_serializer_v2.js
+          node client-script/test_audio_feedback.js
+          node demo-site/test_fixtures.js
+
+      - name: Run WCAG 2.2 AAA Accessibility Suite
+        working-directory: ./backend
+        run: pytest tests/test_a11y_compliance.py -v --tb=short
+
+      - name: Run Presentation Deck Generator Test
+        working-directory: ./backend
+        run: pytest tests/test_pitch_deck.py -v --tb=short
+
+      - name: Verify Extension Packaging Pipeline
+        working-directory: ./backend
+        run: pytest tests/test_extension_packager.py -v --tb=short
+
+      - name: Build Release Extension Package
+        run: python tools/package_extension.py
