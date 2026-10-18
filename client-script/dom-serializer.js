@@ -182,11 +182,11 @@ const NOISE_TEXT_PATTERNS = [
       return true;
     }
 
-    // Label must be more than 1 character
-    if (text.length < 2) return false;
-    // Discard if text contains NO letters (purely digits, punctuation, and symbols).
-    // Uses Unicode property escape \p{L} with /u flag to support Arabic, CJK, Cyrillic, Hebrew, Latin.
-    if (!/\p{L}/u.test(text)) return false;
+    // Label must be substantive: allow 1-character controls if they are letters, digits, or symbols (e.g. "X", "+", "-", "1", "×")
+    if (text.length === 1 && !/[\p{L}\p{N}+×✕\-><?!]/u.test(text)) return false;
+    if (text.length === 0) return false;
+    // Discard if text contains NO letters, digits, or interactive action symbols
+    if (!/[\p{L}\p{N}+×✕\-><?!]/u.test(text)) return false;
 
     return true;
   };
@@ -286,19 +286,28 @@ const NOISE_TEXT_PATTERNS = [
     if (parseFloat(style.opacity) < 0.1) return false;
     if (parseFloat(style.fontSize) === 0) return false;
     if (el.offsetParent === null && el.tagName !== "BODY") {
-      // W3C CSSOM: position: fixed elements always return offsetParent === null
-      let isFixed = style.position === "fixed";
-      if (!isFixed && el.parentElement) {
+      // W3C CSSOM: position: fixed/sticky, open dialogs, popovers, SVGs, and Shadow DOM return offsetParent === null
+      let isAllowedNullOffset = style.position === "fixed" || style.position === "sticky";
+      if (!isAllowedNullOffset && (
+        el.closest("dialog[open]") ||
+        el.closest("[popover]") ||
+        el.closest("svg") ||
+        (el.getRootNode && el.getRootNode() && el.getRootNode().nodeType === 11)
+      )) {
+        isAllowedNullOffset = true;
+      }
+      if (!isAllowedNullOffset && el.parentElement) {
         let curr = el.parentElement;
         while (curr && curr !== document.body) {
-          if (window.getComputedStyle(curr).position === "fixed") {
-            isFixed = true;
+          const s = window.getComputedStyle(curr);
+          if (s.position === "fixed" || s.position === "sticky") {
+            isAllowedNullOffset = true;
             break;
           }
           curr = curr.parentElement;
         }
       }
-      if (!isFixed) return false;
+      if (!isAllowedNullOffset) return false;
     }
     const rect = el.getBoundingClientRect();
     return rect.width > 0 && rect.height > 0;
@@ -381,7 +390,7 @@ const NOISE_TEXT_PATTERNS = [
     const text = (el.innerText || el.textContent || "")
       .trim()
       .replace(/\s+/g, " ");
-    if (text.length > 1 && !/^[^\p{L}\p{N}]$/u.test(text)) return truncate(text);
+    if (text.length >= 1 && /[\p{L}\p{N}+×✕\-><?!]/u.test(text)) return truncate(text);
 
     // 6. Wrapping <label>
     const wrapping = el.closest("label");

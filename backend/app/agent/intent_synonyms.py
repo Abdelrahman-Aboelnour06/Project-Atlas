@@ -191,6 +191,67 @@ CANONICAL_INTENTS: Dict[str, Dict[str, List[str]]] = {
             "تجديد رخصة المركبة", "تجديد رخصة السيارة", "تجديد الرخصة", "تجديد رخص المركبات",
         ],
     },
+    "view_cart": {
+        "triggers": [
+            "view cart", "view my cart", "open cart", "open my cart", "show cart", "show my cart",
+            "shopping cart", "my cart", "cart", "go to cart",
+            "open bag", "view bag", "shopping bag", "proceed to checkout", "checkout",
+            "عربة التسوق", "السلة", "افتح السلة", "وريني السلة", "سلة المشتريات", "عايز ادفع",
+        ],
+        "dom_labels": [
+            "cart", "shopping cart", "view cart", "bag", "basket", "checkout",
+            "السلة", "عربة التسوق", "سلة المشتريات",
+        ],
+    },
+    "sign_in": {
+        "triggers": [
+            "sign in", "log in", "login", "my account", "sign into my account",
+            "log in to account", "open profile", "user login",
+            "تسجيل الدخول", "دخول", "حسابي", "سجل دخول", "افتح حسابي",
+        ],
+        "dom_labels": [
+            "sign in", "log in", "login", "account", "my account", "profile",
+            "تسجيل الدخول", "دخول", "حسابي",
+        ],
+    },
+    "notifications": {
+        "triggers": [
+            "notifications", "open notifications", "show alerts", "alerts",
+            "inbox", "show notifications", "my notifications",
+            "الإشعارات", "الاشعارات", "التنبيهات", "وريني الإشعارات",
+        ],
+        "dom_labels": [
+            "notifications", "alerts", "inbox", "bell", "الإشعارات", "التنبيهات",
+        ],
+    },
+    "pagination_next": {
+        "triggers": [
+            "next page", "go to next page", "next", "page 2", "more results",
+            "الصفحة التالية", "التالي", "اللي بعده", "الصفحة اللي بعدها",
+        ],
+        "dom_labels": [
+            "next", "next page", ">", "»", "التالي", "الصفحة التالية",
+        ],
+    },
+    "download_export": {
+        "triggers": [
+            "download", "export csv", "save pdf", "download file", "export data",
+            "print statement", "download timetable",
+            "تحميل", "تنزيل", "تصدير", "تنزيل الملف", "اطبع",
+        ],
+        "dom_labels": [
+            "download", "export", "save", "pdf", "csv", "print", "تحميل", "تنزيل", "تصدير",
+        ],
+    },
+    "filter_sort": {
+        "triggers": [
+            "filter", "show filters", "sort by", "sort by price", "apply filter",
+            "تصفية", "ترتيب", "فلتر", "رتب حسب",
+        ],
+        "dom_labels": [
+            "filter", "sort", "sort by", "filters", "تصفية", "ترتيب", "فلترة",
+        ],
+    },
 }
 
 
@@ -247,6 +308,7 @@ def match_canonical_intent(
         return None, 0.0
 
     dom_labels = CANONICAL_INTENTS[intent_key].get("dom_labels", [])
+    raw_dom_labels = {lbl.strip().lower() for lbl in dom_labels if lbl and lbl.strip()}
     norm_dom_labels = {_normalize_text(lbl) for lbl in dom_labels if _normalize_text(lbl)}
 
     candidates: List[Tuple[Dict[str, Any], float]] = []
@@ -266,15 +328,21 @@ def match_canonical_intent(
         if not isinstance(raw_lbl, str) or not raw_lbl:
             continue
 
+        trimmed_lbl = raw_lbl.strip().lower()
+
+        # 1. Exact raw match (covers interactive symbols like '>', '»', '+', '×')
+        if trimmed_lbl in raw_dom_labels:
+            return node_dict, 1.0
+
         clean_lbl = _normalize_text(raw_lbl)
         if not clean_lbl:
             continue
 
-        # 1. Exact match with canonical DOM labels
+        # 2. Exact match with canonical DOM labels
         if clean_lbl in norm_dom_labels:
             return node_dict, 1.0
 
-        # 2. Substring match
+        # 3. Substring match
         for norm_dl in norm_dom_labels:
             if len(norm_dl) >= 3 and (norm_dl in clean_lbl or clean_lbl in norm_dl):
                 candidates.append((node_dict, 0.85))

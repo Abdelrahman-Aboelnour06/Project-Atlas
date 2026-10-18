@@ -1,0 +1,1946 @@
+{
+  "timestamp": "2026-10-18T10:24:14.693Z",
+  "total_sites": 100,
+  "passed_count": 100,
+  "pass_rate": "100.0%",
+  "target_engine": "Atlas v3.0 (Dual-Speed System 1 + System 2)",
+  "category_breakdown": {
+    "Search & Portals": {
+      "total": 10,
+      "passed": 10
+    },
+    "Knowledge & Reference": {
+      "total": 10,
+      "passed": 10
+    },
+    "Developer & Tech": {
+      "total": 10,
+      "passed": 10
+    },
+    "E-Commerce & Retail": {
+      "total": 10,
+      "passed": 10
+    },
+    "News & Journalism": {
+      "total": 10,
+      "passed": 10
+    },
+    "Social & Community": {
+      "total": 10,
+      "passed": 10
+    },
+    "Travel & Hospitality": {
+      "total": 10,
+      "passed": 10
+    },
+    "Productivity & SaaS": {
+      "total": 10,
+      "passed": 10
+    },
+    "Government & Healthcare": {
+      "total": 10,
+      "passed": 10
+    },
+    "Multimedia & Streaming": {
+      "total": 10,
+      "passed": 10
+    }
+  },
+  "results": [
+    {
+      "id": 1,
+      "name": "Google Search",
+      "domain": "google.com",
+      "category": "Search & Portals",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 27,
+      "observations": [
+        "Successfully indexed 1 position:fixed floating controls."
+      ]
+    },
+    {
+      "id": 2,
+      "name": "DuckDuckGo",
+      "domain": "duckduckgo.com",
+      "category": "Search & Portals",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 31,
+      "observations": []
+    },
+    {
+      "id": 3,
+      "name": "Microsoft Bing",
+      "domain": "bing.com",
+      "category": "Search & Portals",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 38,
+      "observations": []
+    },
+    {
+      "id": 4,
+      "name": "Yahoo Portal",
+      "domain": "yahoo.com",
+      "category": "Search & Portals",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 51,
+      "observations": []
+    },
+    {
+      "id": 5,
+      "name": "Baidu",
+      "domain": "baidu.com",
+      "category": "Search & Portals",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 48,
+      "observations": []
+    },
+    {
+      "id": 6,
+      "name": "Yandex",
+      "domain": "yandex.com",
+      "category": "Search & Portals",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 69,
+      "observations": []
+    },
+    {
+      "id": 7,
+      "name": "Ecosia",
+      "domain": "ecosia.org",
+      "category": "Search & Portals",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 31,
+      "observations": []
+    },
+    {
+      "id": 8,
+      "name": "Startpage",
+      "domain": "startpage.com",
+      "category": "Search & Portals",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 28,
+      "observations": []
+    },
+    {
+      "id": 9,
+      "name": "AOL Portal",
+      "domain": "aol.com",
+      "category": "Search & Portals",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 32,
+      "observations": []
+    },
+    {
+      "id": 10,
+      "name": "Ask.com",
+      "domain": "ask.com",
+      "category": "Search & Portals",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 66,
+      "observations": []
+    },
+    {
+      "id": 11,
+      "name": "Wikipedia English",
+      "domain": "en.wikipedia.org",
+      "category": "Knowledge & Reference",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 63,
+      "observations": [
+        "Successfully indexed 1 position:fixed floating controls."
+      ]
+    },
+    {
+      "id": 12,
+      "name": "Wiktionary",
+      "domain": "wiktionary.org",
+      "category": "Knowledge & Reference",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 51,
+      "observations": [
+        "Successfully indexed 1 position:fixed floating controls."
+      ]
+    },
+    {
+      "id": 13,
+      "name": "Internet Archive",
+      "domain": "archive.org",
+      "category": "Knowledge & Reference",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 59,
+      "observations": [
+        "Successfully indexed 1 position:fixed floating controls."
+      ]
+    },
+    {
+      "id": 14,
+      "name": "MDN Web Docs",
+      "domain": "developer.mozilla.org",
+      "category": "Knowledge & Reference",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 37,
+      "observations": [
+        "Successfully indexed 1 position:fixed floating controls."
+      ]
+    },
+    {
+      "id": 15,
+      "name": "W3C Standards Portal",
+      "domain": "w3.org",
+      "category": "Knowledge & Reference",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 44,
+      "observations": [
+        "Successfully indexed 1 position:fixed floating controls."
+      ]
+    },
+    {
+      "id": 16,
+      "name": "Encyclopaedia Britannica",
+      "domain": "britannica.com",
+      "category": "Knowledge & Reference",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 28,
+      "observations": [
+        "Successfully indexed 1 position:fixed floating controls."
+      ]
+    },
+    {
+      "id": 17,
+      "name": "Stack Exchange",
+      "domain": "stackexchange.com",
+      "category": "Knowledge & Reference",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 52,
+      "observations": [
+        "Successfully indexed 1 position:fixed floating controls."
+      ]
+    },
+    {
+      "id": 18,
+      "name": "WolframAlpha",
+      "domain": "wolframalpha.com",
+      "category": "Knowledge & Reference",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 38,
+      "observations": [
+        "Successfully indexed 1 position:fixed floating controls."
+      ]
+    },
+    {
+      "id": 19,
+      "name": "Quora",
+      "domain": "quora.com",
+      "category": "Knowledge & Reference",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 26,
+      "observations": [
+        "Successfully indexed 1 position:fixed floating controls."
+      ]
+    },
+    {
+      "id": 20,
+      "name": "Medium",
+      "domain": "medium.com",
+      "category": "Knowledge & Reference",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 42,
+      "observations": [
+        "Successfully indexed 1 position:fixed floating controls."
+      ]
+    },
+    {
+      "id": 21,
+      "name": "GitHub",
+      "domain": "github.com",
+      "category": "Developer & Tech",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 52,
+      "observations": []
+    },
+    {
+      "id": 22,
+      "name": "GitLab",
+      "domain": "gitlab.com",
+      "category": "Developer & Tech",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 36,
+      "observations": []
+    },
+    {
+      "id": 23,
+      "name": "Stack Overflow",
+      "domain": "stackoverflow.com",
+      "category": "Developer & Tech",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 66,
+      "observations": []
+    },
+    {
+      "id": 24,
+      "name": "Hacker News",
+      "domain": "news.ycombinator.com",
+      "category": "Developer & Tech",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 55,
+      "observations": []
+    },
+    {
+      "id": 25,
+      "name": "Dev.to",
+      "domain": "dev.to",
+      "category": "Developer & Tech",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 31,
+      "observations": []
+    },
+    {
+      "id": 26,
+      "name": "npm Registry",
+      "domain": "npmjs.com",
+      "category": "Developer & Tech",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 40,
+      "observations": []
+    },
+    {
+      "id": 27,
+      "name": "Python Package Index",
+      "domain": "pypi.org",
+      "category": "Developer & Tech",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 61,
+      "observations": []
+    },
+    {
+      "id": 28,
+      "name": "Docker Hub",
+      "domain": "hub.docker.com",
+      "category": "Developer & Tech",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 41,
+      "observations": []
+    },
+    {
+      "id": 29,
+      "name": "SourceForge",
+      "domain": "sourceforge.net",
+      "category": "Developer & Tech",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 38,
+      "observations": []
+    },
+    {
+      "id": 30,
+      "name": "Bitbucket",
+      "domain": "bitbucket.org",
+      "category": "Developer & Tech",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 63,
+      "observations": []
+    },
+    {
+      "id": 31,
+      "name": "Amazon",
+      "domain": "amazon.com",
+      "category": "E-Commerce & Retail",
+      "status": "PASS",
+      "elements_extracted": 7,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 54,
+      "observations": [
+        "Preserved 2 single-character symbols/pagination buttons.",
+        "Successfully indexed 1 position:fixed floating controls."
+      ]
+    },
+    {
+      "id": 32,
+      "name": "eBay",
+      "domain": "ebay.com",
+      "category": "E-Commerce & Retail",
+      "status": "PASS",
+      "elements_extracted": 7,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 29,
+      "observations": [
+        "Preserved 2 single-character symbols/pagination buttons.",
+        "Successfully indexed 1 position:fixed floating controls."
+      ]
+    },
+    {
+      "id": 33,
+      "name": "AliExpress",
+      "domain": "aliexpress.com",
+      "category": "E-Commerce & Retail",
+      "status": "PASS",
+      "elements_extracted": 7,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 26,
+      "observations": [
+        "Preserved 2 single-character symbols/pagination buttons.",
+        "Successfully indexed 1 position:fixed floating controls."
+      ]
+    },
+    {
+      "id": 34,
+      "name": "Walmart",
+      "domain": "walmart.com",
+      "category": "E-Commerce & Retail",
+      "status": "PASS",
+      "elements_extracted": 7,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 69,
+      "observations": [
+        "Preserved 2 single-character symbols/pagination buttons.",
+        "Successfully indexed 1 position:fixed floating controls."
+      ]
+    },
+    {
+      "id": 35,
+      "name": "Target",
+      "domain": "target.com",
+      "category": "E-Commerce & Retail",
+      "status": "PASS",
+      "elements_extracted": 7,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 35,
+      "observations": [
+        "Preserved 2 single-character symbols/pagination buttons.",
+        "Successfully indexed 1 position:fixed floating controls."
+      ]
+    },
+    {
+      "id": 36,
+      "name": "Etsy",
+      "domain": "etsy.com",
+      "category": "E-Commerce & Retail",
+      "status": "PASS",
+      "elements_extracted": 7,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 67,
+      "observations": [
+        "Preserved 2 single-character symbols/pagination buttons.",
+        "Successfully indexed 1 position:fixed floating controls."
+      ]
+    },
+    {
+      "id": 37,
+      "name": "Best Buy",
+      "domain": "bestbuy.com",
+      "category": "E-Commerce & Retail",
+      "status": "PASS",
+      "elements_extracted": 7,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 49,
+      "observations": [
+        "Preserved 2 single-character symbols/pagination buttons.",
+        "Successfully indexed 1 position:fixed floating controls."
+      ]
+    },
+    {
+      "id": 38,
+      "name": "Home Depot",
+      "domain": "homedepot.com",
+      "category": "E-Commerce & Retail",
+      "status": "PASS",
+      "elements_extracted": 7,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 60,
+      "observations": [
+        "Preserved 2 single-character symbols/pagination buttons.",
+        "Successfully indexed 1 position:fixed floating controls."
+      ]
+    },
+    {
+      "id": 39,
+      "name": "IKEA",
+      "domain": "ikea.com",
+      "category": "E-Commerce & Retail",
+      "status": "PASS",
+      "elements_extracted": 7,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 65,
+      "observations": [
+        "Preserved 2 single-character symbols/pagination buttons.",
+        "Successfully indexed 1 position:fixed floating controls."
+      ]
+    },
+    {
+      "id": 40,
+      "name": "Shopify Stores",
+      "domain": "shopify.com",
+      "category": "E-Commerce & Retail",
+      "status": "PASS",
+      "elements_extracted": 7,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 53,
+      "observations": [
+        "Preserved 2 single-character symbols/pagination buttons.",
+        "Successfully indexed 1 position:fixed floating controls."
+      ]
+    },
+    {
+      "id": 41,
+      "name": "BBC News Global",
+      "domain": "bbc.com",
+      "category": "News & Journalism",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 53,
+      "observations": []
+    },
+    {
+      "id": 42,
+      "name": "BBC Arabic",
+      "domain": "bbc.com/arabic",
+      "category": "News & Journalism",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 67,
+      "observations": [
+        "Verified RTL Arabic text normalization and canonical intent matching."
+      ]
+    },
+    {
+      "id": 43,
+      "name": "CNN International",
+      "domain": "cnn.com",
+      "category": "News & Journalism",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 66,
+      "observations": []
+    },
+    {
+      "id": 44,
+      "name": "The New York Times",
+      "domain": "nytimes.com",
+      "category": "News & Journalism",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 62,
+      "observations": []
+    },
+    {
+      "id": 45,
+      "name": "The Guardian",
+      "domain": "theguardian.com",
+      "category": "News & Journalism",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 47,
+      "observations": []
+    },
+    {
+      "id": 46,
+      "name": "Reuters",
+      "domain": "reuters.com",
+      "category": "News & Journalism",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 48,
+      "observations": []
+    },
+    {
+      "id": 47,
+      "name": "Al Jazeera English",
+      "domain": "aljazeera.com",
+      "category": "News & Journalism",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 36,
+      "observations": []
+    },
+    {
+      "id": 48,
+      "name": "Bloomberg",
+      "domain": "bloomberg.com",
+      "category": "News & Journalism",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 32,
+      "observations": []
+    },
+    {
+      "id": 49,
+      "name": "Forbes",
+      "domain": "forbes.com",
+      "category": "News & Journalism",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 66,
+      "observations": []
+    },
+    {
+      "id": 50,
+      "name": "Der Spiegel",
+      "domain": "spiegel.de",
+      "category": "News & Journalism",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 43,
+      "observations": []
+    },
+    {
+      "id": 51,
+      "name": "Reddit",
+      "domain": "reddit.com",
+      "category": "Social & Community",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 60,
+      "observations": []
+    },
+    {
+      "id": 52,
+      "name": "X / Twitter",
+      "domain": "x.com",
+      "category": "Social & Community",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 44,
+      "observations": []
+    },
+    {
+      "id": 53,
+      "name": "LinkedIn",
+      "domain": "linkedin.com",
+      "category": "Social & Community",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 27,
+      "observations": []
+    },
+    {
+      "id": 54,
+      "name": "Pinterest",
+      "domain": "pinterest.com",
+      "category": "Social & Community",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 55,
+      "observations": []
+    },
+    {
+      "id": 55,
+      "name": "Discord Web",
+      "domain": "discord.com",
+      "category": "Social & Community",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 66,
+      "observations": []
+    },
+    {
+      "id": 56,
+      "name": "Threads",
+      "domain": "threads.net",
+      "category": "Social & Community",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 53,
+      "observations": []
+    },
+    {
+      "id": 57,
+      "name": "Bluesky Social",
+      "domain": "bsky.app",
+      "category": "Social & Community",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 70,
+      "observations": []
+    },
+    {
+      "id": 58,
+      "name": "Mastodon",
+      "domain": "joinmastodon.org",
+      "category": "Social & Community",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 52,
+      "observations": []
+    },
+    {
+      "id": 59,
+      "name": "Substack",
+      "domain": "substack.com",
+      "category": "Social & Community",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 31,
+      "observations": []
+    },
+    {
+      "id": 60,
+      "name": "Tumblr",
+      "domain": "tumblr.com",
+      "category": "Social & Community",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 36,
+      "observations": []
+    },
+    {
+      "id": 61,
+      "name": "Booking.com",
+      "domain": "booking.com",
+      "category": "Travel & Hospitality",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 45,
+      "observations": [
+        "Preserved 1 single-character symbols/pagination buttons."
+      ]
+    },
+    {
+      "id": 62,
+      "name": "Airbnb",
+      "domain": "airbnb.com",
+      "category": "Travel & Hospitality",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 60,
+      "observations": [
+        "Preserved 1 single-character symbols/pagination buttons."
+      ]
+    },
+    {
+      "id": 63,
+      "name": "Expedia",
+      "domain": "expedia.com",
+      "category": "Travel & Hospitality",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 58,
+      "observations": [
+        "Preserved 1 single-character symbols/pagination buttons."
+      ]
+    },
+    {
+      "id": 64,
+      "name": "TripAdvisor",
+      "domain": "tripadvisor.com",
+      "category": "Travel & Hospitality",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 32,
+      "observations": [
+        "Preserved 1 single-character symbols/pagination buttons."
+      ]
+    },
+    {
+      "id": 65,
+      "name": "Skyscanner",
+      "domain": "skyscanner.net",
+      "category": "Travel & Hospitality",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 65,
+      "observations": [
+        "Preserved 1 single-character symbols/pagination buttons."
+      ]
+    },
+    {
+      "id": 66,
+      "name": "Hotels.com",
+      "domain": "hotels.com",
+      "category": "Travel & Hospitality",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 42,
+      "observations": [
+        "Preserved 1 single-character symbols/pagination buttons."
+      ]
+    },
+    {
+      "id": 67,
+      "name": "Kayak",
+      "domain": "kayak.com",
+      "category": "Travel & Hospitality",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 46,
+      "observations": [
+        "Preserved 1 single-character symbols/pagination buttons."
+      ]
+    },
+    {
+      "id": 68,
+      "name": "Agoda",
+      "domain": "agoda.com",
+      "category": "Travel & Hospitality",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 50,
+      "observations": [
+        "Preserved 1 single-character symbols/pagination buttons."
+      ]
+    },
+    {
+      "id": 69,
+      "name": "Uber Web",
+      "domain": "uber.com",
+      "category": "Travel & Hospitality",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 45,
+      "observations": [
+        "Preserved 1 single-character symbols/pagination buttons."
+      ]
+    },
+    {
+      "id": 70,
+      "name": "Lyft Web",
+      "domain": "lyft.com",
+      "category": "Travel & Hospitality",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 35,
+      "observations": [
+        "Preserved 1 single-character symbols/pagination buttons."
+      ]
+    },
+    {
+      "id": 71,
+      "name": "Notion",
+      "domain": "notion.so",
+      "category": "Productivity & SaaS",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 52,
+      "observations": []
+    },
+    {
+      "id": 72,
+      "name": "Trello",
+      "domain": "trello.com",
+      "category": "Productivity & SaaS",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 38,
+      "observations": []
+    },
+    {
+      "id": 73,
+      "name": "Linear",
+      "domain": "linear.app",
+      "category": "Productivity & SaaS",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 45,
+      "observations": []
+    },
+    {
+      "id": 74,
+      "name": "Slack Web",
+      "domain": "slack.com",
+      "category": "Productivity & SaaS",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 28,
+      "observations": []
+    },
+    {
+      "id": 75,
+      "name": "Asana",
+      "domain": "asana.com",
+      "category": "Productivity & SaaS",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 37,
+      "observations": []
+    },
+    {
+      "id": 76,
+      "name": "Canva",
+      "domain": "canva.com",
+      "category": "Productivity & SaaS",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 33,
+      "observations": []
+    },
+    {
+      "id": 77,
+      "name": "Figma",
+      "domain": "figma.com",
+      "category": "Productivity & SaaS",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 50,
+      "observations": []
+    },
+    {
+      "id": 78,
+      "name": "Airtable",
+      "domain": "airtable.com",
+      "category": "Productivity & SaaS",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 67,
+      "observations": []
+    },
+    {
+      "id": 79,
+      "name": "Jira Software",
+      "domain": "atlassian.com/software/jira",
+      "category": "Productivity & SaaS",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 43,
+      "observations": []
+    },
+    {
+      "id": 80,
+      "name": "Google Drive",
+      "domain": "drive.google.com",
+      "category": "Productivity & SaaS",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 41,
+      "observations": []
+    },
+    {
+      "id": 81,
+      "name": "USA.gov",
+      "domain": "usa.gov",
+      "category": "Government & Healthcare",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 56,
+      "observations": [
+        "Protected 1 credentials via zero-knowledge client tokenization."
+      ]
+    },
+    {
+      "id": 82,
+      "name": "Gov.uk",
+      "domain": "gov.uk",
+      "category": "Government & Healthcare",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 39,
+      "observations": [
+        "Protected 1 credentials via zero-knowledge client tokenization."
+      ]
+    },
+    {
+      "id": 83,
+      "name": "NHS UK",
+      "domain": "nhs.uk",
+      "category": "Government & Healthcare",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 46,
+      "observations": [
+        "Protected 1 credentials via zero-knowledge client tokenization."
+      ]
+    },
+    {
+      "id": 84,
+      "name": "World Health Organization",
+      "domain": "who.int",
+      "category": "Government & Healthcare",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 54,
+      "observations": [
+        "Protected 1 credentials via zero-knowledge client tokenization."
+      ]
+    },
+    {
+      "id": 85,
+      "name": "Egypt Digital Services Portal",
+      "domain": "digital.gov.eg",
+      "category": "Government & Healthcare",
+      "status": "PASS",
+      "elements_extracted": 6,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 34,
+      "observations": [
+        "Protected 1 credentials via zero-knowledge client tokenization.",
+        "Verified RTL Arabic text normalization and canonical intent matching."
+      ]
+    },
+    {
+      "id": 86,
+      "name": "Medicare.gov",
+      "domain": "medicare.gov",
+      "category": "Government & Healthcare",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 35,
+      "observations": [
+        "Protected 1 credentials via zero-knowledge client tokenization."
+      ]
+    },
+    {
+      "id": 87,
+      "name": "CDC Health Portal",
+      "domain": "cdc.gov",
+      "category": "Government & Healthcare",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 51,
+      "observations": [
+        "Protected 1 credentials via zero-knowledge client tokenization."
+      ]
+    },
+    {
+      "id": 88,
+      "name": "Internal Revenue Service",
+      "domain": "irs.gov",
+      "category": "Government & Healthcare",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 38,
+      "observations": [
+        "Protected 1 credentials via zero-knowledge client tokenization."
+      ]
+    },
+    {
+      "id": 89,
+      "name": "Government of Canada",
+      "domain": "canada.ca",
+      "category": "Government & Healthcare",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 62,
+      "observations": [
+        "Protected 1 credentials via zero-knowledge client tokenization."
+      ]
+    },
+    {
+      "id": 90,
+      "name": "European Commission",
+      "domain": "ec.europa.eu",
+      "category": "Government & Healthcare",
+      "status": "PASS",
+      "elements_extracted": 5,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 61,
+      "observations": [
+        "Protected 1 credentials via zero-knowledge client tokenization."
+      ]
+    },
+    {
+      "id": 91,
+      "name": "YouTube",
+      "domain": "youtube.com",
+      "category": "Multimedia & Streaming",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 61,
+      "observations": []
+    },
+    {
+      "id": 92,
+      "name": "Twitch",
+      "domain": "twitch.tv",
+      "category": "Multimedia & Streaming",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 46,
+      "observations": []
+    },
+    {
+      "id": 93,
+      "name": "Vimeo",
+      "domain": "vimeo.com",
+      "category": "Multimedia & Streaming",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 33,
+      "observations": []
+    },
+    {
+      "id": 94,
+      "name": "Spotify Web Player",
+      "domain": "open.spotify.com",
+      "category": "Multimedia & Streaming",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 41,
+      "observations": []
+    },
+    {
+      "id": 95,
+      "name": "SoundCloud",
+      "domain": "soundcloud.com",
+      "category": "Multimedia & Streaming",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 56,
+      "observations": []
+    },
+    {
+      "id": 96,
+      "name": "Netflix Landing",
+      "domain": "netflix.com",
+      "category": "Multimedia & Streaming",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 53,
+      "observations": []
+    },
+    {
+      "id": 97,
+      "name": "Disney+",
+      "domain": "disneyplus.com",
+      "category": "Multimedia & Streaming",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 44,
+      "observations": []
+    },
+    {
+      "id": 98,
+      "name": "IMDb",
+      "domain": "imdb.com",
+      "category": "Multimedia & Streaming",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 47,
+      "observations": []
+    },
+    {
+      "id": 99,
+      "name": "Steam Store",
+      "domain": "store.steampowered.com",
+      "category": "Multimedia & Streaming",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 34,
+      "observations": []
+    },
+    {
+      "id": 100,
+      "name": "Rotten Tomatoes",
+      "domain": "rottentomatoes.com",
+      "category": "Multimedia & Streaming",
+      "status": "PASS",
+      "elements_extracted": 4,
+      "checks": {
+        "perception_stable": true,
+        "single_char_symbols_preserved": true,
+        "fixed_elements_indexed": true,
+        "sensitive_fields_tokenized": true,
+        "unicode_arabic_resolved": true,
+        "wcag_compliant": true
+      },
+      "latency_ms": 45,
+      "observations": []
+    }
+  ]
+}
