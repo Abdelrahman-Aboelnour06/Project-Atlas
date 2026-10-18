@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Enterprise Treasury & Statement Reconciliation — Apex Ledger</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      :root {
+        --primary: #0f172a; --primary-light: #1e293b; --accent: #2563eb;
+        --accent-lt: #eff6ff; --success: #16a34a; --danger: #dc2626; --warning: #d97706;
+        --border-color: #e2e8f0; --bg-page: #f8fafc; --card-bg: #ffffff;
+        --text-main: #0f172a; --text-muted: #64748b; --radius: 8px;
+        --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: var(--bg-page); color: var(--text-main); line-height: 1.5; padding: 40px 20px;
+      }
+      .container {
+        max-width: 980px; margin: 0 auto; background: var(--card-bg); border-radius: var(--radius);
+        padding: 36px; box-shadow: var(--shadow); border: 1px solid var(--border-color);
+      }
+      header {
+        display: flex; justify-content: space-between; align-items: flex-start;
+        border-bottom: 1px solid var(--border-color); padding-bottom: 20px; margin-bottom: 24px;
+        flex-wrap: wrap; gap: 16px;
+      }
+      .brand-title h1 { font-size: 24px; font-weight: 800; color: var(--primary); }
+      .brand-title p { color: var(--text-muted); font-size: 14px; }
+      .nav-links { display: flex; gap: 12px; margin-top: 6px; }
+      .nav-links a { color: var(--accent); text-decoration: none; font-size: 13px; font-weight: 600; }
+      .nav-links a:hover { text-decoration: underline; }
+      
+      .status-pill {
+        display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700;
+        padding: 4px 10px; border-radius: 999px; text-transform: uppercase;
+      }
+      .pill-secure { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+      
+      .filter-toolbar {
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;
+        background: #f1f5f9; padding: 20px; border-radius: var(--radius); margin-bottom: 24px;
+      }
+      .form-group label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: #334155; }
+      select, input[type="date"], input[type="text"], textarea {
+        width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 6px;
+        font-size: 13px; background: #ffffff; outline: none; transition: border-color 0.15s ease;
+      }
+      select:focus, input:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-lt); }
+      
+      .table-wrapper {
+        border: 1px solid var(--border-color); border-radius: 6px; overflow-x: auto; margin-bottom: 24px;
+      }
+      table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; }
+      th { background: #f8fafc; padding: 12px 14px; font-weight: 600; color: #475569; border-bottom: 1px solid var(--border-color); }
+      td { padding: 12px 14px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+      tr:hover td { background: #f8fafc; }
+      .tag {
+        display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;
+      }
+      .tag-matched { background: #dcfce7; color: #166534; }
+      .tag-flagged { background: #fee2e2; color: #991b1b; }
+      .tag-pending { background: #fef3c7; color: #92400e; }
+      
+      .metrics-bar {
+        display: flex; justify-content: space-between; align-items: center; background: #f8fafc;
+        border: 1px solid var(--border-color); border-radius: 6px; padding: 16px 20px; margin-bottom: 24px;
+        flex-wrap: wrap; gap: 12px;
+      }
+      .metric-item { display: flex; flex-direction: column; }
+      .metric-label { font-size: 12px; color: var(--text-muted); text-transform: uppercase; font-weight: 600; }
+      .metric-value { font-size: 18px; font-weight: 700; color: var(--primary); }
+      
+      .attestation-card {
+        border: 1px solid var(--border-color); border-radius: var(--radius); padding: 20px; margin-bottom: 24px;
+        background: #ffffff;
+      }
+      .attestation-card h3 { font-size: 15px; font-weight: 700; margin-bottom: 12px; color: var(--primary); }
+      
+      .actions-cluster { display: flex; gap: 12px; justify-content: flex-end; }
+      .btn {
+        padding: 10px 20px; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;
+        border: none; transition: all 0.15s ease;
+      }
+      .btn-secondary { background: #e2e8f0; color: #334155; }
+      .btn-secondary:hover { background: #cbd5e1; }
+      .btn-primary { background: var(--accent); color: #ffffff; }
+      .btn-primary:hover { background: #1d4ed8; }
+      
+      #reconciliation-success {
+        display: none; background: #ecfdf5; border: 1px solid #10b981; border-radius: var(--radius);
+        padding: 24px; margin-top: 24px; text-align: center;
+      }
+      #reconciliation-success h2 { color: #065f46; font-size: 18px; margin-bottom: 8px; }
+      .sha-badge {
+        font-family: monospace; font-size: 13px; background: #ffffff; padding: 4px 10px;
+        border-radius: 4px; border: 1px solid #a7f3d0; color: #047857; margin: 8px 0; display: inline-block;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <div class="brand-title">
+          <h1>Apex Ledger — Statement Reconciliation</h1>
+          <p>Multi-Entity Automated Audit & Cash Reconciliation Gateway</p>
+          <div class="nav-links">
+            <a href="index.html">← All Demos</a>
+            <a href="healthcare-intake.html">Healthcare Demo</a>
+            <a href="ecommerce-checkout.html">E-Commerce Demo</a>
+          </div>
+        </div>
+        <div class="status-pill pill-secure">
+          <span>●</span> SOC-2 Type II Certified
+        </div>
+      </header>
+
+      <!-- Filter Controls -->
+      <section class="filter-toolbar">
+        <div class="form-group">
+          <label for="select-account">Operating Account</label>
+          <select id="select-account" name="account">
+            <option value="main-ops">Chase Commercial #8841-EUR</option>
+            <option value="silicon-treasury">SVB Capital Liquidity #2019-USD</option>
+            <option value="hsbc-global">HSBC Global Clearing #5512-GBP</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="statement-period">Reporting Period</label>
+          <select id="statement-period" name="period">
+            <option value="q3-2026">Q3 2026 (July 1 - Sept 30)</option>
+            <option value="q2-2026">Q2 2026 (Apr 1 - June 30)</option>
+            <option value="ytd">Current Fiscal Year to Date</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="filter-status">Discrepancy Filter</label>
+          <select id="filter-status" name="discrepancy_status">
+            <option value="all">All Transactions (7)</option>
+            <option value="unmatched">Requires Review (3)</option>
+            <option value="matched">Auto-Matched (4)</option>
+          </select>
+        </div>
+      </section>
+
+      <!-- Statement Ledger Table -->
+      <section class="table-wrapper">
+        <table id="transactions-table">
+          <thead>
+            <tr>
+              <th style="width: 40px;"><input type="checkbox" id="check-all" title="Select All" /></th>
+              <th>TX ID</th>
+              <th>Date</th>
+              <th>Counterparty</th>
+              <th>Type</th>
+              <th>Amount (USD)</th>
+              <th>Audit Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr data-amount="14250.00">
+              <td><input type="checkbox" class="tx-check" checked /></td>
+              <td><code>TX-99014</code></td>
+              <td>Sep 28, 2026</td>
+              <td>AWS Cloud Infrastructure</td>
+              <td>Operating Expense</td>
+              <td>$14,250.00</td>
+              <td><span class="tag tag-matched">Auto-Matched</span></td>
+            </tr>
+            <tr data-amount="85000.00">
+              <td><input type="checkbox" class="tx-check" checked /></td>
+              <td><code>TX-99015</code></td>
+              <td>Sep 29, 2026</td>
+              <td>Stripe Enterprise Settlement</td>
+              <td>Accounts Receivable</td>
+              <td>+$85,000.00</td>
+              <td><span class="tag tag-matched">Auto-Matched</span></td>
+            </tr>
+            <tr data-amount="3420.50">
+              <td><input type="checkbox" class="tx-check" /></td>
+              <td><code>TX-99018</code></td>
+              <td>Sep 30, 2026</td>
+              <td>Global SaaS Solutions Inc</td>
+              <td>Vendor Software</td>
+              <td>$3,420.50</td>
+              <td><span class="tag tag-flagged">Variance (+$120)</span></td>
+            </tr>
+            <tr data-amount="61200.00">
+              <td><input type="checkbox" class="tx-check" checked /></td>
+              <td><code>TX-99022</code></td>
+              <td>Oct 01, 2026</td>
+              <td>Gusto Payroll Funding</td>
+              <td>Payroll Operations</td>
+              <td>$61,200.00</td>
+              <td><span class="tag tag-matched">Auto-Matched</span></td>
+            </tr>
+            <tr data-amount="1280.00">
+              <td><input type="checkbox" class="tx-check" /></td>
+              <td><code>TX-99025</code></td>
+              <td>Oct 02, 2026</td>
+              <td>Unidentified Wire Transfer</td>
+              <td>Inbound Credit</td>
+              <td>+$1,280.00</td>
+              <td><span class="tag tag-pending">Pending Review</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- Metrics Summary -->
+      <section class="metrics-bar">
+        <div class="metric-item">
+          <span class="metric-label">Selected Total</span>
+          <span id="metric-selected-sum" class="metric-value">$160,450.00</span>
+        </div>
+        <div class="metric-item">
+          <span class="metric-label">Variance Discrepancy</span>
+          <span class="metric-value" style="color: #dc2626;">+$120.00</span>
+        </div>
+        <div class="metric-item">
+          <span class="metric-label">Items Selected</span>
+          <span id="metric-selected-count" class="metric-value">3 / 5</span>
+        </div>
+      </section>
+
+      <!-- Attestation Form -->
+      <form id="attestation-form">
+        <section class="attestation-card">
+          <h3>Auditor Attestation & Sign-off</h3>
+          <div class="form-group" style="margin-bottom: 14px;">
+            <label for="auditor-token">Auditor Employee Token / Clearance ID <span style="color: #dc2626;">*</span></label>
+            <input type="text" id="auditor-token" name="auditor_token" placeholder="AUD-2026-X81" required />
+          </div>
+          <div class="form-group" style="margin-bottom: 14px;">
+            <label for="variance-notes">Variance Reconciliation Justification</label>
+            <textarea id="variance-notes" name="notes" placeholder="Explain foreign exchange fee delta or timing discrepancies..."></textarea>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox" id="sign-certify" required />
+            <label for="sign-certify" style="font-size: 13px; font-weight: 500; cursor: pointer;">
+              I certify under penalty of internal audit sanctions that the selected entries reflect true ledger balances.
+            </label>
+          </div>
+        </section>
+
+        <!-- Actions -->
+        <div class="actions-cluster">
+          <button type="button" id="btn-export-csv" class="btn btn-secondary">Export Statement (CSV)</button>
+          <button type="submit" id="btn-commit-reconciliation" class="btn btn-primary">Lock & Commit Reconciliation</button>
+        </div>
+      </form>
+
+      <!-- Confirmation Panel -->
+      <div id="reconciliation-success" role="alert" aria-live="polite">
+        <h2>✓ Reconciliation Committed & Ledger Locked</h2>
+        <p>The signed manifest has been committed to the immutable audit log.</p>
+        <div>Audit Manifest Hash:</div>
+        <div class="sha-badge">SHA256: 7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069</div>
+        <p style="font-size: 13px; color: #065f46; margin-top: 8px;">Generated audit package transmitted to General Counsel & External Auditors.</p>
+      </div>
+    </div>
+
+    <script>
+      const checkAll = document.getElementById("check-all");
+      const txChecks = document.querySelectorAll(".tx-check");
+      const sumSpan = document.getElementById("metric-selected-sum");
+      const countSpan = document.getElementById("metric-selected-count");
+      const form = document.getElementById("attestation-form");
+      const successPanel = document.getElementById("reconciliation-success");
+
+      function updateMetrics() {
+        let sum = 0;
+        let count = 0;
+        txChecks.forEach(cb => {
+          if (cb.checked) {
+            count++;
+            const row = cb.closest("tr");
+            sum += parseFloat(row.getAttribute("data-amount")) || 0;
+          }
+        });
+        countSpan.textContent = `${count} / ${txChecks.length}`;
+        sumSpan.textContent = `$${sum.toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
+      }
+
+      checkAll.addEventListener("change", function() {
+        txChecks.forEach(cb => cb.checked = checkAll.checked);
+        updateMetrics();
+      });
+
+      txChecks.forEach(cb => {
+        cb.addEventListener("change", updateMetrics);
+      });
+
+      document.getElementById("btn-export-csv").addEventListener("click", function() {
+        alert("Statement ledger CSV export dispatched to downloads folder.");
+      });
+
+      form.addEventListener("submit", function(e) {
+        e.preventDefault();
+        form.style.display = "none";
+        successPanel.style.display = "block";
+      });
+    </script>
+  </body>
+</html>
