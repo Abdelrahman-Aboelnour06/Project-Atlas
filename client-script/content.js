@@ -38,7 +38,8 @@
             tag === "style" ||
             tag === "noscript" ||
             tag === "template" ||
-            parent.closest("#atlas-sidebar-root")
+            parent.closest("#atlas-sidebar-root") ||
+            parent.closest("#atlas-sidebar-host")
           ) {
             return NodeFilter.FILTER_REJECT;
           }
@@ -66,6 +67,134 @@
   const speakIfVoiceMode = (text) => {
     if (currentMode === "voice" && window.AtlasTTS?.isSupported()) {
       window.AtlasTTS.speak(text);
+    }
+  };
+
+  // ── Goal Execution & Abort Controller State (Tracks U2 & U4) ────────────────
+  let isExecuting = false;
+  let currentAbortController = null;
+  let currentGoalState = null;
+
+  function interruptibleSleep(ms, signal) {
+    return new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        return reject(new DOMException("Aborted", "AbortError"));
+      }
+      const timer = setTimeout(() => {
+        signal?.removeEventListener("abort", onAbort);
+        resolve();
+      }, ms);
+      const onAbort = () => {
+        clearTimeout(timer);
+        reject(new DOMException("Aborted", "AbortError"));
+      };
+      signal?.addEventListener("abort", onAbort, { once: true });
+    });
+  }
+
+  const stopGoalExecution = async () => {
+    console.log("Atlas: Halting goal execution via Stop control.");
+    isExecuting = false;
+
+    // 1. Abort in-flight network requests
+    if (currentAbortController) {
+      try {
+        currentAbortController.abort();
+      } catch (_) {}
+      currentAbortController = null;
+    }
+
+    // 2. Halt speech and voice output
+    try {
+      window.AtlasTTS?.stop();
+      window.AtlasSpeech?.stop();
+    } catch (_) {}
+
+    // 3. Clear pending human confirmations
+    pendingConfirmation = null;
+
+    // 4. Clear GoalStore in session storage
+    if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
+      try {
+        chrome.runtime.sendMessage({ type: "ATLAS_GOAL_STORE_CLEAR" });
+        chrome.runtime.sendMessage({
+          type: "ATLAS_GOAL_STORE_SET_EXECUTING",
+          isExecuting: false,
+        });
+      } catch (_) {}
+    }
+
+    // 5. Update Sidebar UI
+    window.AtlasSidebar?.setExecuting(false);
+    window.AtlasSidebar?.hideGoalProgress();
+    window.AtlasSidebar?.removeThinking();
+    window.AtlasSidebar?.setStatus("Goal stopped by user", "info");
+    window.AtlasSidebar?.addChatMessage("agent", "🛑 Goal stopped by user.");
+    speakIfVoiceMode("Goal stopped by user.");
+  };
+
+  const executeGoalHop = async (goalState) => {
+    if (!goalState) return;
+    isExecuting = true;
+    currentAbortController = new AbortController();
+    window.AtlasSidebar?.setExecuting(true);
+    window.AtlasSidebar?.setGoalProgress(goalState);
+
+    try {
+      const { apiKey, baseUrl } = await getStoredSettings();
+      const domMap = window.AtlasSerializer.serialize();
+      const requestPayload = {
+        goal_state: goalState,
+        dom_map: domMap,
+        url: window.location.href,
+      };
+
+      const res = await fetch(`${baseUrl}/v1/chat/goal_step`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Atlas-Key": apiKey || "",
+        },
+        body: JSON.stringify(requestPayload),
+        signal: currentAbortController.signal,
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+
+      if (!isExecuting || currentAbortController.signal.aborted) return;
+
+      if (data.goal_state) {
+        currentGoalState = data.goal_state;
+        window.AtlasSidebar?.setGoalProgress(data.goal_state);
+      }
+
+      if (data.action) {
+        await window.AtlasExecutor.executeStep(data.action);
+        await interruptibleSleep(600, currentAbortController.signal);
+      }
+
+      if (data.goal_state?.status === "goal_complete") {
+        window.AtlasSidebar?.setStatus("Goal complete!", "ok");
+        window.AtlasSidebar?.addChatMessage("agent", data.reply || "Goal complete!");
+        window.AtlasSidebar?.hideGoalProgress();
+        isExecuting = false;
+        window.AtlasSidebar?.setExecuting(false);
+      } else if (isExecuting && data.goal_state?.status === "in_progress") {
+        await executeGoalHop(data.goal_state);
+      }
+    } catch (err) {
+      if (err.name === "AbortError" || !isExecuting) {
+        console.log("Atlas: Goal step aborted");
+      } else {
+        console.error("Atlas: Goal step failed", err);
+        window.AtlasSidebar?.setStatus(`Goal error: ${err.message}`, "error");
+      }
+    } finally {
+      if (!isExecuting) {
+        window.AtlasSidebar?.setExecuting(false);
+        window.AtlasSidebar?.hideGoalProgress();
+      }
     }
   };
 
@@ -115,7 +244,7 @@
         ),
       );
       for (const sel of selects) {
-        if (sel.closest("#atlas-sidebar-root")) continue;
+        if (sel.closest("#atlas-sidebar-root") || sel.closest("#atlas-sidebar-host")) continue;
         for (const opt of Array.from(sel.options)) {
           const val = (opt.value || "").toLowerCase().trim();
           const txt = (opt.text || opt.textContent || "").toLowerCase().trim();
@@ -151,7 +280,7 @@
       // 2. Scan hreflang attributes on links
       const hrefLinks = Array.from(document.querySelectorAll("a[hreflang]"));
       for (const el of hrefLinks) {
-        if (el.closest("#atlas-sidebar-root")) continue;
+        if (el.closest("#atlas-sidebar-root") || el.closest("#atlas-sidebar-host")) continue;
         const hreflang = (
           el.getAttribute("hreflang") || ""
         )
@@ -176,7 +305,7 @@
         ),
       );
       for (const el of langEls) {
-        if (el.closest("#atlas-sidebar-root")) continue;
+        if (el.closest("#atlas-sidebar-root") || el.closest("#atlas-sidebar-host")) continue;
         const langAttr = (el.getAttribute("lang") || "").toLowerCase().trim();
         const matches = isArabic
           ? langAttr === "ar" ||
@@ -197,7 +326,7 @@
         ),
       );
       for (const el of candidates) {
-        if (el.closest("#atlas-sidebar-root")) continue;
+        if (el.closest("#atlas-sidebar-root") || el.closest("#atlas-sidebar-host")) continue;
         const text = (el.innerText || el.textContent || "").trim();
         const aria = (el.getAttribute("aria-label") || "").trim();
         const title = (el.getAttribute("title") || "").trim();
@@ -389,13 +518,63 @@
 
       // If planner returned multi-step plan
       if (plan && Array.isArray(plan.steps) && plan.steps.length > 0) {
+        isExecuting = true;
+        currentAbortController = new AbortController();
+        window.AtlasSidebar?.setExecuting(true);
+
+        const goalState = plan.goal_state || {
+          goal: rawInput,
+          status: "in_progress",
+          milestones: plan.steps.map((s, idx) => ({
+            id: `step-${idx + 1}`,
+            description: s.description || `Step ${idx + 1}`,
+            status: idx === 0 ? "active" : "pending",
+          })),
+          active_milestone_id: "step-1",
+        };
+        currentGoalState = goalState;
+        window.AtlasSidebar?.setGoalProgress(goalState);
+
         // Execute steps sequentially with high-contrast highlighting
         for (let i = 0; i < plan.steps.length; i++) {
+          if (!isExecuting || currentAbortController?.signal?.aborted) {
+            console.log("Atlas: Execution interrupted by Stop control.");
+            break;
+          }
+
           const step = plan.steps[i];
+          if (currentGoalState?.milestones) {
+            currentGoalState.milestones.forEach((m, idx) => {
+              if (idx < i) m.status = "completed";
+              else if (idx === i) m.status = "active";
+              else m.status = "pending";
+            });
+            currentGoalState.active_milestone_id = `step-${i + 1}`;
+            window.AtlasSidebar?.setGoalProgress(currentGoalState);
+          }
+
           window.AtlasSidebar.setStatus(step.description || `Executing step ${i + 1}...`, "info");
           await window.AtlasExecutor.executeStep(step);
-          await new Promise((r) => setTimeout(r, step.delay_ms || 600));
+
+          if (!isExecuting || currentAbortController?.signal?.aborted) {
+            break;
+          }
+
+          try {
+            await interruptibleSleep(step.delay_ms || 600, currentAbortController?.signal);
+          } catch (e) {
+            if (e.name === "AbortError" || !isExecuting) break;
+            throw e;
+          }
         }
+
+        if (!isExecuting || currentAbortController?.signal?.aborted) {
+          return;
+        }
+
+        isExecuting = false;
+        window.AtlasSidebar?.setExecuting(false);
+        window.AtlasSidebar?.hideGoalProgress();
 
         refreshPanel();
 
@@ -627,7 +806,10 @@ const handleElementClick = async (atlasId) => {
     window.AtlasSidebar.setListening(true);
     window.AtlasSidebar.setStatus("Listening... speak now", "info");
 
-    const inputField = document.querySelector("#atlas-sidebar-root .atlas-chat-input");
+    const inputField =
+      window.AtlasSidebar?.getChatInput?.() ||
+      window.__atlasShadowRoot?.querySelector?.(".atlas-chat-input") ||
+      document.querySelector("#atlas-sidebar-root .atlas-chat-input");
 
     window.AtlasSpeech.start({
       onInterim: (interim) => {
@@ -638,6 +820,9 @@ const handleElementClick = async (atlasId) => {
         window.AtlasSidebar?.handleSpeechTranscript?.(transcript);
         window.AtlasSidebar.addChatMessage("user", transcript);
         handleChatInput(transcript);
+      },
+      onAudioLevel: (audioData) => {
+        window.AtlasSidebar?.setVoiceLevel?.(audioData.level, audioData.bars);
       },
       onEnd: () => {
         window.AtlasSidebar.setListening(false);
@@ -681,6 +866,14 @@ const handleElementClick = async (atlasId) => {
       onElementClick: handleElementClick,
       onCommandSubmit: handleChatInput,
       onMicClick: handleMicClick,
+      onStop: stopGoalExecution,
+      onRetry: () => {
+        if (typeof window !== "undefined" && window.AtlasConnectionManager?.retryNow) {
+          window.AtlasConnectionManager.retryNow();
+        } else if (window.AtlasSocket?.retry) {
+          window.AtlasSocket.retry();
+        }
+      },
       onModeChange: (newMode) => {
         currentMode = newMode;
         if (newMode !== "voice") {
@@ -736,17 +929,57 @@ const handleElementClick = async (atlasId) => {
     lastUrl = location.href;
     active = true;
 
-    window.AtlasSidebar.setStatus("Connecting...", "info");
+    window.AtlasSidebar.setStatus("Connecting...", "info", { showRetry: false });
+
+    if (typeof window !== "undefined" && window.AtlasConnectionManager) {
+      window.AtlasConnectionManager.onStateChange((state, payload) => {
+        switch (state) {
+          case "CONNECTING":
+            window.AtlasSidebar?.setStatus("Connecting...", "info", { showRetry: false });
+            window.AtlasSidebar?.setControlsDisabled?.(true, "Connecting to Atlas backend...");
+            break;
+          case "CONNECTED":
+            window.AtlasSidebar?.setStatus("Ready.", "ok", { showRetry: false });
+            window.AtlasSidebar?.setControlsDisabled?.(false);
+            break;
+          case "RECONNECTING": {
+            const sec = payload.secondsRemaining || 1;
+            window.AtlasSidebar?.setStatus(`Disconnected — retrying in ${sec}s`, "error", { showRetry: true });
+            window.AtlasSidebar?.setControlsDisabled?.(true, `Disconnected — retrying in ${sec}s...`);
+            break;
+          }
+          case "OFFLINE":
+            window.AtlasSidebar?.setStatus("Offline — click to retry", "error", { showRetry: true });
+            window.AtlasSidebar?.setControlsDisabled?.(true, "Offline — backend unreachable. Click Retry Now.");
+            break;
+        }
+      });
+
+      window.AtlasConnectionManager.onCountdown((seconds) => {
+        window.AtlasSidebar?.setStatus(`Disconnected — retrying in ${seconds}s`, "error", { showRetry: true });
+        window.AtlasSidebar?.setControlsDisabled?.(true, `Disconnected — retrying in ${seconds}s...`);
+      });
+    }
 
     try {
       await window.AtlasSocket.connect({ baseUrl, apiKey });
-      window.AtlasSocket.onDisconnect(() =>
-        window.AtlasSidebar.setStatus(
-          "Disconnected — reconnecting...",
-          "error",
-        ),
-      );
-      window.AtlasSidebar.setStatus("Ready.", "ok");
+      window.AtlasSocket.onDisconnect((err) => {
+        if (isExecuting) {
+          currentAbortController?.abort();
+          isExecuting = false;
+          window.AtlasSidebar?.setExecuting(false);
+          window.AtlasSidebar?.hideGoalProgress();
+        }
+        if (pendingConfirmation) {
+          pendingConfirmation = null;
+        }
+        window.AtlasSidebar?.removeThinking();
+        window.AtlasSidebar?.addChatMessage(
+          "agent",
+          "⚠️ Connection to backend was interrupted. In-flight actions were stopped to prevent unintended side effects. Please click 'Retry Now' or wait to reconnect."
+        );
+      });
+      window.AtlasSidebar.setStatus("Ready.", "ok", { showRetry: false });
       renderSimplified(domMap);
 
       // ── Page summary on activation ──────────────────────────────────
@@ -774,10 +1007,15 @@ const handleElementClick = async (atlasId) => {
         .catch(() => {});
     } catch (err) {
       console.error("Atlas: Connection failed:", err);
-      window.AtlasSidebar.setStatus(
-        `Couldn't connect: ${err.message}`,
-        "error",
-      );
+      if (typeof window !== "undefined" && window.AtlasConnectionManager) {
+        window.AtlasConnectionManager.handleDisconnect(err);
+      } else {
+        window.AtlasSidebar.setStatus(
+          `Couldn't connect: ${err.message}`,
+          "error",
+          { showRetry: true }
+        );
+      }
       let guidance = `⚠️ Couldn't connect to Atlas backend (${err.message}).`;
       if (err.message.includes("401")) {
         guidance = "⚠️ Invalid API key (HTTP 401). Please check your key in the Atlas extension settings.";
@@ -824,7 +1062,60 @@ const handleElementClick = async (atlasId) => {
           .catch((err) => sendResponse({ ok: false, error: err.message }));
         return true;
       }
+      if (message.type === "ATLAS_GOAL_RESUME") {
+        const state = message.goalState;
+        if (state && state.status === "in_progress") {
+          currentGoalState = state;
+          isExecuting = true;
+          window.AtlasSidebar?.setExecuting(true);
+          window.AtlasSidebar?.setGoalProgress(state);
+          window.AtlasSidebar?.setStatus("Resuming goal...", "info");
+          executeGoalHop(state);
+        }
+        sendResponse({ ok: true });
+        return true;
+      }
+      if (message.type === "ATLAS_TRIGGER_VOICE" || message.type === "ATLAS_VOICE_INPUT") {
+        (async () => {
+          if (!active) {
+            await activate();
+          } else if (window.AtlasSidebar?.isCollapsed?.()) {
+            window.AtlasSidebar.expand();
+          }
+          handleMicClick();
+          sendResponse({
+            status: "ok",
+            active,
+            listening: window.AtlasSpeech?.isListening?.() || false,
+          });
+        })();
+        return true;
+      }
     });
+  }
+
+  // ── Global In-Page Shortcuts Fallback (Alt+A, Alt+V) ────────────────────────
+  const handleKeyboardShortcuts = (e) => {
+    if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      if (e.code === "KeyA" || e.key === "a" || e.key === "A") {
+        e.preventDefault();
+        toggle();
+      } else if (e.code === "KeyV" || e.key === "v" || e.key === "V") {
+        e.preventDefault();
+        (async () => {
+          if (!active) {
+            await activate();
+          } else if (window.AtlasSidebar?.isCollapsed?.()) {
+            window.AtlasSidebar.expand();
+          }
+          handleMicClick();
+        })();
+      }
+    }
+  };
+
+  if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+    window.addEventListener("keydown", handleKeyboardShortcuts);
   }
 
   if (typeof window !== "undefined") {
@@ -833,6 +1124,9 @@ const handleElementClick = async (atlasId) => {
   if (typeof module !== "undefined" && module.exports) {
     module.exports = {
       AtlasLanguageSwitcher,
+      stopGoalExecution,
+      interruptibleSleep,
+      executeGoalHop,
     };
   }
 })();

@@ -229,8 +229,10 @@ def _generate_deterministic_mock_response(
 
     def _mock_scout() -> str:
         lower_user = user_prompt.lower()
+        cleaned_user = re.sub(r"boundary_id:\s*[0-9a-f]+", "", lower_user)
+        cleaned_user = re.sub(r"--- (?:begin|end) [^-\n]+ ---", "", cleaned_user)
         detected_lang = "ar" if re.search(r"[\u0600-\u06FF]", user_prompt) else "en"
-        if any(w in lower_user for w in ("captcha", "robot", "human verification", "recaptcha", "hcaptcha", "turnstile")):
+        if any(w in cleaned_user for w in ("captcha", "robot", "human verification", "recaptcha", "hcaptcha", "turnstile")):
             return json.dumps({
                 "page_kind": "captcha",
                 "blockers": ["captcha"],
@@ -239,7 +241,7 @@ def _generate_deterministic_mock_response(
                 "summary": "CAPTCHA challenge page",
                 "detected_language": detected_lang,
             })
-        if any(w in lower_user for w in ("two_factor_code", "verification code", "two-factor", "2fa", "security code", "otp")):
+        if any(re.search(rf"\b{re.escape(w)}\b", cleaned_user) for w in ("two_factor_code", "verification code", "two-factor", "2fa", "security code", "otp")):
             return json.dumps({
                 "page_kind": "form",
                 "blockers": ["otp"],

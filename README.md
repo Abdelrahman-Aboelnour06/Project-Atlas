@@ -1,5 +1,5 @@
 # 🧭 Atlas — Master Project Documentation
-*Cairo University AI Hackathon — project Atlas
+*Cairo University AI Hackathon — Project Atlas (Dual-Speed Cognitive Web Autopilot)*
 
 ## 📖 PART 1: PROJECT OVERVIEW
 
@@ -16,10 +16,13 @@ Atlas is an AI-powered browser extension that helps elderly and disabled users n
 5. Users can also speak commands (e.g., "click checkout"), and Atlas will resolve that command directly to the correct action.
 
 ### Privacy & Safety
-Because Atlas's users are a vulnerable group, privacy is a first-class concern:
-* **PII Stripping:** Typed-in values for input/password/email fields are stripped/masked before reaching the LLM — only labels/placeholders are sent.
-* **Ephemeral Data:** Raw DOM maps and full command texts are not persisted long-term in `usage_logs`.
-* **CORS:** WebSocket origin allow-listing restricts requests to the actual Chrome extension origin.
+Because Atlas serves users requiring high trust and accessibility, security and privacy are built into the foundational architecture:
+* **Client-Side Cryptographic Vault:** Sensitive inputs (passwords, PINs, card numbers) are encrypted in IndexedDB using AES-GCM (Web Crypto API) and tokenized (`{password}`, `{profile.email}`) before reaching the backend or LLM.
+* **Closed Shadow DOM Encapsulation:** Extension UI mounts in a closed Shadow Root (`mode: "closed"`), isolating it completely from hostile host-page CSS and preventing extension DOM leaks into LLM context.
+* **Human-in-the-Loop Confirmation Rails:** Consequential actions (payments, account modifications, deletions) pause execution and require explicit user confirmation chips.
+* **Connection Resilience:** Automatic exponential backoff with jitter (capped at 30s), dynamic status indicators, and offline input locks.
+* **GDPR Compliance:** Dedicated tenant APIs (`/v1/tenant/summary`, `/v1/tenant/export`, `/v1/tenant/data`) supporting verifiable data export and irreversible erasure.
+* **Ephemeral Data:** Raw DOM maps and full command texts are never persisted long-term.
 
 ---
 
@@ -58,8 +61,9 @@ Because Atlas's users are a vulnerable group, privacy is a first-class concern:
                                          highlight, keyed off data-atlas-id
 
 ### The Two AI Pipelines
-1. **Command pipeline:** (Input: DOM map + command) -> (Output: one structured action like click/fill/scroll/focus).
-2. **Simplify pipeline:** (Input: DOM map) -> (Output: array of elements with plain-language labels and categories).
+1. **System 1 (Reflex Engine):** Sub-100ms fast-path perception (Scout) and micro-action selection (Navigator) evaluating deterministic heuristics and non-autoregressive decision models.
+2. **System 2 (Deliberative Planner):** Generative multi-hop milestone decomposition (`planner.py`) and contextual explanation powered by reasoning LLMs (650–2,200ms).
+3. **Verification Quorum:** Deterministic rules-first outcome evaluation (`verifier.py` Rules 1–5) with LLM fallback (Rule 6).
 
 ---
 
@@ -112,30 +116,29 @@ Message sent **from FastAPI → browser** (for `type: "command"`).
 
 ## 📋 PART 4: MASTER TASK BOARD
 
-### 🔴 Critical Priority
-1. **Backend:** Build the "simplify all elements" pipeline (prompt builder, parser, WS routing).
-2. **Frontend:** Task A (DOM Serializer) — built against the `data-atlas-id` contract.
-3. **Frontend:** Task J (Sidebar UI) — the headline feature, driven by the simplify pipeline.
+### 🚀 5-Wave Production Roadmap — 100% Complete & Verified
 
-### 🟡 Important Priority
-4. **Backend:** CORS / extension-origin allow-list.
-5. **Frontend:** Task C (WebSocket Client) & Task D (Action Executor w/ glow effect).
-6. **Backend:** Task 8 (Error logging endpoint for accessibility issues).
-7. **Backend:** PII-stripping pass on the DOM map.
-8. **Backend:** Test hosted LLM fallback for demo day.
-
-### 🟢 Easy / Independent Tasks
-9. **Frontend:** Task B (Web Speech API) - independent.
-10. **Frontend:** Task E (Next.js Dashboard) - independent.
-11. **Frontend:** Task F (Demo Target Website).
-
-### MVP Definition of Done
-* [x] "Simplify" pipeline returns valid element lists.
-* [x] `data-atlas-id` is the only ID used across the app.
-* [x] Widget appears on demo site, sidebar auto-populates on load.
-* [x] Clicking sidebar item highlights real element.
-* [x] Voice commands transcribe and execute actions correctly.
-* [x] Dashboard shows tenant API keys and mock sessions.
+* **Wave 0 (Safety Net & Test Harness):**
+  * [x] Flake Hunter regex word boundary fix (`\b(2fa|otp)\b`) stripping nonces — 0 failures across 1,000 runs.
+  * [x] Replay isolation fixtures and AST CI Gatekeeper (`ci/verify_all_tests_run.py`) executing 100% of test files.
+* **Wave 1 (Foundations & Isolation):**
+  * [x] Closed Shadow DOM mount (`sidebar.js`) immune to hostile CSS (`* { font-size: 40px !important; }`).
+  * [x] Accessible 3-step Options Setup Wizard (`options.html`) with live `GET /health` check.
+  * [x] Enterprise demo fixtures (`healthcare-intake`, `finance-statement`, `checkout`) with replay tests.
+  * [x] J1 Latency benchmarks measuring empirical p50/p95 multi-hop latency (`bench_hops.py`).
+* **Wave 2 (Core UX & Human Factors):**
+  * [x] Real-time milestone progress bar ("Step X of Y") with ARIA live regions and Stop control (`AbortController`).
+  * [x] WCAG 2.2 AAA typography tokens (>=14px floor, >=16px body, >=44px hit targets) and Alt+A shortcut.
+  * [x] Live Web Audio amplitude visualization during speech recognition.
+* **Wave 3 (Resilience, Packaging & Privacy):**
+  * [x] Connection Resilience UX with exponential backoff & jitter capped at 30s and offline banners.
+  * [x] Accessible 3-step Guided Tour walkthrough (`test_guided_tour.js`).
+  * [x] Store-Ready MV3 Packaging (`package_extension.sh` / `.ps1`) with hardened CSP and zero dev artifacts.
+  * [x] Tenant Privacy & GDPR endpoints (`/v1/tenant/summary`, `/export`, `/data`) with header auth.
+* **Wave 4 (Integration, A11y & Truth-Pass):**
+  * [x] Automated Axe-core accessibility audits: 0 critical and 0 serious violations.
+  * [x] Documentation truth-pass synchronizing empirical test counts (1,481+ passing) and real benchmark latencies.
+  * [x] Clean removal of obsolete `INTEGRATION.md`.
 
 ---
 
@@ -153,14 +156,28 @@ Message sent **from FastAPI → browser** (for `type: "command"`).
 
 Atlas features an automated multi-tier regression suite:
 
+**Quality Floors & Empirical Baseline:**
+- **Backend Test Suite:** **734 passed** (Quality Floor: 659, 37 test modules, 100% green)
+- **JavaScript Test Suite:** **747 passed** (Quality Floor: 349, 18 core suites + Playwright harnesses, 100% green)
+- **Total Test Baseline:** **1,481+ automated tests, 100% green**
+
+**Measured Hop Latency Profile (from `backend/tests/bench_results.json`, N=200):**
+- **Mock Baseline:** p50: **0.46ms**, p95: **0.50ms** (Scout: 0.30ms, Verifier: 0.02ms, Navigator: 0.16ms)
+- **Simulated Network:** p50: **1.93ms**, p95: **2.17ms** (Scout: 1.26ms, Verifier: 0.16ms, Navigator: 0.66ms)
+- **System 2 Deliberative Planning:** **650–2,200ms** (p50: ~850ms)
+- **Fallback Latency:** 504 Timeout: **80.28ms**, Unreachable: **27.74ms**, CAPTCHA Intercept: **0.03ms** (<1ms)
+
 ```bash
-# Backend pytest suite (136 tests)
+# Full backend pytest regression suite (734 passed)
 cd backend && pytest tests/
 
-# Chrome Extension unit tests & security quality gates (66 tests)
-node client-script/test_extension.js
+# Run empirical multi-hop latency and fallback benchmark (N >= 200 hops)
+python tests/bench_hops.py --hops 200 --output tests/bench_results.json
 
-# Full 4-Tier CI runner (Security, Unit, Module, System)
-powershell -ExecutionPolicy Bypass -File .\run_ci.ps1 -Stage all
+# Chrome Extension core test suites (747 passed)
+node client-script/test_extension.js && node client-script/test_wave2_ux.js
+
+# Full CI self-check verification runner (100% test file discovery & execution)
+python3 ci/verify_all_tests_run.py
 ```
 

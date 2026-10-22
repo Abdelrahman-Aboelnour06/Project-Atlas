@@ -408,3 +408,177 @@ Integrity mode: development
 ### System Integrity
 - [ ] Zero website/domain hardcoding across all added files.
 - [ ] All 466 backend tests and all 6 frontend extension test suites pass cleanly.
+
+
+## 2026-10-09T19:53:29Z
+
+# Teamwork Project Prompt — Resume
+
+> Status: Launched (Resuming Wave 0 Implementation)
+> Goal: Craft prompt → get user approval → delegate to teamwork_preview
+> Requested team: Atlas Multi-Wave Engineering Team (Wave 0 Safety Net, Wave 1 Foundations, Wave 2 Core UX, Wave 3 Resilience & Ship, Wave 4 Integration)
+
+Execute the comprehensive completion, UX overhaul, and resilience engineering plan for Project Atlas (universal AI browser assistant): eliminate replay test flakiness, expand CI to 100% test coverage, isolate sidebar via closed Shadow DOM, deliver milestone progress tracking with an always-visible stop control, modernize accessibility and typography (WCAG AAA/AA, >=14px text, >=44px hit targets), harden connection resilience, benchmark Jev latency, package store-ready MV3 distribution, and complete automated axe-core a11y audits.
+
+Note: Codebase survey findings from Phase 0 are already captured in `.agents/teamwork/teamwork_preview_explorer_survey5_3/handoff.md` and `survey_report.md`. Please proceed directly with Wave 0 Safety Net & Test Harness implementation.
+
+Working directory: /media/abdelrahman-abdelrahman/Acer/Users/abdel/OneDrive/Desktop/Hackthon/shit2
+Integrity mode: development
+
+## Requirements
+
+### R0. Wave 0: Safety Net & Test Harness
+- **A1 Flake Hunter**: Diagnose and eliminate the nondeterminism causing intermittent `awaiting_user_input` status in replay tests (`test_consequential_confirmation_gate`, `test_defect_a_navigation_is_not_completion`). Must pass >= 500 consecutive full-suite iterations. Must not alter `verifier.py` Rules 4/5/6.
+- **A0 CI Gatekeeper**: Update `.github/workflows/ci.yml` and test scripts to execute 100% of all existing tests (all 16 backend test suites, replay runner, all JS suites, and Playwright harness). Add a CI self-check script that fails if any test file is skipped. Remove obsolete `random.txt`.
+- **A2 UI Behavior Harness**: Build programmatic behavior tests (`test_sidebar_behavior.js` and `ci/e2e/ui_*.js`) using headless browser and DOM testing for expand/collapse, drag clamping, focus traps, bidi layout, and confirmation chip interactions.
+
+### R1. Wave 1: Foundations & Reality Checks
+- **U1 Shadow-DOM Isolation**: Mount the sidebar inside a closed Shadow Root with styles loaded via `adoptedStyleSheets` (`CSSStyleSheet.replaceSync`). Exclude shadow host from AtlasSerializer DOM maps. Provide a test-only internal handle (`__atlasShadowRoot`) for automated test harnesses. Ensure host page hostile CSS (`* { font-size: 40px !important; }`) has zero impact on sidebar rendering.
+- **U6 First-Run Setup Wizard**: Upgrade `options.html`/`options.js` with a 3-step setup wizard that automatically opens on extension install, tests backend health via `GET /health`, validates API keys with plain-language feedback, and prevents leaving the wizard in a broken state.
+- **E1 Enterprise Demo Fixtures**: Create realistic benchmark pages in `demo-site/`: `healthcare-intake.html` (multi-step form with sensitive PII), `finance-statement.html` (tabular statements and export downloads), and `checkout.html` (consequential payment action). Add corresponding replay test scenarios asserting tokenization and confirmation gating without site-specific hacks.
+- **J1 Jev Reality Check**: Build `backend/tests/bench_hops.py` measuring empirical p50/p95 latency and fallback behavior. Replace unverified marketing numbers in documentation with measured benchmark figures.
+
+### R2. Wave 2: Core UX & Human Factors
+- **U2 Goal Progress + Stop Control**: Render an interactive milestone progress strip ("Step X of Y: ...") using `goal_state.milestones` with ARIA live regions and progressbar semantics. Provide an always-visible, prominent Stop button that aborts in-flight requests, clears GoalStore, sets `isExecuting=false`, and safely halts execution mid-hop.
+- **U3 Readability, Motion & Header Ergonomics**: Upgrade sidebar typography and contrast: floor text size at 14px, body text at 16px, user text-size scaling control (Normal/Large/XL), and minimum 44x44px touch/click targets. Consolidate duplicate close buttons into a single accessible button, replace emojis with clean SVG icons, support `prefers-reduced-motion` (disable non-essential transitions), and ensure high-contrast focus rings under `forced-colors`.
+- **U4 Global Shortcuts & Live Voice Level Meter**: Register `manifest.json` commands for sidebar toggle (Alt+A) and voice entry. Provide live audio waveform/level visualization during speech recognition using an `AnalyserNode`, ensuring media tracks stop cleanly when listening ends.
+
+### R3. Wave 3: Resilience, Packaging & Privacy
+- **U5 Connection Resilience UX**: Implement unlimited exponential backoff with jitter (capped at 30s) across WebSocket and background fetch channels. Display dynamic status banners (connected, reconnecting attempt N, offline) with a manual "Retry Now" action, disabling input with explanatory text when offline. Disallow replaying consequential actions after reconnect.
+- **U7 Guided Tour**: Provide an accessible, skippable 3-step onboarding walkthrough for first-time users that demonstrates sidebar activation, voice commands, and the Stop button. Ensure strict keyboard operability and focus management.
+- **P1 Store-Ready MV3 Packaging**: Implement `package_extension.sh` / `package_extension.ps1` producing a hardened Chrome Web Store zip. Enforce explicit MV3 Content Security Policy (`script-src 'self'; object-src 'none'; base-uri 'none'`), strip development files (`test_*.js`, `.env`), and remove `localhost` from production host permissions while retaining universal `<all_urls>` functionality. Formally drop redundant offscreen document.
+- **D1 Dashboard Tenant Data & GDPR Controls**: Replace mock data in `dashboard/` with real authenticated backend endpoints (`GET /v1/tenant/summary`, `GET /v1/tenant/export`, `DELETE /v1/tenant/data`) secured via `x-atlas-key` header auth, enabling verifiable data export and deletion.
+
+### R4. Wave 4: Integration, A11y & Truth-Pass
+- **I1 Automated A11y Audit & Docs Truth-Pass**: Run automated `axe-core` audits (`ci/e2e/a11y_axe.js`) across the sidebar, options wizard, and demo fixture pages, achieving zero critical or serious WCAG violations. Update `README.md`, `docs/final_plan.md`, and `ATLAS_DOCS.md` to reflect real empirical test counts and architecture. Remove outdated `INTEGRATION.md`.
+
+### R5. Core Directives & Sacred Rules
+- **The Prime Directive**: 100% universal web navigation heuristics across all websites; zero website or domain hardcoding.
+- **Sacred Rules**: Strictly preserve Verifier Rules 4, 5, and 6 in `backend/app/agent/verifier.py`.
+- **Quality Floor**: Test suite passing count must never fall below 659 backend tests and 349 JS tests.
+
+## Acceptance Criteria
+
+### Test Safety Net & Verification (Wave 0)
+- [ ] 500 consecutive test runs pass with zero `awaiting_user_input` status mismatches in replay scenarios.
+- [ ] CI workflow step self-check passes, proving every test file in `backend/tests`, `client-script`, `demo-site`, and `ci/e2e` is executed.
+- [ ] Programmatic UI behavior tests pass in headless browser without requiring human interaction.
+
+### Foundations & Architecture (Wave 1)
+- [ ] Sidebar renders inside closed Shadow Root and is immune to hostile global CSS (`* { font-size: 40px !important; }`).
+- [ ] Serializer DOM map contains zero nodes from the Atlas sidebar.
+- [ ] Options setup wizard validates backend health via live API check before allowing completion.
+- [ ] Healthcare, finance, and checkout fixtures pass automated tests with sensitive field masking and confirmation gating.
+- [ ] Jev benchmark outputs measured p50/p95 latency and docs reflect real empirical figures.
+
+### Core UX & Ergonomics (Wave 2)
+- [ ] Milestones appear in progress bar during goal execution and update in real-time.
+- [ ] Clicking Stop immediately terminates running goals, aborts requests, and halts subsequent execution steps.
+- [ ] Computed styles show zero text below 14px, body text >= 16px, and all interactive targets >= 44x44px.
+- [ ] Alt+A toggles sidebar visibility from any web page.
+- [ ] Voice input mic displays live audio amplitude meter and releases microphone streams on stop.
+
+### Resilience, Packaging & Data Control (Wave 3)
+- [ ] Disconnecting network triggers visual reconnecting banner with exponential backoff and manual retry button.
+- [ ] Packager script generates valid MV3 zip with hardened CSP and zero test/env files.
+- [ ] Tenant export endpoint returns caller's data in structured JSON, and delete endpoint permanently purges tenant records.
+
+### Quality & Accessibility Standards (Wave 4)
+- [ ] Automated axe-core scan reports 0 critical and 0 serious accessibility violations.
+- [ ] Full backend suite (>= 659 tests) and JS suites (>= 349 tests) pass 100% green.
+- [ ] Documentation accurately reflects measured capabilities and empirical test counts.
+
+
+## 2026-10-10T17:05:17Z
+
+The server has restarted. Please resume your execution of the Atlas Multi-Wave Engineering project immediately. Proceed with Wave 1 (Foundations & Reality Checks) implementation from the current state (U1 Shadow-DOM Isolation, U6 Setup Wizard, E1 Enterprise Fixtures, J1 Jev Benchmark). Report your progress and milestones as you proceed.
+
+
+## 2026-10-12T10:37:53Z
+
+Execute the Project Atlas 5-wave hardening plan across universal navigation, UX accessibility, closed Shadow DOM isolation, CI gatekeeping, enterprise fixtures, and developer stack startup.
+
+Working directory: /media/abdelrahman-abdelrahman/Acer/Users/abdel/OneDrive/Desktop/Hackthon/shit2
+Integrity mode: benchmark
+
+## Verification Resources
+- `run_ci.sh` / `run_ci.ps1`: Complete regression suite executing backend tests and client script suites.
+- `ci/verify_all_tests_run.py`: AST validator ensuring all test files (35 backend files and 9 JS suites) are run.
+- `client-script/test_w0_challenger_stress.js`: Adversarial stress test verifying drag boundaries, focus trapping, and closed Shadow DOM CSS isolation.
+- `ci/e2e/ui_sidebar_behavior.js`: Playwright E2E suite validating closed Shadow DOM sidebar accessibility and interactions.
+- `LLM_PROVIDER=mock pytest backend/tests`: 659+ backend tests covering security, replay isolation, contracts, and planning.
+
+## Requirements
+
+### R1. Closed Shadow DOM Test Harness Adapter & Hostile CSS Isolation
+Adapt the sidebar test suites to interface with the closed Shadow DOM root via test hooks without exposing the DOM to the host page, and ensure the sidebar layout and typography remain 100% immune to hostile host-page CSS overrides and bidirectional layout directions.
+
+### R2. Wave 1 U6 Setup Wizard & Connectivity Verification
+Implement a 3-step onboarding and setup modal in the extension options UI featuring live backend connectivity checks against the health endpoint and configuration validation before persisting settings.
+
+### R3. Enterprise Demonstration Fixtures & Hop Latency Benchmark
+Add multi-step enterprise workflow fixtures (healthcare intake, financial statement reconciliation, and checkout) in the demo site, and establish a benchmark suite measuring empirical p50 and p95 decision latency.
+
+### R4. Local Stack Startup Stabilization (`run_atlas.sh`)
+Stabilize `run_atlas.sh` to run the development stack reliably using Docker containers with appropriate permissions fallback, database existence checks, idempotent migrations, and failure handling.
+
+### R5. Core UX, Accessibility, and Packaging (Waves 2–4)
+Implement an accessible milestone progress tracker with an always-visible stop button, enforce WCAG 2.2 AAA tokens (>=14px typography, >=44px hit targets), provide keyboard navigation shortcuts, and create an automated extension packaging script that enforces strict CSP and excludes test fixtures.
+
+### R6. Universal Web Compatibility Prime Directive
+Maintain strict compliance with the Universal Rule across all implementations: zero domain-specific selectors, zero site hacks, and 100% standard W3C DOM and ARIA semantics.
+
+## Acceptance Criteria
+
+### Test Harnesses & Shadow DOM Isolation
+- [ ] `node client-script/test_w0_challenger_stress.js` executes and passes 100% green.
+- [ ] Test suites evaluate elements inside the closed Shadow DOM without direct light DOM document query pollution.
+- [ ] Adversarial CSS overrides (`* { direction: rtl !important; }`, `* { font-size: 40px !important; }`) fail to leak into the sidebar root.
+
+### CI & Coverage Gates
+- [ ] `python3 ci/verify_all_tests_run.py` passes with zero omitted backend or frontend test suites.
+- [ ] `LLM_PROVIDER=mock pytest backend/tests` passes with zero regressions across all 659+ tests.
+
+### Stack Startup Resilience
+- [ ] `run_atlas.sh` runs cleanly in Docker environments with idempotence on repeated executions.
+- [ ] Database migrations execute safely without unhandled BOM issues or repeat policy creation failures.
+
+### Universal Navigation & Usability
+- [ ] All interactive extension controls satisfy WCAG minimum 44×44px hit targets and high-visibility focus indicators.
+- [ ] Production packaging produces an installable MV3 zip bundle conforming to Chrome Web Store security guidelines.
+
+
+## 2026-10-14T14:24:34Z
+
+The system was restarted. Please resume supervision and execution of the Project Atlas 5-wave hardening plan. Orchestrator 7 and Worker Wave 1 were in the middle of Wave 1 (Task 1 was verified, proceeding to Task 2 U6 Setup Wizard). Please reactivate/continue their execution.
+
+
+## 2026-10-17T19:57:24Z
+
+The server restarted again. Please resume execution of Wave 1: Task 3 (3 replay scenarios in test_replay_runner.py) and Task 4 (J1 bench_hops.py and docs truth-pass).
+
+
+## 2026-10-19T08:42:52Z
+
+The server was restarted. Please resume execution. Orchestrator 7 had dispatched the Wave 4 verification squad (Reviewer 4.1, Reviewer 4.2, Challenger 4.1, Challenger 4.2, Forensic Auditor Wave 4) after Worker Wave 4 delivered all deliverables (0 a11y violations, 734 backend / 747 JS passed, INTEGRATION.md deleted, CI gatekeeper synced). Please resume/complete the Wave 4 verification gate and finalize the project hardening handoff.
+
+
+## 2026-10-22T12:24:18Z
+
+Atlas Sentinel:
+Wave 4 Iteration 2 implementation and verification are 100% complete:
+1. All 4 remediation deliverables applied and verified:
+   - Tour Step 3 accessible name alignment (`aria-label="Finish Tour"`) in client-script/sidebar.js:1602.
+   - Light theme contrast tokens upgraded in client-script/sidebar.css.
+   - High contrast forced-colors media query applied in client-script/options.css.
+   - ci/e2e/a11y_axe.js expanded to 19 states (Dark & Light for Options & Sidebar, Guided Tour step 3, settling delays, strictly 0 critical/serious/moderate/minor violations threshold enforced).
+2. `node ci/e2e/a11y_axe.js` passes 19/19 with 0 violations.
+3. CI gatekeeper `python3 ci/verify_all_tests_run.py` passes 100% test files:
+   - Backend: 37/37 files, 734 passed >= 659 floor, 0 failures.
+   - JS: 18/18 files, 747 passed >= 349 floor, 0 failures.
+   - Playwright E2E: 3/3 harnesses passed cleanly.
+4. `run_atlas.sh` stabilized and verified with PostgreSQL container management and idempotent migrations.
+5. Invariants verified: `backend/app/agent/verifier.py` Rules 4, 5, 6 strictly 0 diff lines; zero domain hardcoding across repository.
+6. Package produced: `dist/project-atlas-extension.zip` verified clean MV3 with 0 test leaks.
+
+Please coordinate the final Victory Audit certification.

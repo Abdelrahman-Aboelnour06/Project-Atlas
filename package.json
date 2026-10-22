@@ -3,9 +3,17 @@
   "version": "0.2.0",
   "private": true,
   "scripts": {
-    "test:e2e": "node ci/e2e/harness.js"
+    "test": "python3 ci/verify_all_tests_run.py",
+    "test:ci": "python3 ci/verify_all_tests_run.py",
+    "test:backend": "pytest backend/tests",
+    "test:js": "node client-script/test_extension.js && node client-script/test_secret_vault.js && node client-script/test_dom_serializer_v2.js && node client-script/test_goal_store.js && node client-script/test_executor_v2.js && node client-script/test_ws_client_stress.js && node client-script/test_m7_adversarial_challenger2.js && node client-script/test_sidebar_behavior.js && node client-script/test_connection_resilience.js && node client-script/test_guided_tour.js && node client-script/test_w0_challenger_stress.js && node client-script/test_w1_challenger_stress.js && node client-script/test_w2_challenger_stress.js && node client-script/test_w2_challenger_u2_stress.js && node client-script/test_w3_challenger_stress.js && node client-script/test_w3_challenger_u5_u7.js && node client-script/test_wave2_ux.js && node demo-site/test_fixtures.js",
+    "test:e2e": "node ci/e2e/harness.js && node ci/e2e/ui_sidebar_behavior.js && node ci/e2e/a11y_axe.js",
+    "test:a11y": "node ci/e2e/a11y_axe.js",
+    "package": "node client-script/package_extension.js",
+    "ci:verify": "python3 ci/verify_all_tests_run.py"
   },
   "devDependencies": {
+    "axe-core": "^4.14.0",
     "playwright": "^1.49.0"
   }
 }

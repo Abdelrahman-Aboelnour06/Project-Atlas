@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Secure Prescription Supplies Checkout — CareLink Portal</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      :root {
+        --primary: #1a56a0; --primary-dark: #0e3d7a; --primary-lt: #e8f0fb;
+        --secondary: #107040; --danger: #b91c1c; --bg-page: #f8fafc;
+        --card-bg: #ffffff; --border-color: #cbd5e1; --text-main: #0f172a;
+        --text-muted: #475569; --radius: 8px; --shadow: 0 4px 12px rgba(0,0,0,0.06);
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: var(--bg-page); color: var(--text-main); line-height: 1.5; padding: 40px 15px;
+      }
+      .container {
+        max-width: 800px; margin: 0 auto; background: var(--card-bg); border-radius: var(--radius);
+        padding: 36px 32px; box-shadow: var(--shadow); border: 1px solid var(--border-color);
+      }
+      header { text-align: center; margin-bottom: 24px; }
+      h1 { font-size: 24px; color: var(--primary-dark); margin-bottom: 8px; }
+      p.subtitle { color: var(--text-muted); font-size: 14px; }
+      .nav-links { display: flex; gap: 12px; justify-content: center; margin-bottom: 20px; flex-wrap: wrap; }
+      .nav-links a { color: var(--primary); text-decoration: none; font-size: 14px; font-weight: 500; }
+      .nav-links a:hover { text-decoration: underline; }
+
+      .cart-summary {
+        background: #f8fafc; border: 1px solid var(--border-color); border-radius: var(--radius);
+        padding: 20px; margin-bottom: 28px;
+      }
+      .cart-summary h2 { font-size: 16px; color: var(--primary-dark); margin-bottom: 12px; }
+      .cart-item { display: flex; justify-content: space-between; font-size: 14px; padding: 6px 0; border-bottom: 1px dashed var(--border-color); }
+      .cart-item:last-of-type { border-bottom: none; }
+      .cart-totals { margin-top: 14px; padding-top: 12px; border-top: 2px solid var(--border-color); }
+      .total-row { display: flex; justify-content: space-between; font-size: 14px; padding: 4px 0; }
+      .total-row.grand-total { font-size: 18px; font-weight: 700; color: var(--primary-dark); margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-color); }
+
+      fieldset { border: 1px solid var(--border-color); border-radius: var(--radius); padding: 20px; margin-bottom: 24px; }
+      legend { font-weight: 700; font-size: 15px; color: var(--primary-dark); padding: 0 8px; }
+      .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+      .form-group { margin-bottom: 16px; }
+      .form-group.full-width { grid-column: 1 / -1; }
+      label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+      input[type="text"], input[type="password"], input[type="email"], select {
+        width: 100%; padding: 10px 14px; border: 1px solid var(--border-color); border-radius: var(--radius);
+        font-size: 14px; outline: none; transition: border-color 0.15s ease;
+      }
+      input:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-lt); }
+
+      .consequential-notice {
+        background: #fffbeb; border: 1px solid #fef3c7; border-left: 4px solid #f59e0b;
+        padding: 14px 16px; border-radius: 4px; margin-bottom: 24px; font-size: 13px; color: #92400e;
+      }
+
+      .btn-pay-now {
+        width: 100%; padding: 16px; background: var(--secondary); color: white; border: none;
+        border-radius: var(--radius); font-size: 17px; font-weight: 700; cursor: pointer;
+        transition: background 0.15s ease; box-shadow: 0 4px 6px -1px rgba(16, 112, 64, 0.2);
+      }
+      .btn-pay-now:hover { background: #0a4f2b; }
+
+      .confirmation-box {
+        display: none; background: #ecfdf5; border: 1px solid #10b981; border-radius: var(--radius);
+        padding: 24px; text-align: center; margin-top: 20px;
+      }
+      .confirmation-box h2 { color: var(--secondary); font-size: 20px; margin-bottom: 8px; }
+      .confirmation-box p { color: var(--text-muted); font-size: 14px; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="nav-links">
+        <a href="index.html">← Back to Portal</a>
+        <a href="healthcare-intake.html">Intake Form</a>
+        <a href="finance-statement.html">Finance Statement</a>
+        <a href="timetable.html">Timetable</a>
+      </div>
+
+      <header>
+        <h1>Medical Supplies Order Checkout</h1>
+        <p class="subtitle">Order summary: 3 items. Total $95.56. Click Complete Payment to charge card.</p>
+      </header>
+
+      <!-- Cart Breakdown -->
+      <section class="cart-summary" aria-label="Itemized Order Summary">
+        <h2>Prescription Supplies Cart</h2>
+        <div class="cart-item">
+          <span>CareLink Blood Glucose Monitoring Kit</span>
+          <span>$49.99</span>
+        </div>
+        <div class="cart-item">
+          <span>Accu-Chek Guide Test Strips 100ct</span>
+          <span>$38.50</span>
+        </div>
+        <div class="cart-item">
+          <span>Novofine 32G Insulin Pen Needles 100ct</span>
+          <span>$24.99</span>
+        </div>
+        <div class="cart-totals">
+          <div class="total-row">
+            <span>Subtotal</span>
+            <span>$113.48</span>
+          </div>
+          <div class="total-row" style="color: var(--secondary);">
+            <span>Prescription Insurance Benefit</span>
+            <span>-$25.00</span>
+          </div>
+          <div class="total-row">
+            <span>Estimated Sales Tax</span>
+            <span>$7.08</span>
+          </div>
+          <div class="total-row">
+            <span>Senior Express Shipping</span>
+            <span>FREE</span>
+          </div>
+          <div class="total-row grand-total">
+            <span>Order Grand Total</span>
+            <span>$95.56</span>
+          </div>
+        </div>
+      </section>
+
+      <form id="checkout-form" novalidate>
+        <!-- Shipping Destination -->
+        <fieldset>
+          <legend>Shipping Destination</legend>
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label for="shipping-name">Recipient Legal Name *</label>
+              <input type="text" id="shipping-name" name="shipping_name" autocomplete="name" required placeholder="Jane Marie Doe" />
+            </div>
+            <div class="form-group full-width">
+              <label for="shipping-address">Street Address *</label>
+              <input type="text" id="shipping-address" name="shipping_address" autocomplete="street-address" required placeholder="742 Evergreen Terrace" />
+            </div>
+            <div class="form-group">
+              <label for="shipping-city">City *</label>
+              <input type="text" id="shipping-city" name="shipping_city" autocomplete="address-level2" required placeholder="Springfield" />
+            </div>
+            <div class="form-group">
+              <label for="shipping-zip">Postal / ZIP Code *</label>
+              <input type="text" id="shipping-zip" name="shipping_zip" autocomplete="postal-code" required placeholder="97477" />
+            </div>
+          </div>
+        </fieldset>
+
+        <!-- Payment Details -->
+        <fieldset>
+          <legend>Payment Method (Credit / Debit / HSA Card)</legend>
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label for="cardholder-name">Cardholder Name *</label>
+              <input type="text" id="cardholder-name" name="cardholder_name" autocomplete="cc-name" required placeholder="Jane M Doe" />
+            </div>
+            <div class="form-group full-width">
+              <label for="card-number">Card Number *</label>
+              <input type="text" id="card-number" name="card_number" autocomplete="cc-number" placeholder="•••• •••• •••• ••••" required />
+            </div>
+            <div class="form-group">
+              <label for="card-expiry">Expiration Date (MM/YY) *</label>
+              <input type="text" id="card-expiry" name="card_expiry" autocomplete="cc-exp" placeholder="08/29" required />
+            </div>
+            <div class="form-group">
+              <label for="card-cvv">Security Code (CVV) *</label>
+              <input type="password" id="card-cvv" name="card_cvv" autocomplete="cc-csc" placeholder="•••" required />
+            </div>
+          </div>
+        </fieldset>
+
+        <div class="consequential-notice">
+          <strong>Important Consequential Action:</strong> Clicking the button below will immediately execute a financial transaction charging $95.56 to your selected card.
+        </div>
+
+        <button type="submit" id="pay-now-btn" class="btn-pay-now">Complete Payment ($95.56) &amp; Place Order</button>
+      </form>
+
+      <div id="order-confirmation" class="confirmation-box" role="status" aria-live="polite">
+        <h2>Order Successfully Placed!</h2>
+        <p>Thank you! Your order #ORD-2026-77192 has been placed successfully for $95.56.</p>
+      </div>
+    </div>
+
+    <script>
+      (function() {
+        const form = document.getElementById('checkout-form');
+        const confirmationBox = document.getElementById('order-confirmation');
+
+        form.addEventListener('submit', function(e) {
+          e.preventDefault();
+          form.style.display = 'none';
+          confirmationBox.style.display = 'block';
+        });
+      })();
+    </script>
+  </body>
+</html>

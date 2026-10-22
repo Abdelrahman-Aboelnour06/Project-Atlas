@@ -30,8 +30,30 @@
       "128": "icons/icon128.png"
     }
   },
+  "commands": {
+    "toggle-sidebar": {
+      "suggested_key": {
+        "default": "Alt+A",
+        "mac": "Command+Shift+A"
+      },
+      "description": "Toggle Atlas Sidebar"
+    },
+    "voice-input": {
+      "suggested_key": {
+        "default": "Alt+V",
+        "mac": "Command+Shift+V"
+      },
+      "description": "Start Voice Recognition"
+    }
+  },
   "options_page": "options.html",
   "background": {
     "service_worker": "background.js"
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["sidebar.css"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }

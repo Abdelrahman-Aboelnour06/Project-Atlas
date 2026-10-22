@@ -94,16 +94,23 @@ fi
 # ── 2. Backend venv + deps ────────────────────────────────────────────────────
 cd "$BACKEND_DIR"
 
-if [[ ! -d venv ]]; then
+if [[ -d venv_linux ]]; then
+  VENV_DIR="venv_linux"
+elif [[ -d venv ]]; then
+  VENV_DIR="venv"
+else
   log "Creating Python venv..."
   python3 -m venv venv
+  VENV_DIR="venv"
 fi
 # shellcheck disable=SC1091
-source venv/bin/activate
+source "$VENV_DIR/bin/activate"
 
-log "Installing backend dependencies (this can take a minute)..."
-pip install -q --upgrade pip
-pip install -q -r requirements.txt
+if ! python -c "import uvicorn, asyncpg, sqlalchemy" &>/dev/null; then
+  log "Installing backend dependencies (this can take a minute)..."
+  pip install --default-timeout=60 -q --upgrade pip
+  pip install --default-timeout=60 -q -r requirements.txt
+fi
 
 if [[ ! -f .env ]]; then
   log "No .env found — creating one from .env.example."
@@ -123,17 +130,23 @@ if grep -q '^LLM_API_KEY=\s*$' .env && ! grep -q '^LLM_PROVIDER=ollama' .env; th
 fi
 
 # ── 3. Migration + seed ───────────────────────────────────────────────────────
-DB_URL="$(grep '^DATABASE_URL=' .env | cut -d= -f2-)"
+DB_URL="$(grep '^DATABASE_URL=' .env | cut -d= -f2- | tr -d '\r')"
 # postgresql+asyncpg://user:pass@host:port/db -> psql-friendly pieces
-DB_USER="$(echo "$DB_URL" | sed -E 's#.*://([^:]+):.*#\1#')"
-DB_NAME="$(echo "$DB_URL" | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#')"
-DB_HOST="$(echo "$DB_URL" | sed -E 's#.*@([^:/]+).*#\1#')"
+DB_USER="$(echo "$DB_URL" | sed -E 's#.*://([^:]+):.*#\1#' | tr -d '\r')"
+DB_NAME="$(echo "$DB_URL" | sed -E 's#.*/([^/?]+)(\?.*)?$#\1#' | tr -d '\r')"
+DB_HOST="$(echo "$DB_URL" | sed -E 's#.*@([^:/]+).*#\1#' | tr -d '\r')"
 
-log "Applying schema migration (001_init.sql)..."
+log "Applying schema migrations (001_init.sql, 003_security_events.sql)..."
 if command -v docker &>/dev/null && docker ps --format '{{.Names}}' | grep -q "^${PG_CONTAINER}\$"; then
+  # Ensure database exists
+  docker exec -i "$PG_CONTAINER" psql -U "$DB_USER" -d postgres -tc "SELECT 1 FROM pg_database WHERE datname = '$DB_NAME'" | grep -q 1 || \
+  docker exec -i "$PG_CONTAINER" psql -U "$DB_USER" -d postgres -c "CREATE DATABASE $DB_NAME;"
+
   docker exec -i "$PG_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" < app/migrations/001_init.sql
+  docker exec -i "$PG_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" < app/migrations/003_security_events.sql
 else
   PGPASSWORD=atlas psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -f app/migrations/001_init.sql
+  PGPASSWORD=atlas psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -f app/migrations/003_security_events.sql
 fi
 
 log "Seeding demo tenant + API key..."
@@ -147,6 +160,7 @@ else
   nohup uvicorn app.main:app --port "$BACKEND_PORT" \
     > "$PID_DIR/backend.log" 2>&1 &
   echo $! > "$PID_DIR/backend.pid"
+  disown || true
   sleep 2
 fi
 
@@ -169,6 +183,7 @@ else
   nohup python3 -m http.server "$DEMO_PORT" \
     > "$PID_DIR/demo-site.log" 2>&1 &
   echo $! > "$PID_DIR/demo-site.pid"
+  disown || true
 fi
 
 # ── done — print manual steps ─────────────────────────────────────────────────

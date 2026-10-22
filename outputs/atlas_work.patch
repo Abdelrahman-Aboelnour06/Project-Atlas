@@ -1,0 +1,1061 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 5d93d79..996b4a1 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -94,11 +94,17 @@ jobs:
+         with:
+           node-version: 20
+ 
+-      - name: Run Extension Unit Tests (Syntax & Manifest)
+-        run: node client-script/test_extension.js
+-
+-      - name: Run Secret Vault Unit Tests
+-        run: node client-script/test_secret_vault.js
++      - name: Run Core JavaScript Test Suites
++        run: |
++          node client-script/test_extension.js
++          node client-script/test_secret_vault.js
++          node client-script/test_dom_serializer_v2.js
++          node client-script/test_goal_store.js
++          node client-script/test_executor_v2.js
++          node client-script/test_ws_client_stress.js
++          node client-script/test_m7_adversarial_challenger2.js
++          node client-script/test_sidebar_behavior.js
++          node demo-site/test_fixtures.js
+ 
+       - name: Set up Python
+         uses: actions/setup-python@v5
+@@ -149,49 +155,11 @@ jobs:
+           pip install -r requirements.txt
+           pip install -r tests/requirements-test.txt
+ 
+-      - name: Run DB Utilities Module Tests
+-        working-directory: ./backend
+-        run: pytest tests/test_db_utils.py -v --tb=short
+-
+-      - name: Run REST Routes Module Tests
+-        working-directory: ./backend
+-        run: pytest tests/test_routes_rest.py -v --tb=short
+-
+-      - name: Run Security & Resilience Regression Tests
+-        working-directory: ./backend
+-        run: pytest tests/test_security_resilience.py -v --tb=short
+-
+-      - name: Run Secret Tokenization Module Tests
+-        working-directory: ./backend
+-        run: pytest tests/test_secret_tokenization.py -v --tb=short
+-
+-      - name: Run Universal Auth & Transaction Integrity Tests
+-        working-directory: ./backend
+-        run: pytest tests/test_auth_and_transactions.py -v --tb=short
+-
+-      - name: Run Goal Contracts Tests
+-        working-directory: ./backend
+-        run: pytest tests/test_goal_contracts.py -v --tb=short
+-
+-      - name: Run Goal Contracts Stress Tests
++      - name: Run Complete Backend Pytest Suites
+         working-directory: ./backend
+-        run: pytest tests/test_goal_contracts_stress.py -v --tb=short
+-
+-      - name: Run Goal Pipeline Tests
+-        working-directory: ./backend
+-        run: pytest tests/test_goal_pipeline.py -v --tb=short
+-
+-      - name: Run Mock LLM Adversarial Tests
+-        working-directory: ./backend
+-        run: pytest tests/test_mock_llm_adversarial.py -v --tb=short
+-
+-      - name: Run Mock LLM Conflicting Permutations Tests
+-        working-directory: ./backend
+-        run: pytest tests/test_mock_llm_conflicting_permutations.py -v --tb=short
+-
+-      - name: Run Mock LLM Role Precedence Tests
+-        working-directory: ./backend
+-        run: pytest tests/test_mock_llm_role_precedence.py -v --tb=short
++        env:
++          LLM_PROVIDER: mock
++        run: pytest tests/ -v --tb=short
+ 
+       - name: Set up Node.js for Dashboard
+         uses: actions/setup-node@v4
+@@ -207,7 +175,7 @@ jobs:
+           npm run build
+ 
+   system-tests:
+-    name: "Tier 3: System Tests"
++    name: "Tier 3: System & E2E Tests"
+     needs: [unit-tests, module-tests]
+     runs-on: ubuntu-latest
+     steps:
+@@ -238,3 +206,58 @@ jobs:
+       - name: Run End-to-End Multi-Service System Tests
+         working-directory: ./backend
+         run: pytest tests/test_system_e2e.py -v --tb=short
++
++      - name: Run Replay Scenarios System Tests
++        working-directory: ./backend
++        env:
++          LLM_PROVIDER: mock
++        run: pytest tests/replay/test_replay_runner.py -v --tb=short
++
++      - name: Set up Node.js for Playwright E2E
++        uses: actions/setup-node@v4
++        with:
++          node-version: 20
++
++      - name: Install Playwright Browsers
++        run: |
++          npm ci || npm install
++          npx playwright install --with-deps chromium
++
++      - name: Run Playwright E2E Extension Harness
++        run: node ci/e2e/harness.js
++
++      - name: Run Playwright UI Sidebar Behavior Harness
++        run: node ci/e2e/ui_sidebar_behavior.js
++
++  ci-gatekeeper-audit:
++    name: "Tier 4: CI Gatekeeper Coverage & Quality Floor Self-Check"
++    needs: [unit-tests, module-tests, system-tests]
++    runs-on: ubuntu-latest
++    steps:
++      - name: Check out repository
++        uses: actions/checkout@v4
++
++      - name: Set up Python
++        uses: actions/setup-python@v5
++        with:
++          python-version: '3.11'
++          cache: 'pip'
++
++      - name: Set up Node.js
++        uses: actions/setup-node@v4
++        with:
++          node-version: 20
++
++      - name: Install Python Dependencies
++        working-directory: ./backend
++        run: |
++          python -m pip install --upgrade pip
++          pip install -r requirements.txt -r tests/requirements-test.txt
++
++      - name: Install Node Dependencies
++        run: |
++          npm ci || npm install
++          npx playwright install --with-deps chromium
++
++      - name: Run CI Gatekeeper Quality Floor Self-Check
++        run: python3 ci/verify_all_tests_run.py
+diff --git a/ORIGINAL_REQUEST.md b/ORIGINAL_REQUEST.md
+index 3235199..4e79a3b 100644
+--- a/ORIGINAL_REQUEST.md
++++ b/ORIGINAL_REQUEST.md
+@@ -408,3 +408,87 @@ Integrity mode: development
+ ### System Integrity
+ - [ ] Zero website/domain hardcoding across all added files.
+ - [ ] All 466 backend tests and all 6 frontend extension test suites pass cleanly.
++
++
++## 2026-10-09T19:53:29Z
++
++# Teamwork Project Prompt — Resume
++
++> Status: Launched (Resuming Wave 0 Implementation)
++> Goal: Craft prompt → get user approval → delegate to teamwork_preview
++> Requested team: Atlas Multi-Wave Engineering Team (Wave 0 Safety Net, Wave 1 Foundations, Wave 2 Core UX, Wave 3 Resilience & Ship, Wave 4 Integration)
++
++Execute the comprehensive completion, UX overhaul, and resilience engineering plan for Project Atlas (universal AI browser assistant): eliminate replay test flakiness, expand CI to 100% test coverage, isolate sidebar via closed Shadow DOM, deliver milestone progress tracking with an always-visible stop control, modernize accessibility and typography (WCAG AAA/AA, >=14px text, >=44px hit targets), harden connection resilience, benchmark Jev latency, package store-ready MV3 distribution, and complete automated axe-core a11y audits.
++
++Note: Codebase survey findings from Phase 0 are already captured in `.agents/teamwork/teamwork_preview_explorer_survey5_3/handoff.md` and `survey_report.md`. Please proceed directly with Wave 0 Safety Net & Test Harness implementation.
++
++Working directory: /media/abdelrahman-abdelrahman/Acer/Users/abdel/OneDrive/Desktop/Hackthon/shit2
++Integrity mode: development
++
++## Requirements
++
++### R0. Wave 0: Safety Net & Test Harness
++- **A1 Flake Hunter**: Diagnose and eliminate the nondeterminism causing intermittent `awaiting_user_input` status in replay tests (`test_consequential_confirmation_gate`, `test_defect_a_navigation_is_not_completion`). Must pass >= 500 consecutive full-suite iterations. Must not alter `verifier.py` Rules 4/5/6.
++- **A0 CI Gatekeeper**: Update `.github/workflows/ci.yml` and test scripts to execute 100% of all existing tests (all 16 backend test suites, replay runner, all JS suites, and Playwright harness). Add a CI self-check script that fails if any test file is skipped. Remove obsolete `random.txt`.
++- **A2 UI Behavior Harness**: Build programmatic behavior tests (`test_sidebar_behavior.js` and `ci/e2e/ui_*.js`) using headless browser and DOM testing for expand/collapse, drag clamping, focus traps, bidi layout, and confirmation chip interactions.
++
++### R1. Wave 1: Foundations & Reality Checks
++- **U1 Shadow-DOM Isolation**: Mount the sidebar inside a closed Shadow Root with styles loaded via `adoptedStyleSheets` (`CSSStyleSheet.replaceSync`). Exclude shadow host from AtlasSerializer DOM maps. Provide a test-only internal handle (`__atlasShadowRoot`) for automated test harnesses. Ensure host page hostile CSS (`* { font-size: 40px !important; }`) has zero impact on sidebar rendering.
++- **U6 First-Run Setup Wizard**: Upgrade `options.html`/`options.js` with a 3-step setup wizard that automatically opens on extension install, tests backend health via `GET /health`, validates API keys with plain-language feedback, and prevents leaving the wizard in a broken state.
++- **E1 Enterprise Demo Fixtures**: Create realistic benchmark pages in `demo-site/`: `healthcare-intake.html` (multi-step form with sensitive PII), `finance-statement.html` (tabular statements and export downloads), and `checkout.html` (consequential payment action). Add corresponding replay test scenarios asserting tokenization and confirmation gating without site-specific hacks.
++- **J1 Jev Reality Check**: Build `backend/tests/bench_hops.py` measuring empirical p50/p95 latency and fallback behavior. Replace unverified marketing numbers in documentation with measured benchmark figures.
++
++### R2. Wave 2: Core UX & Human Factors
++- **U2 Goal Progress + Stop Control**: Render an interactive milestone progress strip ("Step X of Y: ...") using `goal_state.milestones` with ARIA live regions and progressbar semantics. Provide an always-visible, prominent Stop button that aborts in-flight requests, clears GoalStore, sets `isExecuting=false`, and safely halts execution mid-hop.
++- **U3 Readability, Motion & Header Ergonomics**: Upgrade sidebar typography and contrast: floor text size at 14px, body text at 16px, user text-size scaling control (Normal/Large/XL), and minimum 44x44px touch/click targets. Consolidate duplicate close buttons into a single accessible button, replace emojis with clean SVG icons, support `prefers-reduced-motion` (disable non-essential transitions), and ensure high-contrast focus rings under `forced-colors`.
++- **U4 Global Shortcuts & Live Voice Level Meter**: Register `manifest.json` commands for sidebar toggle (Alt+A) and voice entry. Provide live audio waveform/level visualization during speech recognition using an `AnalyserNode`, ensuring media tracks stop cleanly when listening ends.
++
++### R3. Wave 3: Resilience, Packaging & Privacy
++- **U5 Connection Resilience UX**: Implement unlimited exponential backoff with jitter (capped at 30s) across WebSocket and background fetch channels. Display dynamic status banners (connected, reconnecting attempt N, offline) with a manual "Retry Now" action, disabling input with explanatory text when offline. Disallow replaying consequential actions after reconnect.
++- **U7 Guided Tour**: Provide an accessible, skippable 3-step onboarding walkthrough for first-time users that demonstrates sidebar activation, voice commands, and the Stop button. Ensure strict keyboard operability and focus management.
++- **P1 Store-Ready MV3 Packaging**: Implement `package_extension.sh` / `package_extension.ps1` producing a hardened Chrome Web Store zip. Enforce explicit MV3 Content Security Policy (`script-src 'self'; object-src 'none'; base-uri 'none'`), strip development files (`test_*.js`, `.env`), and remove `localhost` from production host permissions while retaining universal `<all_urls>` functionality. Formally drop redundant offscreen document.
++- **D1 Dashboard Tenant Data & GDPR Controls**: Replace mock data in `dashboard/` with real authenticated backend endpoints (`GET /v1/tenant/summary`, `GET /v1/tenant/export`, `DELETE /v1/tenant/data`) secured via `x-atlas-key` header auth, enabling verifiable data export and deletion.
++
++### R4. Wave 4: Integration, A11y & Truth-Pass
++- **I1 Automated A11y Audit & Docs Truth-Pass**: Run automated `axe-core` audits (`ci/e2e/a11y_axe.js`) across the sidebar, options wizard, and demo fixture pages, achieving zero critical or serious WCAG violations. Update `README.md`, `docs/final_plan.md`, and `ATLAS_DOCS.md` to reflect real empirical test counts and architecture. Remove outdated `INTEGRATION.md`.
++
++### R5. Core Directives & Sacred Rules
++- **The Prime Directive**: 100% universal web navigation heuristics across all websites; zero website or domain hardcoding.
++- **Sacred Rules**: Strictly preserve Verifier Rules 4, 5, and 6 in `backend/app/agent/verifier.py`.
++- **Quality Floor**: Test suite passing count must never fall below 659 backend tests and 349 JS tests.
++
++## Acceptance Criteria
++
++### Test Safety Net & Verification (Wave 0)
++- [ ] 500 consecutive test runs pass with zero `awaiting_user_input` status mismatches in replay scenarios.
++- [ ] CI workflow step self-check passes, proving every test file in `backend/tests`, `client-script`, `demo-site`, and `ci/e2e` is executed.
++- [ ] Programmatic UI behavior tests pass in headless browser without requiring human interaction.
++
++### Foundations & Architecture (Wave 1)
++- [ ] Sidebar renders inside closed Shadow Root and is immune to hostile global CSS (`* { font-size: 40px !important; }`).
++- [ ] Serializer DOM map contains zero nodes from the Atlas sidebar.
++- [ ] Options setup wizard validates backend health via live API check before allowing completion.
++- [ ] Healthcare, finance, and checkout fixtures pass automated tests with sensitive field masking and confirmation gating.
++- [ ] Jev benchmark outputs measured p50/p95 latency and docs reflect real empirical figures.
++
++### Core UX & Ergonomics (Wave 2)
++- [ ] Milestones appear in progress bar during goal execution and update in real-time.
++- [ ] Clicking Stop immediately terminates running goals, aborts requests, and halts subsequent execution steps.
++- [ ] Computed styles show zero text below 14px, body text >= 16px, and all interactive targets >= 44x44px.
++- [ ] Alt+A toggles sidebar visibility from any web page.
++- [ ] Voice input mic displays live audio amplitude meter and releases microphone streams on stop.
++
++### Resilience, Packaging & Data Control (Wave 3)
++- [ ] Disconnecting network triggers visual reconnecting banner with exponential backoff and manual retry button.
++- [ ] Packager script generates valid MV3 zip with hardened CSP and zero test/env files.
++- [ ] Tenant export endpoint returns caller's data in structured JSON, and delete endpoint permanently purges tenant records.
++
++### Quality & Accessibility Standards (Wave 4)
++- [ ] Automated axe-core scan reports 0 critical and 0 serious accessibility violations.
++- [ ] Full backend suite (>= 659 tests) and JS suites (>= 349 tests) pass 100% green.
++- [ ] Documentation accurately reflects measured capabilities and empirical test counts.
++
++
++## 2026-10-10T17:05:17Z
++
++The server has restarted. Please resume your execution of the Atlas Multi-Wave Engineering project immediately. Proceed with Wave 1 (Foundations & Reality Checks) implementation from the current state (U1 Shadow-DOM Isolation, U6 Setup Wizard, E1 Enterprise Fixtures, J1 Jev Benchmark). Report your progress and milestones as you proceed.
+diff --git a/backend/app/agent/llm_client.py b/backend/app/agent/llm_client.py
+index 08b3387..8290cbf 100644
+--- a/backend/app/agent/llm_client.py
++++ b/backend/app/agent/llm_client.py
+@@ -229,8 +229,10 @@ def _generate_deterministic_mock_response(
+ 
+     def _mock_scout() -> str:
+         lower_user = user_prompt.lower()
++        cleaned_user = re.sub(r"boundary_id:\s*[0-9a-f]+", "", lower_user)
++        cleaned_user = re.sub(r"--- (?:begin|end) [^-\n]+ ---", "", cleaned_user)
+         detected_lang = "ar" if re.search(r"[\u0600-\u06FF]", user_prompt) else "en"
+-        if any(w in lower_user for w in ("captcha", "robot", "human verification", "recaptcha", "hcaptcha", "turnstile")):
++        if any(w in cleaned_user for w in ("captcha", "robot", "human verification", "recaptcha", "hcaptcha", "turnstile")):
+             return json.dumps({
+                 "page_kind": "captcha",
+                 "blockers": ["captcha"],
+@@ -239,7 +241,7 @@ def _generate_deterministic_mock_response(
+                 "summary": "CAPTCHA challenge page",
+                 "detected_language": detected_lang,
+             })
+-        if any(w in lower_user for w in ("two_factor_code", "verification code", "two-factor", "2fa", "security code", "otp")):
++        if any(re.search(rf"\b{re.escape(w)}\b", cleaned_user) for w in ("two_factor_code", "verification code", "two-factor", "2fa", "security code", "otp")):
+             return json.dumps({
+                 "page_kind": "form",
+                 "blockers": ["otp"],
+diff --git a/backend/docker-compose.yml b/backend/docker-compose.yml
+index 59bde8e..73b0b29 100644
+--- a/backend/docker-compose.yml
++++ b/backend/docker-compose.yml
+@@ -1,8 +1,10 @@
+ services:
+   atlas-backend:
+-    build: .
++    build:
++      context: .
++      network: host
+     restart: unless-stopped
+     ports:
+       - "8000:8000"
+     env_file:
+-      - .env
++      - .env
+\ No newline at end of file
+diff --git a/backend/tests/conftest.py b/backend/tests/conftest.py
+index 0d47201..023470f 100644
+--- a/backend/tests/conftest.py
++++ b/backend/tests/conftest.py
+@@ -52,21 +52,16 @@ WRONG_API_KEY = "atlas_thisiswrongdonotuse000000000000"
+ 
+ 
+ @pytest.fixture(autouse=True)
+-def _reset_rate_limiter():
++def isolate_mock_state_and_rate_limits():
+     """
+-    Clears app.agent.rate_limiter state before every test.
+-
+-    The WS test clients (test_websocket.py's `ws_client`) are
+-    module-scoped and reused across many test functions that all
+-    authenticate as DEMO_API_KEY, so without a reset the rate limiter's
+-    in-memory bucket for that tenant would accumulate across the whole
+-    module — and eventually across the whole test session — rather than
+-    resetting per test the way a real per-tenant limiter should be
+-    exercised in isolation.
++    Guarantees mock LLM queue and rate limiter state are clean before and after every test.
+     """
+-    from app.agent import rate_limiter
++    from app.agent import llm_client, rate_limiter
++    llm_client.clear_mock_llm()
+     rate_limiter.reset()
+     yield
++    llm_client.clear_mock_llm()
++    rate_limiter.reset()
+ 
+ 
+ # ── Shared DOM fixtures ───────────────────────────────────────────────────────
+diff --git a/backend/tests/replay/runner.py b/backend/tests/replay/runner.py
+index 8ea5c81..a41f7a4 100644
+--- a/backend/tests/replay/runner.py
++++ b/backend/tests/replay/runner.py
+@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch
+ import httpx
+ from pydantic import BaseModel, Field
+ 
+-from app.agent import llm_client
++from app.agent import llm_client, rate_limiter
+ from app.main import app
+ from app.db.connection import get_db
+ 
+@@ -104,6 +104,8 @@ async def replay(scenario: Scenario, test_key: str = "atlas_test_demo_key_123456
+     """
+     Executes a Scenario hop-by-hop against /v1/chat/goal_step using ASGI AsyncClient.
+     """
++    rate_limiter.reset()
++    llm_client.clear_mock_llm()
+     state: Optional[Dict[str, Any]] = None
+     trace: List[Dict[str, Any]] = []
+ 
+@@ -144,5 +146,7 @@ async def replay(scenario: Scenario, test_key: str = "atlas_test_demo_key_123456
+                         break
+     finally:
+         app.dependency_overrides.clear()
++        rate_limiter.reset()
++        llm_client.clear_mock_llm()
+ 
+     return ReplayResult(final=state or {}, trace=trace)
+diff --git a/backend/tests/test_goal_contracts.py b/backend/tests/test_goal_contracts.py
+index 48ae6d2..ccf334c 100644
+--- a/backend/tests/test_goal_contracts.py
++++ b/backend/tests/test_goal_contracts.py
+@@ -261,6 +261,7 @@ class TestMockLLMProvider:
+     def test_mock_set_single_response(self):
+         set_mock_llm_response("single canned item")
+         assert llm_client._mock_canned_queue == ["single canned item"]
++        clear_mock_llm()
+ 
+     @pytest.mark.asyncio
+     async def test_mock_history_tracking(self):
+diff --git a/client-script/content.js b/client-script/content.js
+index 057a3f6..ab40e88 100644
+--- a/client-script/content.js
++++ b/client-script/content.js
+@@ -38,7 +38,8 @@
+             tag === "style" ||
+             tag === "noscript" ||
+             tag === "template" ||
+-            parent.closest("#atlas-sidebar-root")
++            parent.closest("#atlas-sidebar-root") ||
++            parent.closest("#atlas-sidebar-host")
+           ) {
+             return NodeFilter.FILTER_REJECT;
+           }
+@@ -115,7 +116,7 @@
+         ),
+       );
+       for (const sel of selects) {
+-        if (sel.closest("#atlas-sidebar-root")) continue;
++        if (sel.closest("#atlas-sidebar-root") || sel.closest("#atlas-sidebar-host")) continue;
+         for (const opt of Array.from(sel.options)) {
+           const val = (opt.value || "").toLowerCase().trim();
+           const txt = (opt.text || opt.textContent || "").toLowerCase().trim();
+@@ -151,7 +152,7 @@
+       // 2. Scan hreflang attributes on links
+       const hrefLinks = Array.from(document.querySelectorAll("a[hreflang]"));
+       for (const el of hrefLinks) {
+-        if (el.closest("#atlas-sidebar-root")) continue;
++        if (el.closest("#atlas-sidebar-root") || el.closest("#atlas-sidebar-host")) continue;
+         const hreflang = (
+           el.getAttribute("hreflang") || ""
+         )
+@@ -176,7 +177,7 @@
+         ),
+       );
+       for (const el of langEls) {
+-        if (el.closest("#atlas-sidebar-root")) continue;
++        if (el.closest("#atlas-sidebar-root") || el.closest("#atlas-sidebar-host")) continue;
+         const langAttr = (el.getAttribute("lang") || "").toLowerCase().trim();
+         const matches = isArabic
+           ? langAttr === "ar" ||
+@@ -197,7 +198,7 @@
+         ),
+       );
+       for (const el of candidates) {
+-        if (el.closest("#atlas-sidebar-root")) continue;
++        if (el.closest("#atlas-sidebar-root") || el.closest("#atlas-sidebar-host")) continue;
+         const text = (el.innerText || el.textContent || "").trim();
+         const aria = (el.getAttribute("aria-label") || "").trim();
+         const title = (el.getAttribute("title") || "").trim();
+@@ -627,7 +628,10 @@ const handleElementClick = async (atlasId) => {
+     window.AtlasSidebar.setListening(true);
+     window.AtlasSidebar.setStatus("Listening... speak now", "info");
+ 
+-    const inputField = document.querySelector("#atlas-sidebar-root .atlas-chat-input");
++    const inputField =
++      window.AtlasSidebar?.getChatInput?.() ||
++      window.__atlasShadowRoot?.querySelector?.(".atlas-chat-input") ||
++      document.querySelector("#atlas-sidebar-root .atlas-chat-input");
+ 
+     window.AtlasSpeech.start({
+       onInterim: (interim) => {
+diff --git a/client-script/dom-serializer.js b/client-script/dom-serializer.js
+index 6958177..c9b792e 100644
+--- a/client-script/dom-serializer.js
++++ b/client-script/dom-serializer.js
+@@ -107,7 +107,9 @@ const classifySensitiveField = (el) => {
+ // Selectors that match UI chrome we never want cluttering the panel:
+ // language pickers, cookie banners, price/filter widgets, etc.
+ const NOISE_SELECTORS = [
+-  "#atlas-sidebar-root", // never scan ourselves
++  "#atlas-sidebar-host",
++  "#atlas-sidebar-root",
++  "atlas-sidebar-host",
+   // Price / filter / facet widgets
+   '[id*="price-filter"]',
+   '[id*="priceRefinements"]',
+@@ -261,7 +263,14 @@ const NOISE_TEXT_PATTERNS = [
+ 
+   // ── Noise check (structural) ──────────────────────────────────────────────────
+   const isStructuralNoise = (el) => {
+-    if (el.closest("#atlas-sidebar-root")) return true;
++    if (
++      el.id === "atlas-sidebar-host" ||
++      el.id === "atlas-sidebar-root" ||
++      el.closest("#atlas-sidebar-host") ||
++      el.closest("#atlas-sidebar-root")
++    ) {
++      return true;
++    }
+     for (const sel of NOISE_SELECTORS) {
+       try {
+         if (el.matches(sel) || el.closest(sel)) return true;
+@@ -572,6 +581,7 @@ const NOISE_TEXT_PATTERNS = [
+       const all = root.querySelectorAll("*");
+       for (let i = 0; i < all.length; i++) {
+         const el = all[i];
++        if (el.id === "atlas-sidebar-host" || el.id === "atlas-sidebar-root") continue;
+         if (el.shadowRoot) {
+           results.push(...collectInteractiveElements(el.shadowRoot));
+         }
+@@ -611,7 +621,7 @@ const NOISE_TEXT_PATTERNS = [
+     for (let i = 0; i < candidates.length; i++) {
+       const el = candidates[i];
+       // When a modal dialog is active, elements outside it are inert and occluded
+-      if (activeModal && !activeModal.contains(el) && !el.closest("#atlas-sidebar-root")) continue;
++      if (activeModal && !activeModal.contains(el) && !el.closest("#atlas-sidebar-root") && !el.closest("#atlas-sidebar-host")) continue;
+       // Note: do NOT skip el.disabled; emit disabled: true (§11.2)
+       if (!isVisible(el)) continue;
+       if (isStructuralNoise(el)) continue;
+@@ -738,6 +748,7 @@ const NOISE_TEXT_PATTERNS = [
+       if (direct) return direct;
+       const all = root.querySelectorAll("*");
+       for (let i = 0; i < all.length; i++) {
++        if (all[i].id === "atlas-sidebar-host" || all[i].id === "atlas-sidebar-root") continue;
+         if (all[i].shadowRoot) {
+           const found = getElementByAtlasId(atlasId, all[i].shadowRoot);
+           if (found) return found;
+@@ -762,7 +773,9 @@ const NOISE_TEXT_PATTERNS = [
+       if (paused) return;
+       const onlyAtlas = mutations.every(
+         (m) =>
++          m.target.id === "atlas-sidebar-host" ||
+           m.target.id === "atlas-sidebar-root" ||
++          m.target.closest?.("#atlas-sidebar-host") ||
+           m.target.closest?.("#atlas-sidebar-root") ||
+           (m.type === "attributes" && m.attributeName === ATLAS_ID_ATTR),
+       );
+diff --git a/client-script/manifest.json b/client-script/manifest.json
+index 5048a58..506e92e 100644
+--- a/client-script/manifest.json
++++ b/client-script/manifest.json
+@@ -33,5 +33,11 @@
+   "options_page": "options.html",
+   "background": {
+     "service_worker": "background.js"
+-  }
++  },
++  "web_accessible_resources": [
++    {
++      "resources": ["sidebar.css"],
++      "matches": ["<all_urls>"]
++    }
++  ]
+ }
+\ No newline at end of file
+diff --git a/client-script/sidebar.js b/client-script/sidebar.js
+index 859fccf..9f2a760 100644
+--- a/client-script/sidebar.js
++++ b/client-script/sidebar.js
+@@ -1,6 +1,7 @@
+ (function () {
+   // sidebar.js — Apple-Style Floating Window + Grouped Panel & Chat
+ 
++  const HOST_ID = "atlas-sidebar-host";
+   const ROOT_ID = "atlas-sidebar-root";
+   const DEFAULT_WIDTH = 348;
+   const DEFAULT_HEIGHT = 520;
+@@ -8,11 +9,55 @@
+   const VIEWPORT_PADDING = 12;
+   const SCROLLBAR_CLEARANCE = 20;
+ 
++  let hostEl = null;
++  let shadowRoot = null;
+   let rootEl = null;
+   let listEl = null;
+   let statusEl = null;
+   let chatInputEl = null;
+   let searchEl = null;
++
++  const DEFAULT_SIDEBAR_CSS = `
++#atlas-sidebar-root {
++  all: initial;
++  direction: ltr;
++  position: fixed;
++  z-index: 2147483647;
++  width: 348px;
++  height: 520px;
++  max-width: calc(100vw - 32px);
++  max-height: calc(100vh - 32px);
++  display: flex;
++  flex-direction: column;
++  border-radius: 16px;
++  overflow: hidden;
++  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", system-ui, sans-serif;
++  font-size: 13px;
++  line-height: 1.4;
++  background: rgba(28, 28, 32, 0.78);
++  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
++}
++#atlas-sidebar-root * {
++  box-sizing: border-box;
++}
++`;
++
++  const applyAdoptedStyles = (shadow, cssText) => {
++    if (shadow && shadow.adoptedStyleSheets && typeof CSSStyleSheet !== "undefined") {
++      try {
++        const sheet = new CSSStyleSheet();
++        sheet.replaceSync(cssText);
++        shadow.adoptedStyleSheets = [sheet];
++        return sheet;
++      } catch (_) {}
++    }
++    if (shadow) {
++      const styleEl = document.createElement("style");
++      styleEl.textContent = cssText;
++      shadow.appendChild(styleEl);
++    }
++    return null;
++  };
+   let micBtn = null;
+   let langPill = null;
+   let modeBtn = null;
+@@ -438,10 +483,54 @@
+ 
+   // ── DOM construction ──────────────────────────────────────────────────────────
+   const buildDom = () => {
++    // 1. Create host element in Light DOM with defensive inline reset
++    hostEl = document.createElement("div");
++    hostEl.id = HOST_ID;
++    hostEl.style.setProperty("all", "initial", "important");
++    hostEl.style.setProperty("position", "static", "important");
++    hostEl.style.setProperty("display", "block", "important");
++    hostEl.style.setProperty("width", "0", "important");
++    hostEl.style.setProperty("height", "0", "important");
++    hostEl.style.setProperty("margin", "0", "important");
++    hostEl.style.setProperty("padding", "0", "important");
++    hostEl.style.setProperty("border", "none", "important");
++    hostEl.style.setProperty("z-index", "2147483647", "important");
++
++    // 2. Attach closed Shadow Root
++    shadowRoot = hostEl.attachShadow({ mode: "closed" });
++
++    // 3. Expose test-only handle for automated test harnesses
++    if (typeof window !== "undefined") {
++      window.__atlasShadowRoot = shadowRoot;
++    }
++
++    // 4. Load stylesheet into Shadow Root via adoptedStyleSheets
++    const cssText =
++      handlers.cssText ||
++      (typeof window !== "undefined" && window.__atlasSidebarCss) ||
++      (typeof document !== "undefined" && document.getElementById("atlas-sidebar-css")?.textContent) ||
++      DEFAULT_SIDEBAR_CSS;
++    applyAdoptedStyles(shadowRoot, cssText);
++
++    if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
++      try {
++        fetch(chrome.runtime.getURL("sidebar.css"))
++          .then((r) => r.text())
++          .then((fullCss) => {
++            if (shadowRoot && fullCss) {
++              applyAdoptedStyles(shadowRoot, fullCss);
++            }
++          })
++          .catch(() => {});
++      } catch (_) {}
++    }
++
++    // 5. Construct inner root container
+     rootEl = document.createElement("div");
+     rootEl.id = ROOT_ID;
+     rootEl.setAttribute("role", "dialog");
+     rootEl.setAttribute("aria-label", "Atlas Accessibility Assistant");
++    rootEl.setAttribute("aria-expanded", "true");
+ 
+     rootEl.innerHTML = `
+     <!-- macOS Window Titlebar / Header -->
+@@ -517,7 +606,8 @@
+     </div>
+   `;
+ 
+-    document.body.appendChild(rootEl);
++    shadowRoot.appendChild(rootEl);
++    (document.body || document.documentElement).appendChild(hostEl);
+ 
+     listEl = rootEl.querySelector(".atlas-list");
+     statusEl = rootEl.querySelector(".atlas-status");
+@@ -636,6 +726,42 @@
+     rootEl
+       .querySelector("#atlas-header-refresh")
+       ?.addEventListener("click", triggerRefresh);
++
++    // W3C APG Dialog focus trap and Escape key dismissal
++    rootEl.addEventListener("keydown", (e) => {
++      if (isCollapsed) return;
++
++      if (e.key === "Escape") {
++        e.preventDefault();
++        collapse();
++        return;
++      }
++
++      if (e.key === "Tab") {
++        const focusableSelector =
++          'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
++        const focusables = Array.from(rootEl.querySelectorAll(focusableSelector)).filter(
++          (el) => !el.closest(".atlas-collapsed-badge") && !el.closest(".atlas-pane-hidden")
++        );
++        if (!focusables.length) return;
++
++        const first = focusables[0];
++        const last = focusables[focusables.length - 1];
++        const activeEl = shadowRoot ? shadowRoot.activeElement : document.activeElement;
++
++        if (e.shiftKey) {
++          if (activeEl === first || !rootEl.contains(activeEl)) {
++            e.preventDefault();
++            last.focus();
++          }
++        } else {
++          if (activeEl === last || !rootEl.contains(activeEl)) {
++            e.preventDefault();
++            first.focus();
++          }
++        }
++      }
++    });
+   };
+ 
+   // ── Chat messages ─────────────────────────────────────────────────────────────
+@@ -697,7 +823,7 @@
+ 
+   const addChatThinking = () => {
+     if (!chatLogEl) return;
+-    if (document.getElementById("atlas-thinking-indicator")) return;
++    if (chatLogEl.querySelector("#atlas-thinking-indicator") || (shadowRoot && shadowRoot.getElementById("atlas-thinking-indicator")) || document.getElementById("atlas-thinking-indicator")) return;
+     const msg = document.createElement("div");
+     msg.className = "atlas-msg atlas-msg-agent atlas-msg-thinking";
+     msg.id = "atlas-thinking-indicator";
+@@ -715,7 +841,7 @@
+   };
+ 
+   const removeThinking = () => {
+-    document.getElementById("atlas-thinking-indicator")?.remove();
++    (chatLogEl?.querySelector("#atlas-thinking-indicator") || shadowRoot?.getElementById("atlas-thinking-indicator") || document.getElementById("atlas-thinking-indicator"))?.remove();
+   };
+ 
+   const setRefreshing = (isRefreshing) => {
+@@ -889,7 +1015,7 @@
+     if (typeof window !== "undefined" && window !== window.top) return;
+     handlers = cbs;
+     groupOpenState = {};
+-    if (document.getElementById(ROOT_ID)) return;
++    if (document.getElementById(ROOT_ID) || document.getElementById(HOST_ID) || (shadowRoot && shadowRoot.getElementById(ROOT_ID))) return;
+     buildDom();
+   };
+ 
+@@ -898,6 +1024,12 @@
+     cleanUpDrag = null;
+     rootEl?.remove();
+     rootEl = null;
++    hostEl?.remove();
++    hostEl = null;
++    shadowRoot = null;
++    if (typeof window !== "undefined" && window.__atlasShadowRoot) {
++      delete window.__atlasShadowRoot;
++    }
+     badgeEl = null;
+     badgeStatusDot = null;
+     langPill = null;
+@@ -1001,6 +1133,10 @@
+     expand,
+     toggleCollapse,
+     isCollapsed: () => isCollapsed,
++    getHost: () => hostEl,
++    getShadowRoot: () => shadowRoot,
++    getRoot: () => rootEl,
++    getChatInput: () => chatInputEl,
+     renderElements,
+     deriveDisplayItems,
+     setStatus,
+diff --git a/docs/TARGETED_BREAKDOWN_EVIDENCE.json b/docs/TARGETED_BREAKDOWN_EVIDENCE.json
+index 1ec9b6d..029b726 100644
+--- a/docs/TARGETED_BREAKDOWN_EVIDENCE.json
++++ b/docs/TARGETED_BREAKDOWN_EVIDENCE.json
+@@ -1,5 +1,5 @@
+ {
+-  "timestamp": "2026-10-09T17:42:30.312Z",
++  "timestamp": "2026-10-10T09:21:31.942Z",
+   "tests": [
+     {
+       "scenario": "Arabic & Non-ASCII Label Resolution",
+diff --git a/package.json b/package.json
+index 950d4c3..f392b58 100644
+--- a/package.json
++++ b/package.json
+@@ -3,7 +3,11 @@
+   "version": "0.2.0",
+   "private": true,
+   "scripts": {
+-    "test:e2e": "node ci/e2e/harness.js"
++    "test": "python3 ci/verify_all_tests_run.py",
++    "test:backend": "pytest backend/tests",
++    "test:js": "node client-script/test_extension.js && node client-script/test_secret_vault.js && node client-script/test_dom_serializer_v2.js && node client-script/test_goal_store.js && node client-script/test_executor_v2.js && node client-script/test_ws_client_stress.js && node client-script/test_m7_adversarial_challenger2.js && node client-script/test_sidebar_behavior.js && node demo-site/test_fixtures.js",
++    "test:e2e": "node ci/e2e/harness.js && node ci/e2e/ui_sidebar_behavior.js",
++    "ci:verify": "python3 ci/verify_all_tests_run.py"
+   },
+   "devDependencies": {
+     "playwright": "^1.49.0"
+diff --git a/run_ci.ps1 b/run_ci.ps1
+index 5ccda5b..2d87881 100644
+--- a/run_ci.ps1
++++ b/run_ci.ps1
+@@ -1,18 +1,19 @@
+ <#
+ .SYNOPSIS
+   run_ci.ps1 - Atlas CI/CD Pipeline Local Runner
+-  Executes Unit, Module, and System tests locally to ensure code remains stable.
++  Executes Security, Unit, Module, System, and Gatekeeper tests locally to ensure code remains stable.
+ 
+ .USAGE
+-  .\run_ci.ps1               # Runs all tiers (Security, Unit, Module, System)
++  .\run_ci.ps1               # Runs all tiers (Security, Unit, Module, System, Gatekeeper)
+   .\run_ci.ps1 -Stage security # Runs only Security tests
+   .\run_ci.ps1 -Stage unit   # Runs only Unit tests
+   .\run_ci.ps1 -Stage module # Runs only Module tests
+   .\run_ci.ps1 -Stage system # Runs only System tests
++  .\run_ci.ps1 -Stage verify # Runs only Gatekeeper self-check
+ #>
+ 
+ param(
+-    [ValidateSet("all", "security", "unit", "module", "system")]
++    [ValidateSet("all", "security", "unit", "module", "system", "verify")]
+     [string]$Stage = "all"
+ )
+ 
+@@ -21,10 +22,18 @@ $RootDir = $PSScriptRoot
+ $BackendDir = Join-Path $RootDir "backend"
+ $ClientScriptDir = Join-Path $RootDir "client-script"
+ $DashboardDir = Join-Path $RootDir "dashboard"
++$DemoSiteDir = Join-Path $RootDir "demo-site"
++$CiDir = Join-Path $RootDir "ci"
+ 
+-$VenvPython = Join-Path $BackendDir "venv\Scripts\python.exe"
++$VenvPython = Join-Path $BackendDir "venv_linux\bin\python"
+ if (-not (Test-Path $VenvPython)) {
+-    $VenvPython = "python"
++    $VenvPython = Join-Path $BackendDir "venv\Scripts\python.exe"
++    if (-not (Test-Path $VenvPython)) {
++        $VenvPython = Join-Path $BackendDir "venv\bin\python"
++        if (-not (Test-Path $VenvPython)) {
++            $VenvPython = "python"
++        }
++    }
+ }
+ 
+ function Write-Banner ($title) {
+@@ -59,7 +68,6 @@ Write-Banner "Atlas CI/CD Pipeline - Stage: $Stage"
+ if ($Stage -eq "all" -or $Stage -eq "security") {
+     Write-Host "-- TIER 0: SECURITY QUALITY GATE -----------------------" -ForegroundColor Red
+ 
+-    # Git tracked .env check
+     Run-Step "Security: Ensure No .env Files Tracked in Git" {
+         $trackedEnv = git ls-files | Select-String -Pattern '(\.env$|\.env\.)'
+         if ($trackedEnv) {
+@@ -68,13 +76,11 @@ if ($Stage -eq "all" -or $Stage -eq "security") {
+         Write-Host "    [OK] No .env secrets files tracked in repository" -ForegroundColor Green
+     }
+ 
+-    # Extension security quality gates (no hardcoded keys, no eval, XSS escaping)
+     Run-Step "Security: Extension Security Quality Gates and AST Audit" {
+         node (Join-Path $ClientScriptDir "test_extension.js")
+     }
+ 
+-    # Security and resilience automated regression tests
+-    Run-Step "Security: Automated Security and Resilience Regression Tests" {
++    Run-Step "Security: Security & Resilience Tests" {
+         Push-Location $BackendDir
+         try {
+             & $VenvPython -m pytest tests/test_security_resilience.py -v --tb=short
+@@ -83,8 +89,7 @@ if ($Stage -eq "all" -or $Stage -eq "security") {
+         }
+     }
+ 
+-    # Universal authentication gates and transaction rollback integrity tests
+-    Run-Step "Security and Transactions: Universal Auth Gates and DB Transaction Integrity" {
++    Run-Step "Security & Transactions: Universal Auth Gates & DB Transaction Integrity" {
+         Push-Location $BackendDir
+         try {
+             & $VenvPython -m pytest tests/test_auth_and_transactions.py -v --tb=short
+@@ -98,15 +103,19 @@ if ($Stage -eq "all" -or $Stage -eq "security") {
+ # 1. UNIT TESTING TIER
+ # -----------------------------------------------------------------------------
+ if ($Stage -eq "all" -or $Stage -eq "unit") {
+-    Write-Host "-- TIER 1: UNIT TESTS ----------------------------------" -ForegroundColor Magenta
+-
+-    # Extension code syntax and manifest validation
+-    Run-Step "Unit: Extension Script Syntax and Manifest Integrity" {
+-        node (Join-Path $ClientScriptDir "test_extension.js")
+-    }
+-
+-    # Pydantic data models
+-    Run-Step "Unit: Backend Data Models (DomNode, AgentMessage, ActionResponse)" {
++    Write-Host "-- TIER 1: UNIT TESTS ----------------------------------" -ForegroundColor Green
++
++    Run-Step "Unit: Extension Script Syntax & Manifest Integrity" { node (Join-Path $ClientScriptDir "test_extension.js") }
++    Run-Step "Unit: WebCrypto Secret Vault" { node (Join-Path $ClientScriptDir "test_secret_vault.js") }
++    Run-Step "Unit: DOM Serializer v2 ARIA Heuristics" { node (Join-Path $ClientScriptDir "test_dom_serializer_v2.js") }
++    Run-Step "Unit: Goal Store Session Persistence" { node (Join-Path $ClientScriptDir "test_goal_store.js") }
++    Run-Step "Unit: Executor Action Verbs" { node (Join-Path $ClientScriptDir "test_executor_v2.js") }
++    Run-Step "Unit: WebSocket Client Stress & Resilience" { node (Join-Path $ClientScriptDir "test_ws_client_stress.js") }
++    Run-Step "Unit: Adversarial RTL Bidi & Dual-Language" { node (Join-Path $ClientScriptDir "test_m7_adversarial_challenger2.js") }
++    Run-Step "Unit: Sidebar UI Behavior & Clamping" { node (Join-Path $ClientScriptDir "test_sidebar_behavior.js") }
++    Run-Step "Unit: Demo Site Fixtures Integrity" { node (Join-Path $DemoSiteDir "test_fixtures.js") }
++
++    Run-Step "Unit: Backend Data Models" {
+         Push-Location $BackendDir
+         try {
+             & $VenvPython -m pytest tests/test_models.py -v --tb=short
+@@ -115,8 +124,7 @@ if ($Stage -eq "all" -or $Stage -eq "unit") {
+         }
+     }
+ 
+-    # Action parser & prompt building
+-    Run-Step "Unit: Action and Simplify Parsers (LLM response extraction and sanitization)" {
++    Run-Step "Unit: Action & Simplify Parsers" {
+         Push-Location $BackendDir
+         try {
+             & $VenvPython -m pytest tests/test_action_parser.py -v --tb=short
+@@ -125,8 +133,7 @@ if ($Stage -eq "all" -or $Stage -eq "unit") {
+         }
+     }
+ 
+-    # Rate limiter unit logic
+-    Run-Step "Unit: Rate Limiter (sliding window and tenant isolation)" {
++    Run-Step "Unit: Rate Limiter Logic" {
+         Push-Location $BackendDir
+         try {
+             & $VenvPython -m pytest tests/test_rate_limiter.py -v --tb=short
+@@ -140,29 +147,18 @@ if ($Stage -eq "all" -or $Stage -eq "unit") {
+ # 2. MODULE TESTING TIER
+ # -----------------------------------------------------------------------------
+ if ($Stage -eq "all" -or $Stage -eq "module") {
+-    Write-Host "-- TIER 2: MODULE TESTS --------------------------------" -ForegroundColor Magenta
++    Write-Host "-- TIER 2: MODULE TESTS --------------------------------" -ForegroundColor Blue
+ 
+-    # Database connection & hashing utilities
+-    Run-Step "Module: DB Utilities and Key Hashing" {
++    Run-Step "Module: Complete Backend Pytest Suites" {
+         Push-Location $BackendDir
+         try {
+-            & $VenvPython -m pytest tests/test_db_utils.py -v --tb=short
++            $env:LLM_PROVIDER = "mock"
++            & $VenvPython -m pytest tests/ -v --tb=short
+         } finally {
+             Pop-Location
+         }
+     }
+ 
+-    # REST routes module (/health, /v1/session/start, /v1/audit/log)
+-    Run-Step "Module: REST API Endpoints and Auth Handshake" {
+-        Push-Location $BackendDir
+-        try {
+-            & $VenvPython -m pytest tests/test_routes_rest.py -v --tb=short
+-        } finally {
+-            Pop-Location
+-        }
+-    }
+-
+-    # Dashboard module compilation (if dependencies are present)
+     if (Test-Path (Join-Path $DashboardDir "node_modules")) {
+         Run-Step "Module: Dashboard Next.js Type Check and Compilation" {
+             Push-Location $DashboardDir
+@@ -172,19 +168,16 @@ if ($Stage -eq "all" -or $Stage -eq "module") {
+                 Pop-Location
+             }
+         }
+-    } else {
+-        Write-Host "--- [SKIPPED] Dashboard Next.js build (run 'npm install' in dashboard/ to enable)" -ForegroundColor DarkGray
+     }
+ }
+ 
+ # -----------------------------------------------------------------------------
+-# 3. SYSTEM TESTING TIER
++# 3. SYSTEM & E2E TESTING TIER
+ # -----------------------------------------------------------------------------
+ if ($Stage -eq "all" -or $Stage -eq "system") {
+-    Write-Host "-- TIER 3: SYSTEM TESTS --------------------------------" -ForegroundColor Magenta
++    Write-Host "-- TIER 3: SYSTEM & E2E TESTS --------------------------" -ForegroundColor Magenta
+ 
+-    # WebSocket agent integration pipeline
+-    Run-Step "System: WebSocket Agent Pipeline (Handshake, Simplify, Command, RateLimit)" {
++    Run-Step "System: WebSocket Agent Pipeline" {
+         Push-Location $BackendDir
+         try {
+             & $VenvPython -m pytest tests/test_websocket.py -v --tb=short
+@@ -193,7 +186,6 @@ if ($Stage -eq "all" -or $Stage -eq "system") {
+         }
+     }
+ 
+-    # Complete multi-service End-to-End System flow
+     Run-Step "System: Complete Multi-Service End-to-End Workflow" {
+         Push-Location $BackendDir
+         try {
+@@ -202,6 +194,35 @@ if ($Stage -eq "all" -or $Stage -eq "system") {
+             Pop-Location
+         }
+     }
++
++    Run-Step "System: Replay Scenarios Runner" {
++        Push-Location $BackendDir
++        try {
++            $env:LLM_PROVIDER = "mock"
++            & $VenvPython -m pytest tests/replay/test_replay_runner.py -v --tb=short
++        } finally {
++            Pop-Location
++        }
++    }
++
++    Run-Step "System: Playwright E2E Extension Harness" {
++        node (Join-Path $RootDir "ci\e2e\harness.js")
++    }
++
++    Run-Step "System: Playwright UI Sidebar Behavior Harness" {
++        node (Join-Path $RootDir "ci\e2e\ui_sidebar_behavior.js")
++    }
++}
++
++# -----------------------------------------------------------------------------
++# 4. CI GATEKEEPER QUALITY FLOOR SELF-CHECK
++# -----------------------------------------------------------------------------
++if ($Stage -eq "all" -or $Stage -eq "verify") {
++    Write-Host "-- TIER 4: CI GATEKEEPER QUALITY FLOOR SELF-CHECK ------" -ForegroundColor Yellow
++
++    Run-Step "Gatekeeper: Verify 100% Test Files Run & Floors Met" {
++        & $VenvPython (Join-Path $RootDir "ci\verify_all_tests_run.py")
++    }
+ }
+ 
+ Write-Banner "ALL CI/CD PIPELINE STAGES PASSED SUCCESSFULLY"
+diff --git a/run_ci.sh b/run_ci.sh
+index a2237ad..5e41263 100644
+--- a/run_ci.sh
++++ b/run_ci.sh
+@@ -1,6 +1,6 @@
+ #!/bin/bash
+ # run_ci.sh — Atlas CI/CD Pipeline Shell Runner
+-# Executes Unit, Module, and System tests.
++# Executes Security, Unit, Module, System, and Gatekeeper tests.
+ 
+ set -e
+ 
+@@ -10,7 +10,9 @@ BACKEND_DIR="$ROOT_DIR/backend"
+ CLIENT_DIR="$ROOT_DIR/client-script"
+ DASHBOARD_DIR="$ROOT_DIR/dashboard"
+ 
+-if [ -f "$BACKEND_DIR/venv/bin/python" ]; then
++if [ -f "$BACKEND_DIR/venv_linux/bin/python" ]; then
++    PYTHON="$BACKEND_DIR/venv_linux/bin/python"
++elif [ -f "$BACKEND_DIR/venv/bin/python" ]; then
+     PYTHON="$BACKEND_DIR/venv/bin/python"
+ elif [ -f "$BACKEND_DIR/venv/Scripts/python.exe" ]; then
+     PYTHON="$BACKEND_DIR/venv/Scripts/python.exe"
+@@ -46,26 +48,43 @@ fi
+ if [ "$STAGE" = "all" ] || [ "$STAGE" = "unit" ]; then
+     echo "── TIER 1: UNIT TESTS ──────────────────────────────────"
+     run_step "Unit: Extension Script Syntax & Manifest Integrity" node "$CLIENT_DIR/test_extension.js"
++    run_step "Unit: WebCrypto Secret Vault" node "$CLIENT_DIR/test_secret_vault.js"
++    run_step "Unit: DOM Serializer v2 ARIA Heuristics" node "$CLIENT_DIR/test_dom_serializer_v2.js"
++    run_step "Unit: Goal Store Session Persistence" node "$CLIENT_DIR/test_goal_store.js"
++    run_step "Unit: Executor Action Verbs" node "$CLIENT_DIR/test_executor_v2.js"
++    run_step "Unit: WebSocket Client Stress & Resilience" node "$CLIENT_DIR/test_ws_client_stress.js"
++    run_step "Unit: Adversarial RTL Bidi & Dual-Language" node "$CLIENT_DIR/test_m7_adversarial_challenger2.js"
++    run_step "Unit: Sidebar UI Behavior & Clamping" node "$CLIENT_DIR/test_sidebar_behavior.js"
++    run_step "Unit: Demo Site Fixtures Integrity" node "$ROOT_DIR/demo-site/test_fixtures.js"
+     (cd "$BACKEND_DIR" && run_step "Unit: Backend Data Models" "$PYTHON" -m pytest tests/test_models.py -v --tb=short)
+     (cd "$BACKEND_DIR" && run_step "Unit: Action & Simplify Parsers" "$PYTHON" -m pytest tests/test_action_parser.py -v --tb=short)
+     (cd "$BACKEND_DIR" && run_step "Unit: Rate Limiter Logic" "$PYTHON" -m pytest tests/test_rate_limiter.py -v --tb=short)
++    (cd "$BACKEND_DIR" && run_step "Unit: LLM Client Provider & Routing" "$PYTHON" -m pytest tests/test_llm_client.py -v --tb=short)
+ fi
+ 
+ # 2. MODULE TESTING
+ if [ "$STAGE" = "all" ] || [ "$STAGE" = "module" ]; then
+     echo "── TIER 2: MODULE TESTS ────────────────────────────────"
+-    (cd "$BACKEND_DIR" && run_step "Module: DB Utilities & Key Hashing" "$PYTHON" -m pytest tests/test_db_utils.py -v --tb=short)
+-    (cd "$BACKEND_DIR" && run_step "Module: REST API Endpoints & Handshake" "$PYTHON" -m pytest tests/test_routes_rest.py -v --tb=short)
++    (cd "$BACKEND_DIR" && run_step "Module: Complete Backend Pytest Suites" env LLM_PROVIDER=mock "$PYTHON" -m pytest tests/ -v --tb=short)
+     if [ -d "$DASHBOARD_DIR/node_modules" ]; then
+         (cd "$DASHBOARD_DIR" && run_step "Module: Dashboard Build" npm run build)
+     fi
+ fi
+ 
+-# 3. SYSTEM TESTING
++# 3. SYSTEM & E2E TESTING
+ if [ "$STAGE" = "all" ] || [ "$STAGE" = "system" ]; then
+-    echo "── TIER 3: SYSTEM TESTS ────────────────────────────────"
++    echo "── TIER 3: SYSTEM & E2E TESTS ──────────────────────────"
+     (cd "$BACKEND_DIR" && run_step "System: WebSocket Agent Pipeline" "$PYTHON" -m pytest tests/test_websocket.py -v --tb=short)
+     (cd "$BACKEND_DIR" && run_step "System: End-to-End Multi-Service Flow" "$PYTHON" -m pytest tests/test_system_e2e.py -v --tb=short)
++    (cd "$BACKEND_DIR" && run_step "System: Replay Scenarios Runner" env LLM_PROVIDER=mock "$PYTHON" -m pytest tests/replay/test_replay_runner.py -v --tb=short)
++    run_step "System: Playwright E2E Extension Harness" node "$ROOT_DIR/ci/e2e/harness.js"
++    run_step "System: Playwright UI Sidebar Behavior Harness" node "$ROOT_DIR/ci/e2e/ui_sidebar_behavior.js"
++fi
++
++# 4. CI GATEKEEPER SELF-CHECK
++if [ "$STAGE" = "all" ] || [ "$STAGE" = "verify" ]; then
++    echo "── TIER 4: CI GATEKEEPER QUALITY FLOOR SELF-CHECK ──────"
++    run_step "Gatekeeper: Verify 100% Test Files Run & Floors Met" "$PYTHON" "$ROOT_DIR/ci/verify_all_tests_run.py"
+ fi
+ 
+ echo ""

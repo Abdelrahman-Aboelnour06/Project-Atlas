@@ -13,7 +13,11 @@ const REQUIRED_FILES = [
   'account.html',
   'timetable.html',
   'hostile-form.html',
-  'slow.html'
+  'slow.html',
+  'healthcare-intake.html',
+  'finance-statement.html',
+  'statement-2026.csv',
+  'checkout.html'
 ];
 
 let passed = 0;
@@ -30,7 +34,7 @@ function test(name, fn) {
   }
 }
 
-console.log('\n--- Running Track 1j Fixture Site Tests ---\n');
+console.log('\n--- Running Track 1j & E1 Fixture Site Tests ---\n');
 
 REQUIRED_FILES.forEach(filename => {
   test(`File ${filename} exists`, () => {
@@ -95,5 +99,40 @@ test('slow.html renders main content via setTimeout ~1500ms', () => {
   assert(/setTimeout\s*\([^,]+,\s*1500\)/i.test(content), 'Must have setTimeout with ~1500ms delay');
 });
 
-console.log(`\nTrack 1j Test Summary: ${passed} passed, ${failed} failed.\n`);
+test('healthcare-intake.html contains sensitive PII, HIPAA consent, and disabled submit button', () => {
+  const content = fs.readFileSync(path.join(DEMO_DIR, 'healthcare-intake.html'), 'utf8');
+  assert(/id=["']patient-ssn["']|name=["']ssn["']/i.test(content), 'SSN input required');
+  assert(/autocomplete=["']bday["']/i.test(content), 'DOB input with autocomplete="bday" required');
+  assert(/type=["']email["']/i.test(content), 'Email input required');
+  assert(/type=["']tel["']/i.test(content), 'Phone input required');
+  assert(/id=["']consent-hipaa["']|name=["']consent_hipaa["']/i.test(content), 'HIPAA consent checkbox required');
+  assert(/id=["']submit-intake-btn["'][^>]*disabled|disabled[^>]*id=["']submit-intake-btn["']/i.test(content), 'Submit button initially disabled');
+});
+
+test('finance-statement.html contains tabular ledger, filter controls, and CSV export link', () => {
+  const content = fs.readFileSync(path.join(DEMO_DIR, 'finance-statement.html'), 'utf8');
+  assert(/<th[^>]*scope=["']col["']/i.test(content) || /<th/i.test(content), 'Table headers required');
+  assert(/id=["']filter-date-range["']/i.test(content), 'Date range filter required');
+  assert(/id=["']filter-tx-category["']/i.test(content), 'Category filter required');
+  assert(/download=["']statement-2026\.csv["']/i.test(content), 'CSV download link with statement-2026.csv required');
+  assert(/id=["']download-statement-csv["']/i.test(content), 'id="download-statement-csv" required');
+});
+
+test('statement-2026.csv contains valid CSV header row and transaction records', () => {
+  const content = fs.readFileSync(path.join(DEMO_DIR, 'statement-2026.csv'), 'utf8');
+  const lines = content.trim().split('\n');
+  assert(lines.length >= 6, 'Must contain header and transaction records');
+  assert(lines[0].includes('Date') && lines[0].includes('Transaction ID') && lines[0].includes('Amount'), 'CSV header row required');
+});
+
+test('checkout.html contains cart breakdown, sensitive payment fields, and consequential button', () => {
+  const content = fs.readFileSync(path.join(DEMO_DIR, 'checkout.html'), 'utf8');
+  assert(/Total\s*\$95\.56|95\.56/i.test(content), 'Order grand total of $95.56 required');
+  assert(/autocomplete=["']cc-number["']/i.test(content), 'Credit card input with autocomplete="cc-number" required');
+  assert(/autocomplete=["']cc-csc["']/i.test(content), 'CVV input with autocomplete="cc-csc" required');
+  assert(/id=["']pay-now-btn["']/i.test(content), 'id="pay-now-btn" required');
+  assert(/Complete Payment|Place Order/i.test(content), 'Consequential payment button text required');
+});
+
+console.log(`\nTrack 1j & E1 Test Summary: ${passed} passed, ${failed} failed.\n`);
 if (failed > 0) process.exit(1);

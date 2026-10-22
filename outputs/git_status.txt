@@ -1,0 +1,21 @@
+ M .github/workflows/ci.yml
+ M ORIGINAL_REQUEST.md
+ M backend/app/agent/llm_client.py
+ M backend/docker-compose.yml
+ M backend/tests/conftest.py
+ M backend/tests/replay/runner.py
+ M backend/tests/test_goal_contracts.py
+ M client-script/content.js
+ M client-script/dom-serializer.js
+ M client-script/manifest.json
+ M client-script/sidebar.js
+ M docs/TARGETED_BREAKDOWN_EVIDENCE.json
+ M package.json
+D  random.txt
+ M run_ci.ps1
+ M run_ci.sh
+?? ci/e2e/ui_sidebar_behavior.js
+?? ci/verify_all_tests_run.py
+?? client-script/test_sidebar_behavior.js
+?? client-script/test_w0_challenger_stress.js
+?? outputs/

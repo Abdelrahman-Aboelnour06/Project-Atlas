@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Financial Statement &amp; Medical Savings Ledger — CareLink</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      :root {
+        --primary: #1a56a0; --primary-dark: #0e3d7a; --primary-lt: #e8f0fb;
+        --secondary: #107040; --secondary-dark: #0a4f2b; --danger: #b91c1c;
+        --bg-page: #f8fafc; --card-bg: #ffffff; --border-color: #cbd5e1;
+        --text-main: #0f172a; --text-muted: #475569; --radius: 8px; --shadow: 0 4px 12px rgba(0,0,0,0.06);
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: var(--bg-page); color: var(--text-main); line-height: 1.5; padding: 40px 15px;
+      }
+      .container {
+        max-width: 900px; margin: 0 auto; background: var(--card-bg); border-radius: var(--radius);
+        padding: 36px 32px; box-shadow: var(--shadow); border: 1px solid var(--border-color);
+      }
+      header { margin-bottom: 24px; }
+      h1 { font-size: 24px; color: var(--primary-dark); margin-bottom: 8px; }
+      p.subtitle { color: var(--text-muted); font-size: 14px; margin-bottom: 20px; }
+      .nav-links { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+      .nav-links a { color: var(--primary); text-decoration: none; font-size: 14px; font-weight: 500; }
+      .nav-links a:hover { text-decoration: underline; }
+      
+      .summary-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 28px; }
+      .summary-card { background: #f8fafc; border: 1px solid var(--border-color); border-radius: var(--radius); padding: 18px 20px; }
+      .summary-card .label { font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px; }
+      .summary-card .value { font-size: 22px; font-weight: 700; color: var(--primary-dark); }
+      .summary-card .value.credit { color: var(--secondary); }
+
+      .filter-toolbar {
+        background: #f1f5f9; border: 1px solid var(--border-color); border-radius: var(--radius);
+        padding: 16px 20px; margin-bottom: 24px; display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;
+      }
+      .filter-group { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 160px; }
+      .filter-group label { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+      .filter-group select, .filter-group input {
+        padding: 8px 12px; border: 1px solid var(--border-color); border-radius: var(--radius);
+        font-size: 14px; background: white; outline: none;
+      }
+      .filter-group select:focus, .filter-group input:focus { border-color: var(--primary); }
+      .filter-btn {
+        padding: 9px 18px; background: var(--primary); color: white; border: none;
+        border-radius: var(--radius); font-weight: 600; cursor: pointer; font-size: 14px;
+        transition: background 0.15s ease;
+      }
+      .filter-btn:hover { background: var(--primary-dark); }
+
+      table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+      caption { font-size: 14px; font-weight: 600; color: var(--text-muted); text-align: left; margin-bottom: 8px; }
+      th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--border-color); font-size: 14px; }
+      th { background: var(--primary-lt); color: var(--primary-dark); font-weight: 600; }
+      td.amount-negative { color: var(--danger); font-weight: 600; }
+      td.amount-positive { color: var(--secondary); font-weight: 600; }
+      
+      .export-card {
+        background: #f8fafc; border: 1px solid var(--border-color); border-radius: var(--radius);
+        padding: 20px 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: gap; gap: 16px;
+      }
+      .export-info p { margin: 0; font-size: 14px; color: var(--text-muted); }
+      .export-info strong { color: var(--text-main); }
+      .download-btn {
+        display: inline-flex; align-items: center; gap: 8px; background: var(--secondary);
+        color: white; padding: 12px 22px; border-radius: var(--radius); font-weight: 600;
+        text-decoration: none; border: none; cursor: pointer; font-size: 14px;
+        transition: background 0.15s ease;
+      }
+      .download-btn:hover { background: var(--secondary-dark); }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="nav-links">
+        <a href="index.html">← Back to Portal</a>
+        <a href="healthcare-intake.html">Healthcare Intake</a>
+        <a href="timetable.html">Timetable</a>
+        <a href="checkout.html">Checkout</a>
+      </div>
+
+      <header>
+        <h1>Health Savings &amp; Medical Statement</h1>
+        <p class="subtitle">Statement for Account ending in 4821. Click Download Statement to export CSV.</p>
+      </header>
+
+      <!-- Account Summary Cards -->
+      <div class="summary-cards">
+        <div class="summary-card">
+          <div class="label">Designated Account</div>
+          <div class="value">•••• •••• •••• 4821</div>
+        </div>
+        <div class="summary-card">
+          <div class="label">Chronic Care Balance</div>
+          <div class="value credit">$14,850.25</div>
+        </div>
+        <div class="summary-card">
+          <div class="label">YTD 2026 Medical Out-of-Pocket</div>
+          <div class="value">$3,420.00</div>
+        </div>
+      </div>
+
+      <!-- Filter Controls Toolbar -->
+      <div class="filter-toolbar">
+        <div class="filter-group">
+          <label for="filter-date-range">Date Period</label>
+          <select id="filter-date-range" name="date_range">
+            <option value="ytd">Year to Date 2026</option>
+            <option value="30d">Last 30 Days</option>
+            <option value="90d">Last 90 Days</option>
+            <option value="all">All Time</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label for="filter-tx-category">Transaction Category</label>
+          <select id="filter-tx-category" name="tx_category">
+            <option value="all">All Categories</option>
+            <option value="Pharmacy Rx">Pharmacy Rx</option>
+            <option value="Telehealth Clinic">Telehealth Clinic</option>
+            <option value="Home Medical Devices">Home Medical Devices</option>
+            <option value="Lab Services">Lab Services</option>
+            <option value="Insurance Reimbursement">Insurance Reimbursement</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label for="tx-search-input">Search Description</label>
+          <input type="search" id="tx-search-input" placeholder="Search merchant or Rx..." />
+        </div>
+        <button type="button" id="apply-filters-btn" class="filter-btn">Filter Transactions</button>
+      </div>
+
+      <!-- Ledger Table -->
+      <table id="transactions-table">
+        <caption>Patient Transaction Ledger (2026)</caption>
+        <thead>
+          <tr>
+            <th scope="col">Date</th>
+            <th scope="col">Transaction ID</th>
+            <th scope="col">Description</th>
+            <th scope="col">Category</th>
+            <th scope="col">Amount</th>
+            <th scope="col">Status</th>
+          </tr>
+        </thead>
+        <tbody id="transactions-body">
+          <tr data-category="Pharmacy Rx">
+            <td>2026-01-12</td>
+            <td><code>TXN-88301</code></td>
+            <td>CareLink Pharmacy - Humalog Insulin</td>
+            <td>Pharmacy Rx</td>
+            <td class="amount-negative">-$145.20</td>
+            <td>Settled</td>
+          </tr>
+          <tr data-category="Home Medical Devices">
+            <td>2026-01-28</td>
+            <td><code>TXN-88419</code></td>
+            <td>Dexcom G7 Continuous Glucose Sensor 3pk</td>
+            <td>Home Medical Devices</td>
+            <td class="amount-negative">-$285.00</td>
+            <td>Settled</td>
+          </tr>
+          <tr data-category="Telehealth Clinic">
+            <td>2026-02-04</td>
+            <td><code>TXN-88550</code></td>
+            <td>Telehealth Specialist Consultation - Endocrinology</td>
+            <td>Telehealth Clinic</td>
+            <td class="amount-negative">-$75.00</td>
+            <td>Settled</td>
+          </tr>
+          <tr data-category="Lab Services">
+            <td>2026-02-14</td>
+            <td><code>TXN-88692</code></td>
+            <td>Quest Diagnostics Comprehensive Metabolic Panel</td>
+            <td>Lab Services</td>
+            <td class="amount-negative">-$45.50</td>
+            <td>Settled</td>
+          </tr>
+          <tr data-category="Insurance Reimbursement">
+            <td>2026-02-28</td>
+            <td><code>TXN-88744</code></td>
+            <td>Insurance Wellness Incentive Reimbursement</td>
+            <td>Insurance Reimbursement</td>
+            <td class="amount-positive">+$250.00</td>
+            <td>Credited</td>
+          </tr>
+          <tr data-category="Pharmacy Rx">
+            <td>2026-03-05</td>
+            <td><code>TXN-88891</code></td>
+            <td>CareLink Pharmacy - Metformin &amp; Lisinopril</td>
+            <td>Pharmacy Rx</td>
+            <td class="amount-negative">-$32.40</td>
+            <td>Settled</td>
+          </tr>
+          <tr data-category="Home Medical Devices">
+            <td>2026-03-18</td>
+            <td><code>TXN-89012</code></td>
+            <td>Omron Wireless Blood Pressure Monitor Evolv</td>
+            <td>Home Medical Devices</td>
+            <td class="amount-negative">-$89.99</td>
+            <td>Settled</td>
+          </tr>
+          <tr data-category="Telehealth Clinic">
+            <td>2026-03-30</td>
+            <td><code>TXN-89105</code></td>
+            <td>CareLink Telehealth Nutritional Coaching Session</td>
+            <td>Telehealth Clinic</td>
+            <td class="amount-negative">-$50.00</td>
+            <td>Settled</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Export Statement Section -->
+      <div class="export-card">
+        <div class="export-info">
+          <strong>Tax &amp; Healthcare Accounting Export</strong>
+          <p>Export all 2026 settled transactions formatted for HSA/FSA reimbursement filing.</p>
+        </div>
+        <a href="statement-2026.csv" download="statement-2026.csv" id="download-statement-csv" class="download-btn">
+          Download Statement (CSV)
+        </a>
+      </div>
+    </div>
+
+    <script>
+      (function() {
+        const filterCategory = document.getElementById('filter-tx-category');
+        const searchInput = document.getElementById('tx-search-input');
+        const filterBtn = document.getElementById('apply-filters-btn');
+        const rows = document.querySelectorAll('#transactions-body tr');
+
+        function applyFilter() {
+          const cat = filterCategory.value;
+          const query = searchInput.value.toLowerCase().trim();
+
+          rows.forEach(row => {
+            const rowCat = row.getAttribute('data-category');
+            const rowText = row.innerText.toLowerCase();
+            const catMatches = (cat === 'all' || rowCat === cat);
+            const queryMatches = (!query || rowText.includes(query));
+
+            row.style.display = (catMatches && queryMatches) ? '' : 'none';
+          });
+        }
+
+        filterBtn.addEventListener('click', applyFilter);
+        filterCategory.addEventListener('change', applyFilter);
+        searchInput.addEventListener('input', applyFilter);
+      })();
+    </script>
+  </body>
+</html>

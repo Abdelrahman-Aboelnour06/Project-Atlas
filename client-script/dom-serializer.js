@@ -107,7 +107,9 @@ const classifySensitiveField = (el) => {
 // Selectors that match UI chrome we never want cluttering the panel:
 // language pickers, cookie banners, price/filter widgets, etc.
 const NOISE_SELECTORS = [
-  "#atlas-sidebar-root", // never scan ourselves
+  "#atlas-sidebar-host",
+  "#atlas-sidebar-root",
+  "atlas-sidebar-host",
   // Price / filter / facet widgets
   '[id*="price-filter"]',
   '[id*="priceRefinements"]',
@@ -261,7 +263,14 @@ const NOISE_TEXT_PATTERNS = [
 
   // ── Noise check (structural) ──────────────────────────────────────────────────
   const isStructuralNoise = (el) => {
-    if (el.closest("#atlas-sidebar-root")) return true;
+    if (
+      el.id === "atlas-sidebar-host" ||
+      el.id === "atlas-sidebar-root" ||
+      el.closest("#atlas-sidebar-host") ||
+      el.closest("#atlas-sidebar-root")
+    ) {
+      return true;
+    }
     for (const sel of NOISE_SELECTORS) {
       try {
         if (el.matches(sel) || el.closest(sel)) return true;
@@ -572,6 +581,7 @@ const NOISE_TEXT_PATTERNS = [
       const all = root.querySelectorAll("*");
       for (let i = 0; i < all.length; i++) {
         const el = all[i];
+        if (el.id === "atlas-sidebar-host" || el.id === "atlas-sidebar-root") continue;
         if (el.shadowRoot) {
           results.push(...collectInteractiveElements(el.shadowRoot));
         }
@@ -611,7 +621,7 @@ const NOISE_TEXT_PATTERNS = [
     for (let i = 0; i < candidates.length; i++) {
       const el = candidates[i];
       // When a modal dialog is active, elements outside it are inert and occluded
-      if (activeModal && !activeModal.contains(el) && !el.closest("#atlas-sidebar-root")) continue;
+      if (activeModal && !activeModal.contains(el) && !el.closest("#atlas-sidebar-root") && !el.closest("#atlas-sidebar-host")) continue;
       // Note: do NOT skip el.disabled; emit disabled: true (§11.2)
       if (!isVisible(el)) continue;
       if (isStructuralNoise(el)) continue;
@@ -738,6 +748,7 @@ const NOISE_TEXT_PATTERNS = [
       if (direct) return direct;
       const all = root.querySelectorAll("*");
       for (let i = 0; i < all.length; i++) {
+        if (all[i].id === "atlas-sidebar-host" || all[i].id === "atlas-sidebar-root") continue;
         if (all[i].shadowRoot) {
           const found = getElementByAtlasId(atlasId, all[i].shadowRoot);
           if (found) return found;
@@ -762,7 +773,9 @@ const NOISE_TEXT_PATTERNS = [
       if (paused) return;
       const onlyAtlas = mutations.every(
         (m) =>
+          m.target.id === "atlas-sidebar-host" ||
           m.target.id === "atlas-sidebar-root" ||
+          m.target.closest?.("#atlas-sidebar-host") ||
           m.target.closest?.("#atlas-sidebar-root") ||
           (m.type === "attributes" && m.attributeName === ATLAS_ID_ATTR),
       );

@@ -261,6 +261,7 @@ class TestMockLLMProvider:
     def test_mock_set_single_response(self):
         set_mock_llm_response("single canned item")
         assert llm_client._mock_canned_queue == ["single canned item"]
+        clear_mock_llm()
 
     @pytest.mark.asyncio
     async def test_mock_history_tracking(self):

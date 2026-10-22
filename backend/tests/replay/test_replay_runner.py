@@ -187,3 +187,117 @@ async def test_planner_multi_milestone_scenario():
     assert milestones[-1].is_final is True
     assert milestones[0].id != milestones[1].id
 
+
+@pytest.mark.asyncio
+async def test_healthcare_intake_tokenization_scenario():
+    """
+    Enterprise Demo Fixture Scenario:
+    Healthcare intake form enforces privacy rails: Form plan emits vault and
+    profile tokens for sensitive PII and isolates submit_ref without auto-checking consent.
+    """
+    from app.agent.form_filler import plan_form_fill
+    from app.models.dom import DomNode
+    from app.agent import llm_client
+
+    dom_nodes = [
+        DomNode(id="full-name", tag="input", ref="ref_name", name="full_name"),
+        DomNode(id="patient-dob", tag="input", ref="ref_dob", name="date_of_birth", sensitive=True),
+        DomNode(id="patient-ssn", tag="input", ref="ref_ssn", name="ssn", sensitive=True),
+        DomNode(id="patient-email", tag="input", ref="ref_email", type="email", sensitive=True),
+        DomNode(id="consent-hipaa", tag="input", type="checkbox", ref="ref_consent", name="consent_hipaa"),
+        DomNode(id="submit-intake-btn", tag="button", inner_text="Submit Patient Intake", ref="ref_submit", type="submit"),
+    ]
+
+    llm_client.set_mock_llm_queue([
+        """{
+            "form_id": "healthcare-intake-form",
+            "fields": [
+                {"ref": "ref_name", "action": "fill", "value": "{profile.full_name}", "source": "profile"},
+                {"ref": "ref_dob", "action": "fill", "value": "{profile.date_of_birth}", "source": "profile"},
+                {"ref": "ref_ssn", "action": "fill", "value": "{ssn}", "source": "vault"},
+                {"ref": "ref_email", "action": "fill", "value": "{profile.email}", "source": "profile"}
+            ],
+            "submit_ref": "ref_submit",
+            "missing_required": ["ref_consent"],
+            "blockers": []
+        }"""
+    ])
+
+    plan = await plan_form_fill(
+        form_id="healthcare-intake-form",
+        dom_nodes=dom_nodes,
+        goal="Submit patient healthcare intake",
+        profile_hints=["full_name", "date_of_birth", "email"],
+    )
+
+    assert plan.submit_ref == "ref_submit"
+    assert "ref_submit" not in [f.ref for f in plan.fields]
+    assert any(f.value == "{ssn}" for f in plan.fields)
+    assert any(f.value == "{profile.email}" for f in plan.fields)
+    assert "ref_consent" in plan.missing_required
+
+
+@pytest.mark.asyncio
+async def test_checkout_consequential_confirmation_scenario():
+    """
+    Enterprise Demo Fixture Scenario:
+    Checkout payment execution button triggers consequential action gate with status='requires_confirmation'.
+    """
+    scenario = Scenario(
+        name="checkout_consequential_payment_gate",
+        goal="Complete payment and place order for items in cart",
+        hops=[
+            Hop(
+                url="https://example.com/demo-site/checkout.html",
+                dom_map=[
+                    {
+                        "id": "pay-now-btn",
+                        "tag": "button",
+                        "inner_text": "Complete Payment ($95.56) & Place Order",
+                        "role": "button",
+                        "resolved_label": "Complete Payment and Place Order",
+                    }
+                ],
+                page_text="Order summary: 3 items. Total $95.56. Click Complete Payment to charge card.",
+                expect=HopExpectation(status="requires_confirmation"),
+            ),
+        ],
+    )
+
+    result = await replay(scenario)
+    assert result.final["status"] == "requires_confirmation"
+    assert result.trace[0]["requires_confirmation"] is True
+
+
+@pytest.mark.asyncio
+async def test_finance_statement_tabular_export_scenario():
+    """
+    Enterprise Demo Fixture Scenario:
+    Financial statement export action correctly plans download click.
+    """
+    scenario = Scenario(
+        name="finance_statement_export",
+        goal="Download the 2026 financial transactions statement CSV",
+        hops=[
+            Hop(
+                url="https://example.com/demo-site/finance-statement.html",
+                dom_map=[
+                    {
+                        "id": "download-statement-csv",
+                        "tag": "a",
+                        "inner_text": "Download Statement (CSV)",
+                        "role": "link",
+                        "resolved_label": "Download Statement (CSV)",
+                    }
+                ],
+                page_text="Statement for Account ending in 4821. Click Download Statement to export CSV.",
+                expect=HopExpectation(status="in_progress", action_on_label="download"),
+            ),
+        ],
+    )
+
+    result = await replay(scenario)
+    assert len(result.trace) == 1
+    steps = result.trace[0].get("steps", [])
+    assert any("download" in s.get("description", "").lower() for s in steps)
+

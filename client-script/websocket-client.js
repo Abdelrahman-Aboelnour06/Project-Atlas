@@ -92,10 +92,19 @@ const openSocket = () =>
 
     socket.onclose = (event) => {
       console.warn('Atlas: WebSocket closed', event.code, event.reason)
-      pendingQueue.forEach((p) => p.reject(new Error('Socket closed')))
+      const err = new Error('Socket closed')
+      err.isConnectionLost = true
+      pendingQueue.forEach((p) => p.reject(err))
       pendingQueue = []
-      disconnectHandlers.forEach((fn) => fn())
-      maybeReconnect()
+      authenticated = false
+      disconnectHandlers.forEach((fn) => {
+        try { fn(err) } catch (_) {}
+      })
+      if (typeof window !== 'undefined' && window.AtlasConnectionManager) {
+        window.AtlasConnectionManager.handleDisconnect(err)
+      } else {
+        maybeReconnect()
+      }
     }
   })
 
@@ -117,6 +126,9 @@ const authenticate = () =>
       resolve: (data) => {
         if (data.status === 'ok') {
           authenticated = true
+          if (typeof window !== 'undefined' && window.AtlasConnectionManager) {
+            window.AtlasConnectionManager.markConnected()
+          }
           resolve()
         } else {
           const errMsg = data.message || 'Authentication failed'
@@ -137,19 +149,34 @@ const connect = async ({ baseUrl: base, apiKey: key } = {}) => {
   if (key) apiKey = key
   if (!apiKey) throw new Error('AtlasSocket.connect requires an apiKey')
 
+  if (typeof window !== 'undefined' && window.AtlasConnectionManager) {
+    window.AtlasConnectionManager.setConnectHandler(() => connect({ baseUrl, apiKey }))
+  }
+
   if (hasBgProxy()) {
     return new Promise((resolve, reject) => {
       chrome.runtime.sendMessage(
         { type: 'ATLAS_SOCKET_CONNECT', baseUrl, apiKey },
         (res) => {
           if (chrome.runtime.lastError) {
-            return reject(new Error(chrome.runtime.lastError.message))
+            const err = new Error(chrome.runtime.lastError.message)
+            if (typeof window !== 'undefined' && window.AtlasConnectionManager) {
+              window.AtlasConnectionManager.handleDisconnect(err)
+            }
+            return reject(err)
           }
           if (!res || !res.ok) {
-            return reject(new Error(res?.error || 'Failed to connect via background service worker'))
+            const err = new Error(res?.error || 'Failed to connect via background service worker')
+            if (typeof window !== 'undefined' && window.AtlasConnectionManager) {
+              window.AtlasConnectionManager.handleDisconnect(err)
+            }
+            return reject(err)
           }
           sessionId = res.data?.sessionId
           authenticated = true
+          if (typeof window !== 'undefined' && window.AtlasConnectionManager) {
+            window.AtlasConnectionManager.markConnected()
+          }
           resolve()
         }
       )
@@ -159,6 +186,9 @@ const connect = async ({ baseUrl: base, apiKey: key } = {}) => {
   sessionId = await startSession()
   await openSocket()
   await authenticate()
+  if (typeof window !== 'undefined' && window.AtlasConnectionManager) {
+    window.AtlasConnectionManager.markConnected()
+  }
 }
 
 const ensureConnected = async () => {
@@ -401,5 +431,12 @@ const close = () => {
   socket = null
 }
 
-window.AtlasSocket = { connect, sendCommand, sendSimplify, sendChat, sendSummary, onDisconnect, close }
+const retry = () => {
+  if (typeof window !== 'undefined' && window.AtlasConnectionManager?.retryNow) {
+    return window.AtlasConnectionManager.retryNow()
+  }
+  return connect({ baseUrl, apiKey })
+}
+
+window.AtlasSocket = { connect, sendCommand, sendSimplify, sendChat, sendSummary, onDisconnect, close, retry }
 })();

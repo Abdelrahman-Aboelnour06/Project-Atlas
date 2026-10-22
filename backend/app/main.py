@@ -16,7 +16,7 @@ for _p in _env_candidates:
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routes import agent, session, health, audit, chat
+from app.routes import agent, session, health, audit, chat, tenant
 
 app = FastAPI(
     title="Atlas API",
@@ -45,7 +45,7 @@ app.add_middleware(
     allow_origins=allowed_origins,
     allow_origin_regex=allow_origin_regex,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -63,3 +63,4 @@ app.include_router(session.router, prefix="/v1") # POST /v1/session/start
 app.include_router(agent.router,   prefix="/v1") # WS   /v1/agent
 app.include_router(audit.router,   prefix="/v1") # POST /v1/audit/log
 app.include_router(chat.router,    prefix="/v1") # POST /v1/chat
+app.include_router(tenant.router,  prefix="/v1") # GET/DELETE /v1/tenant/*

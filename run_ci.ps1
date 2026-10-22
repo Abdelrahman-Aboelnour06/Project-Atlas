@@ -1,18 +1,19 @@
 <#
 .SYNOPSIS
   run_ci.ps1 - Atlas CI/CD Pipeline Local Runner
-  Executes Unit, Module, and System tests locally to ensure code remains stable.
+  Executes Security, Unit, Module, System, and Gatekeeper tests locally to ensure code remains stable.
 
 .USAGE
-  .\run_ci.ps1               # Runs all tiers (Security, Unit, Module, System)
+  .\run_ci.ps1               # Runs all tiers (Security, Unit, Module, System, Gatekeeper)
   .\run_ci.ps1 -Stage security # Runs only Security tests
   .\run_ci.ps1 -Stage unit   # Runs only Unit tests
   .\run_ci.ps1 -Stage module # Runs only Module tests
   .\run_ci.ps1 -Stage system # Runs only System tests
+  .\run_ci.ps1 -Stage verify # Runs only Gatekeeper self-check
 #>
 
 param(
-    [ValidateSet("all", "security", "unit", "module", "system")]
+    [ValidateSet("all", "security", "unit", "module", "system", "verify")]
     [string]$Stage = "all"
 )
 
@@ -21,10 +22,18 @@ $RootDir = $PSScriptRoot
 $BackendDir = Join-Path $RootDir "backend"
 $ClientScriptDir = Join-Path $RootDir "client-script"
 $DashboardDir = Join-Path $RootDir "dashboard"
+$DemoSiteDir = Join-Path $RootDir "demo-site"
+$CiDir = Join-Path $RootDir "ci"
 
-$VenvPython = Join-Path $BackendDir "venv\Scripts\python.exe"
+$VenvPython = Join-Path $BackendDir "venv_linux\bin\python"
 if (-not (Test-Path $VenvPython)) {
-    $VenvPython = "python"
+    $VenvPython = Join-Path $BackendDir "venv\Scripts\python.exe"
+    if (-not (Test-Path $VenvPython)) {
+        $VenvPython = Join-Path $BackendDir "venv\bin\python"
+        if (-not (Test-Path $VenvPython)) {
+            $VenvPython = "python"
+        }
+    }
 }
 
 function Write-Banner ($title) {
@@ -59,7 +68,6 @@ Write-Banner "Atlas CI/CD Pipeline - Stage: $Stage"
 if ($Stage -eq "all" -or $Stage -eq "security") {
     Write-Host "-- TIER 0: SECURITY QUALITY GATE -----------------------" -ForegroundColor Red
 
-    # Git tracked .env check
     Run-Step "Security: Ensure No .env Files Tracked in Git" {
         $trackedEnv = git ls-files | Select-String -Pattern '(\.env$|\.env\.)'
         if ($trackedEnv) {
@@ -68,13 +76,11 @@ if ($Stage -eq "all" -or $Stage -eq "security") {
         Write-Host "    [OK] No .env secrets files tracked in repository" -ForegroundColor Green
     }
 
-    # Extension security quality gates (no hardcoded keys, no eval, XSS escaping)
     Run-Step "Security: Extension Security Quality Gates and AST Audit" {
         node (Join-Path $ClientScriptDir "test_extension.js")
     }
 
-    # Security and resilience automated regression tests
-    Run-Step "Security: Automated Security and Resilience Regression Tests" {
+    Run-Step "Security: Security & Resilience Tests" {
         Push-Location $BackendDir
         try {
             & $VenvPython -m pytest tests/test_security_resilience.py -v --tb=short
@@ -83,8 +89,7 @@ if ($Stage -eq "all" -or $Stage -eq "security") {
         }
     }
 
-    # Universal authentication gates and transaction rollback integrity tests
-    Run-Step "Security and Transactions: Universal Auth Gates and DB Transaction Integrity" {
+    Run-Step "Security & Transactions: Universal Auth Gates & DB Transaction Integrity" {
         Push-Location $BackendDir
         try {
             & $VenvPython -m pytest tests/test_auth_and_transactions.py -v --tb=short
@@ -98,15 +103,19 @@ if ($Stage -eq "all" -or $Stage -eq "security") {
 # 1. UNIT TESTING TIER
 # -----------------------------------------------------------------------------
 if ($Stage -eq "all" -or $Stage -eq "unit") {
-    Write-Host "-- TIER 1: UNIT TESTS ----------------------------------" -ForegroundColor Magenta
+    Write-Host "-- TIER 1: UNIT TESTS ----------------------------------" -ForegroundColor Green
 
-    # Extension code syntax and manifest validation
-    Run-Step "Unit: Extension Script Syntax and Manifest Integrity" {
-        node (Join-Path $ClientScriptDir "test_extension.js")
-    }
+    Run-Step "Unit: Extension Script Syntax & Manifest Integrity" { node (Join-Path $ClientScriptDir "test_extension.js") }
+    Run-Step "Unit: WebCrypto Secret Vault" { node (Join-Path $ClientScriptDir "test_secret_vault.js") }
+    Run-Step "Unit: DOM Serializer v2 ARIA Heuristics" { node (Join-Path $ClientScriptDir "test_dom_serializer_v2.js") }
+    Run-Step "Unit: Goal Store Session Persistence" { node (Join-Path $ClientScriptDir "test_goal_store.js") }
+    Run-Step "Unit: Executor Action Verbs" { node (Join-Path $ClientScriptDir "test_executor_v2.js") }
+    Run-Step "Unit: WebSocket Client Stress & Resilience" { node (Join-Path $ClientScriptDir "test_ws_client_stress.js") }
+    Run-Step "Unit: Adversarial RTL Bidi & Dual-Language" { node (Join-Path $ClientScriptDir "test_m7_adversarial_challenger2.js") }
+    Run-Step "Unit: Sidebar UI Behavior & Clamping" { node (Join-Path $ClientScriptDir "test_sidebar_behavior.js") }
+    Run-Step "Unit: Demo Site Fixtures Integrity" { node (Join-Path $DemoSiteDir "test_fixtures.js") }
 
-    # Pydantic data models
-    Run-Step "Unit: Backend Data Models (DomNode, AgentMessage, ActionResponse)" {
+    Run-Step "Unit: Backend Data Models" {
         Push-Location $BackendDir
         try {
             & $VenvPython -m pytest tests/test_models.py -v --tb=short
@@ -115,8 +124,7 @@ if ($Stage -eq "all" -or $Stage -eq "unit") {
         }
     }
 
-    # Action parser & prompt building
-    Run-Step "Unit: Action and Simplify Parsers (LLM response extraction and sanitization)" {
+    Run-Step "Unit: Action & Simplify Parsers" {
         Push-Location $BackendDir
         try {
             & $VenvPython -m pytest tests/test_action_parser.py -v --tb=short
@@ -125,8 +133,7 @@ if ($Stage -eq "all" -or $Stage -eq "unit") {
         }
     }
 
-    # Rate limiter unit logic
-    Run-Step "Unit: Rate Limiter (sliding window and tenant isolation)" {
+    Run-Step "Unit: Rate Limiter Logic" {
         Push-Location $BackendDir
         try {
             & $VenvPython -m pytest tests/test_rate_limiter.py -v --tb=short
@@ -140,29 +147,18 @@ if ($Stage -eq "all" -or $Stage -eq "unit") {
 # 2. MODULE TESTING TIER
 # -----------------------------------------------------------------------------
 if ($Stage -eq "all" -or $Stage -eq "module") {
-    Write-Host "-- TIER 2: MODULE TESTS --------------------------------" -ForegroundColor Magenta
+    Write-Host "-- TIER 2: MODULE TESTS --------------------------------" -ForegroundColor Blue
 
-    # Database connection & hashing utilities
-    Run-Step "Module: DB Utilities and Key Hashing" {
+    Run-Step "Module: Complete Backend Pytest Suites" {
         Push-Location $BackendDir
         try {
-            & $VenvPython -m pytest tests/test_db_utils.py -v --tb=short
+            $env:LLM_PROVIDER = "mock"
+            & $VenvPython -m pytest tests/ -v --tb=short
         } finally {
             Pop-Location
         }
     }
 
-    # REST routes module (/health, /v1/session/start, /v1/audit/log)
-    Run-Step "Module: REST API Endpoints and Auth Handshake" {
-        Push-Location $BackendDir
-        try {
-            & $VenvPython -m pytest tests/test_routes_rest.py -v --tb=short
-        } finally {
-            Pop-Location
-        }
-    }
-
-    # Dashboard module compilation (if dependencies are present)
     if (Test-Path (Join-Path $DashboardDir "node_modules")) {
         Run-Step "Module: Dashboard Next.js Type Check and Compilation" {
             Push-Location $DashboardDir
@@ -172,19 +168,16 @@ if ($Stage -eq "all" -or $Stage -eq "module") {
                 Pop-Location
             }
         }
-    } else {
-        Write-Host "--- [SKIPPED] Dashboard Next.js build (run 'npm install' in dashboard/ to enable)" -ForegroundColor DarkGray
     }
 }
 
 # -----------------------------------------------------------------------------
-# 3. SYSTEM TESTING TIER
+# 3. SYSTEM & E2E TESTING TIER
 # -----------------------------------------------------------------------------
 if ($Stage -eq "all" -or $Stage -eq "system") {
-    Write-Host "-- TIER 3: SYSTEM TESTS --------------------------------" -ForegroundColor Magenta
+    Write-Host "-- TIER 3: SYSTEM & E2E TESTS --------------------------" -ForegroundColor Magenta
 
-    # WebSocket agent integration pipeline
-    Run-Step "System: WebSocket Agent Pipeline (Handshake, Simplify, Command, RateLimit)" {
+    Run-Step "System: WebSocket Agent Pipeline" {
         Push-Location $BackendDir
         try {
             & $VenvPython -m pytest tests/test_websocket.py -v --tb=short
@@ -193,7 +186,6 @@ if ($Stage -eq "all" -or $Stage -eq "system") {
         }
     }
 
-    # Complete multi-service End-to-End System flow
     Run-Step "System: Complete Multi-Service End-to-End Workflow" {
         Push-Location $BackendDir
         try {
@@ -201,6 +193,39 @@ if ($Stage -eq "all" -or $Stage -eq "system") {
         } finally {
             Pop-Location
         }
+    }
+
+    Run-Step "System: Replay Scenarios Runner" {
+        Push-Location $BackendDir
+        try {
+            $env:LLM_PROVIDER = "mock"
+            & $VenvPython -m pytest tests/replay/test_replay_runner.py -v --tb=short
+        } finally {
+            Pop-Location
+        }
+    }
+
+    Run-Step "System: Playwright E2E Extension Harness" {
+        node (Join-Path $RootDir "ci\e2e\harness.js")
+    }
+
+    Run-Step "System: Playwright UI Sidebar Behavior Harness" {
+        node (Join-Path $RootDir "ci\e2e\ui_sidebar_behavior.js")
+    }
+
+    Run-Step "System: Playwright Axe-Core A11y Audit Harness" {
+        node (Join-Path $RootDir "ci\e2e\a11y_axe.js")
+    }
+}
+
+# -----------------------------------------------------------------------------
+# 4. CI GATEKEEPER QUALITY FLOOR SELF-CHECK
+# -----------------------------------------------------------------------------
+if ($Stage -eq "all" -or $Stage -eq "verify") {
+    Write-Host "-- TIER 4: CI GATEKEEPER QUALITY FLOOR SELF-CHECK ------" -ForegroundColor Yellow
+
+    Run-Step "Gatekeeper: Verify 100% Test Files Run & Floors Met" {
+        & $VenvPython (Join-Path $RootDir "ci\verify_all_tests_run.py")
     }
 }
 

@@ -1,0 +1,9 @@
+Date,Transaction ID,Description,Category,Amount,Status
+2026-01-12,TXN-88301,CareLink Pharmacy - Humalog Insulin,Pharmacy Rx,-145.20,Settled
+2026-01-28,TXN-88419,Dexcom G7 Continuous Glucose Sensor 3pk,Home Medical Devices,-285.00,Settled
+2026-02-04,TXN-88550,Telehealth Specialist Consultation - Endocrinology,Telehealth Clinic,-75.00,Settled
+2026-02-14,TXN-88692,Quest Diagnostics Comprehensive Metabolic Panel,Lab Services,-45.50,Settled
+2026-02-28,TXN-88744,Insurance Wellness Incentive Reimbursement,Insurance Reimbursement,250.00,Credited
+2026-03-05,TXN-88891,CareLink Pharmacy - Metformin & Lisinopril,Pharmacy Rx,-32.40,Settled
+2026-03-18,TXN-89012,Omron Wireless Blood Pressure Monitor Evolv,Home Medical Devices,-89.99,Settled
+2026-03-30,TXN-89105,CareLink Telehealth Nutritional Coaching Session,Telehealth Clinic,-50.00,Settled

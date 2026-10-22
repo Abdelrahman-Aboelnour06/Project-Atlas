@@ -332,6 +332,27 @@ assert(backgroundCode.includes('allFrames: true'), 'background.js injects conten
 // Top frame guard in sidebar.js
 assert(sidebarCode.includes('window !== window.top'), 'sidebar.js restricts UI mounting to top-level window');
 
+// 10. Track U6 First-Run Setup Wizard Quality Gates
+console.log('\n[Unit: Track U6 First-Run Setup Wizard Quality Gates]');
+const optionsHtml = fs.readFileSync(path.join(__dirname, 'options.html'), 'utf8');
+const optionsCss = fs.readFileSync(path.join(__dirname, 'options.css'), 'utf8');
+assert(optionsHtml.includes('id="atlas-wizard-container"'), 'options.html defines #atlas-wizard-container');
+assert(optionsHtml.includes('id="atlas-standard-settings"'), 'options.html defines #atlas-standard-settings');
+assert(optionsHtml.includes('atlas-wizard-stepper'), 'options.html defines accessible 3-step wizard stepper');
+assert(optionsHtml.includes('id="wizard-step-1"') && optionsHtml.includes('id="wizard-step-2"') && optionsHtml.includes('id="wizard-step-3"'), 'options.html defines steps 1, 2, and 3');
+assert(optionsHtml.includes('id="wizard-base-url"'), 'options.html defines backend base URL input for step 1');
+assert(optionsHtml.includes('id="wizard-api-key"'), 'options.html defines API key input for step 2');
+assert(optionsHtml.includes('id="wizard-test-backend-btn"'), 'options.html defines test backend button');
+assert(optionsHtml.includes('id="wizard-validate-key-btn"'), 'options.html defines validate key button');
+assert(optionsCss.includes('.atlas-wizard-container'), 'options.css styles wizard container');
+assert(optionsCss.includes('.atlas-wizard-step-indicator'), 'options.css styles stepper indicators');
+assert(optionsCode.includes('initWizard'), 'options.js implements initWizard controller');
+assert(optionsCode.includes('atlas_wizard_completed'), 'options.js manages atlas_wizard_completed state');
+assert(optionsCode.includes('/health'), 'options.js performs backend health check');
+assert(optionsCode.includes('/v1/session/start'), 'options.js validates API key against session start endpoint');
+assert(backgroundCode.includes('chrome.runtime?.onInstalled') || backgroundCode.includes('chrome.runtime.onInstalled'), 'background.js registers onInstalled listener');
+assert(backgroundCode.includes('options.html?wizard=true'), 'background.js opens options.html?wizard=true on initial install');
+
 console.log(`\nExtension Tests Complete: ${passed} passed, ${failures} failed.\n`);
 process.exit(failures > 0 ? 1 : 0);
 

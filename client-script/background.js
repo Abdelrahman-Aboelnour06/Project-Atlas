@@ -24,33 +24,113 @@ async function ensureContentScript(tabId) {
   }
 }
 
+async function toggleSidebarOnTab(tab) {
+  if (!tab || !tab.id) return;
+
+  // Internal chrome/edge/extension pages disallow script injection
+  if (
+    tab.url &&
+    (tab.url.startsWith("chrome://") ||
+      tab.url.startsWith("edge://") ||
+      tab.url.startsWith("chrome-extension://") ||
+      tab.url.startsWith("about:"))
+  ) {
+    console.warn("Atlas: Cannot run on internal page:", tab.url);
+    return;
+  }
+
+  try {
+    // If content script is already loaded, toggle it directly
+    const res = await chrome.tabs.sendMessage(tab.id, { type: "ATLAS_TOGGLE" });
+    if (res && res.status === "ok") return;
+  } catch (_) {
+    // Not loaded yet, proceed to inject
+  }
+
+  try {
+    await ensureContentScript(tab.id);
+    // Content script is now loaded; send the toggle command
+    await chrome.tabs.sendMessage(tab.id, { type: "ATLAS_TOGGLE" });
+  } catch (err) {
+    console.error("Atlas: toggle after injection failed", err);
+  }
+}
+
+async function triggerVoiceOnTab(tab) {
+  if (!tab || !tab.id) return;
+
+  if (
+    tab.url &&
+    (tab.url.startsWith("chrome://") ||
+      tab.url.startsWith("edge://") ||
+      tab.url.startsWith("chrome-extension://") ||
+      tab.url.startsWith("about:"))
+  ) {
+    console.warn("Atlas: Cannot run on internal page:", tab.url);
+    return;
+  }
+
+  try {
+    const res = await chrome.tabs.sendMessage(tab.id, { type: "ATLAS_TRIGGER_VOICE" });
+    if (res && res.status === "ok") return;
+  } catch (_) {
+    // Not loaded yet, proceed to inject
+  }
+
+  try {
+    await ensureContentScript(tab.id);
+    await chrome.tabs.sendMessage(tab.id, { type: "ATLAS_TRIGGER_VOICE" });
+  } catch (err) {
+    console.error("Atlas: voice trigger after injection failed", err);
+  }
+}
+
 if (typeof chrome !== "undefined" && chrome.action?.onClicked) {
   chrome.action.onClicked.addListener(async (tab) => {
-    if (!tab.id) return;
+    await toggleSidebarOnTab(tab);
+  });
+}
 
-    // Internal chrome/edge/extension pages disallow script injection
-    if (tab.url && (tab.url.startsWith("chrome://") || tab.url.startsWith("edge://") || tab.url.startsWith("chrome-extension://") || tab.url.startsWith("about:"))) {
-      console.warn("Atlas: Cannot run on internal page:", tab.url);
-      return;
-    }
-
+// ── Global Shortcuts Listener (Track U4) ────────────────────────────────────
+if (typeof chrome !== "undefined" && chrome.commands?.onCommand) {
+  chrome.commands.onCommand.addListener(async (command) => {
     try {
-      // If content script is already loaded, toggle it directly
-      const res = await chrome.tabs.sendMessage(tab.id, { type: 'ATLAS_TOGGLE' });
-      if (res && res.status === 'ok') return;
-    } catch (_) {
-      // Not loaded yet, proceed to inject
-    }
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab || !tab.id) return;
 
-    try {
-      await ensureContentScript(tab.id);
-      // Content script is now loaded; send the toggle command
-      await chrome.tabs.sendMessage(tab.id, { type: 'ATLAS_TOGGLE' });
+      if (command === "toggle-sidebar") {
+        await toggleSidebarOnTab(tab);
+      } else if (command === "voice-input") {
+        await triggerVoiceOnTab(tab);
+      }
     } catch (err) {
-      console.error("Atlas: toggle after injection failed", err);
+      console.error("Atlas: Command handling failed:", command, err);
     }
   });
 }
+
+// ── First-Run Setup Wizard Launch Listener (Track U6) ────────────────────────
+if (typeof chrome !== "undefined" && chrome.runtime?.onInstalled) {
+  chrome.runtime.onInstalled.addListener(async (details) => {
+    if (details.reason === "install") {
+      try {
+        const stored = await new Promise((resolve) => {
+          chrome.storage.local.get(["atlas_wizard_completed", "atlasApiKey"], resolve);
+        });
+        if (!stored?.atlas_wizard_completed && !stored?.atlasApiKey) {
+          if (chrome.tabs?.create) {
+            chrome.tabs.create({ url: chrome.runtime.getURL("options.html?wizard=true") });
+          } else if (chrome.runtime.openOptionsPage) {
+            chrome.runtime.openOptionsPage();
+          }
+        }
+      } catch (err) {
+        console.warn("Atlas: Failed to launch first-run wizard", err);
+      }
+    }
+  });
+}
+
 
 // ── Backend Proxy (Bypasses Brave Shields, Mixed Content, and host-page CSP) ──
 let bgSocket = null;
@@ -484,5 +564,7 @@ if (typeof module !== "undefined" && module.exports) {
     downloadEvidenceList,
     applyDnrLanguageRule,
     clearDnrLanguageRule,
+    toggleSidebarOnTab,
+    triggerVoiceOnTab,
   };
 }

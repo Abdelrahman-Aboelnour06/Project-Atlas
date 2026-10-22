@@ -11,9 +11,18 @@ CREATE TABLE IF NOT EXISTS security_events (
 
 ALTER TABLE security_events ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY tenant_isolation_policy_security_events ON security_events
-    FOR ALL
-    USING (
-        current_setting('app.current_tenant_id', true) IS NULL
-        OR tenant_id::text = current_setting('app.current_tenant_id', true)
-    );
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE policyname = 'tenant_isolation_policy_security_events' 
+          AND tablename = 'security_events'
+    ) THEN
+        CREATE POLICY tenant_isolation_policy_security_events ON security_events
+            FOR ALL
+            USING (
+                current_setting('app.current_tenant_id', true) IS NULL
+                OR tenant_id::text = current_setting('app.current_tenant_id', true)
+            );
+    END IF;
+END $$;

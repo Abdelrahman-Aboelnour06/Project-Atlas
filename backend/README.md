@@ -35,25 +35,35 @@ Configure in backend/.env:
 
 ## Setup & Running
 
-`ash
+```bash
 # 1. Activate virtual environment
 cd backend
 python -m venv venv
-venv\Scripts\activate
+source venv/bin/activate  # On Linux/macOS
 
 # 2. Install dependencies
 pip install -r requirements.txt
 
 # 3. Run development server
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-`
+```
 
 ## Running Tests
 
-`ash
-# Run all backend tests
+```bash
+# Run all backend tests (662+ passing)
 pytest tests/
 
 # Run security and resilience suite
 pytest tests/test_security_resilience.py -v
-`
+```
+
+## Empirical Latency Benchmarks
+
+Run the automated multi-hop latency suite to measure empirical p50/p90/p95/p99 performance across Scout, Navigator, and Verifier:
+
+```bash
+python tests/bench_hops.py --hops 100
+```
+
+Generates `tests/bench_results.json` containing measured quantiles and 504 fallback metrics.

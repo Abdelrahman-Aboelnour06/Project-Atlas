@@ -2,6 +2,7 @@ import Header from '@/components/Header'
 import ApiKeyCard from '@/components/ApiKeyCard'
 import SessionsTable from '@/components/SessionsTable'
 import ErrorsPanel from '@/components/ErrorsPanel'
+import TenantPrivacySettings from '@/components/TenantPrivacySettings'
 import {
   mockTenant,
   mockApiKeys,
@@ -66,6 +67,9 @@ export default function DashboardPage() {
         <section>
           <ErrorsPanel errors={mockErrorLogs} />
         </section>
+
+        {/* Tenant Privacy & GDPR Controls */}
+        <TenantPrivacySettings />
       </main>
     </div>
   )

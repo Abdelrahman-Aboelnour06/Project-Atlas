@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch
 import httpx
 from pydantic import BaseModel, Field
 
-from app.agent import llm_client
+from app.agent import llm_client, rate_limiter
 from app.main import app
 from app.db.connection import get_db
 
@@ -104,6 +104,8 @@ async def replay(scenario: Scenario, test_key: str = "atlas_test_demo_key_123456
     """
     Executes a Scenario hop-by-hop against /v1/chat/goal_step using ASGI AsyncClient.
     """
+    rate_limiter.reset()
+    llm_client.clear_mock_llm()
     state: Optional[Dict[str, Any]] = None
     trace: List[Dict[str, Any]] = []
 
@@ -144,5 +146,7 @@ async def replay(scenario: Scenario, test_key: str = "atlas_test_demo_key_123456
                         break
     finally:
         app.dependency_overrides.clear()
+        rate_limiter.reset()
+        llm_client.clear_mock_llm()
 
     return ReplayResult(final=state or {}, trace=trace)
