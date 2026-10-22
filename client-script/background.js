@@ -1,5 +1,30 @@
 
 
+// Load TabRegistry (support Service Worker and Node.js environments)
+let TabRegistry;
+let AsyncMutex;
+
+if (typeof require !== "undefined") {
+  try {
+    const trMod = require("./tab-registry.js");
+    TabRegistry = trMod.TabRegistry;
+    AsyncMutex = trMod.AsyncMutex;
+  } catch (_) {}
+} else if (typeof self !== "undefined" && self.TabRegistry) {
+  TabRegistry = self.TabRegistry;
+  AsyncMutex = self.AsyncMutex;
+}
+
+if (!TabRegistry && typeof importScripts === "function") {
+  try {
+    importScripts("tab-registry.js");
+    TabRegistry = self.TabRegistry;
+    AsyncMutex = self.AsyncMutex;
+  } catch (e) {
+    console.error("Atlas: failed to importScripts tab-registry.js", e);
+  }
+}
+
 async function ensureContentScript(tabId) {
   try {
     await chrome.scripting.executeScript({
@@ -328,6 +353,41 @@ async function bgSendMessage(msg) {
   });
 }
 
+// ── Single Network Gateway for Multi-Tab Goal Execution (§R2 / §H5) ──────────
+async function handleGoalStep(message, sender = {}) {
+  const goalBase = sanitizeBaseUrl(message?.baseUrl || "http://localhost:8000");
+  if (message?.sessionId && TabRegistry) {
+    if (!message?.leaseEpoch) {
+      throw new Error("MISSING_LEASE_EPOCH");
+    }
+    const tabId = sender?.tab?.id || message?.tabId;
+    const validation = await TabRegistry.validateLease(message.sessionId, tabId, message.leaseEpoch);
+    if (validation && !validation.valid) {
+      throw new Error(validation.error || validation.reason || "STALE_EPOCH");
+    }
+  }
+
+  const res = await fetch(`${goalBase}/v1/chat/goal_step`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Atlas-Key": message?.apiKey || "",
+    },
+    body: JSON.stringify(message?.payload || {}),
+  });
+
+  if (!res.ok) {
+    let errDetail = `HTTP ${res.status}`;
+    try {
+      const errJson = await res.json();
+      errDetail = errJson.detail || errJson.message || errDetail;
+    } catch (_) {}
+    throw new Error(errDetail);
+  }
+
+  return await res.json();
+}
+
 if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === "ATLAS_OPEN_OPTIONS") {
@@ -391,6 +451,14 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
     return true;
   }
 
+  // ── Multi-Tab Goal Step Gateway (§R2 / §H5) ─────────────────────────────────
+  if (message.type === "ATLAS_GOAL_STEP") {
+    handleGoalStep(message, sender)
+      .then((data) => sendResponse({ ok: true, data }))
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
+    return true;
+  }
+
   // ── GoalStore Messaging ─────────────────────────────────────────────────────
   if (message.type === "ATLAS_GOAL_STORE_GET") {
     GoalStore.get(message.tabId || sender.tab?.id)
@@ -417,6 +485,94 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
     GoalStore.setExecuting(message.tabId || sender.tab?.id, message.isExecuting)
       .then(() => sendResponse({ ok: true }))
       .catch((err) => sendResponse({ ok: false, error: err.message }));
+    return true;
+  }
+
+  // ── Tab Registry & Multi-Tab Messaging (Track R1) ───────────────────────────
+  if (message.type === "ATLAS_HELLO") {
+    const tabId = sender.tab?.id || message.tabId;
+    if (TabRegistry) {
+      TabRegistry.handleHello({
+        tabId,
+        url: message.url || sender.tab?.url || "",
+        title: message.title || sender.tab?.title || "",
+      })
+        .then((res) => sendResponse(res))
+        .catch((err) => sendResponse({ ok: false, error: err.message }));
+    } else {
+      sendResponse({ ok: true, active: false });
+    }
+    return true;
+  }
+
+  if (message.type === "ATLAS_LEASE_HEARTBEAT") {
+    const tabId = sender.tab?.id || message.tabId;
+    if (TabRegistry) {
+      TabRegistry.recordHeartbeat(message.sessionId, tabId, message.leaseEpoch)
+        .then((res) => sendResponse(res))
+        .catch((err) => sendResponse({ ok: false, error: err.message }));
+    } else {
+      sendResponse({ ok: false, error: "TabRegistry not available" });
+    }
+    return true;
+  }
+
+  if (message.type === "ATLAS_ARM_CAUSAL_WINDOW") {
+    const tabId = sender.tab?.id || message.tabId;
+    if (TabRegistry) {
+      TabRegistry.armCausalWindow(message.sessionId, tabId, message.windowMs)
+        .then((res) => sendResponse(res))
+        .catch((err) => sendResponse({ ok: false, error: err.message }));
+    } else {
+      sendResponse({ ok: false, error: "TabRegistry not available" });
+    }
+    return true;
+  }
+
+  if (message.type === "ATLAS_CREATE_TAB") {
+    const openerTabId = sender.tab?.id || message.openerTabId;
+    const windowMs = message.windowMs || 3000;
+    (async () => {
+      try {
+        if (TabRegistry && message.sessionId) {
+          await TabRegistry.armCausalWindow(message.sessionId, openerTabId, windowMs);
+        }
+        const createOptions = {
+          url: message.url,
+          active: message.active !== false,
+        };
+        if (typeof openerTabId === "number") {
+          createOptions.openerTabId = openerTabId;
+        }
+        const newTab = await chrome.tabs.create(createOptions);
+        sendResponse({ ok: true, tabId: newTab.id });
+      } catch (err) {
+        sendResponse({ ok: false, error: err.message });
+      }
+    })();
+    return true;
+  }
+
+  if (message.type === "ATLAS_GRANT_LEASE") {
+    if (TabRegistry) {
+      TabRegistry.grantLease(message.sessionId, message.newTabId)
+        .then((res) => sendResponse(res))
+        .catch((err) => sendResponse({ ok: false, error: err.message }));
+    } else {
+      sendResponse({ ok: false, error: "TabRegistry not available" });
+    }
+    return true;
+  }
+
+  if (message.type === "ATLAS_VALIDATE_LEASE") {
+    const tabId = sender.tab?.id || message.tabId;
+    if (TabRegistry) {
+      TabRegistry.validateLease(message.sessionId, tabId, message.leaseEpoch)
+        .then((res) => sendResponse(res))
+        .catch((err) => sendResponse({ ok: false, error: err.message }));
+    } else {
+      sendResponse({ ok: false, error: "TabRegistry not available" });
+    }
     return true;
   }
   });
@@ -490,6 +646,18 @@ const GoalStore = {
     if (goalState?.language) {
       await applyDnrLanguageRule(tabId, goalState.language);
     }
+    if (TabRegistry) {
+      try {
+        let session = await TabRegistry.getSessionForTab(tabId);
+        if (!session && goalState && goalState.status === "in_progress") {
+          await TabRegistry.createSession({ rootTabId: tabId, goalState });
+        } else if (session) {
+          await TabRegistry.updateGoalState(session.sessionId, goalState);
+        }
+      } catch (e) {
+        console.warn("Atlas: TabRegistry sync error in GoalStore.put", e);
+      }
+    }
     if (!chrome?.storage?.session) return goalState;
     const key = `atlas_goal_tab_${tabId}`;
     try {
@@ -504,6 +672,16 @@ const GoalStore = {
   async clear(tabId) {
     if (!tabId) return;
     await clearDnrLanguageRule(tabId);
+    if (TabRegistry) {
+      try {
+        const session = await TabRegistry.getSessionForTab(tabId);
+        if (session && session.rootTabId === tabId) {
+          await TabRegistry.closeSession(session.sessionId, "completed");
+        }
+      } catch (e) {
+        console.warn("Atlas: TabRegistry close error in GoalStore.clear", e);
+      }
+    }
     if (!chrome?.storage?.session) return;
     const key = `atlas_goal_tab_${tabId}`;
     try {
@@ -549,16 +727,95 @@ if (typeof chrome !== "undefined" && chrome.webNavigation?.onCompleted) {
   });
 }
 
+// ── Tab Lifecycle Listeners for Multi-Tab Awareness (Track R1) ────────────────
+if (typeof chrome !== "undefined" && chrome.tabs?.onCreated) {
+  chrome.tabs.onCreated.addListener(async (tab) => {
+    try {
+      if (TabRegistry) {
+        const adoption = await TabRegistry.handleTabCreated(tab);
+        if (adoption?.adopted) {
+          await ensureContentScript(tab.id);
+        }
+      }
+    } catch (err) {
+      console.warn("Atlas: Error in tabs.onCreated listener", err);
+    }
+  });
+}
+
+if (typeof chrome !== "undefined" && chrome.webNavigation?.onCreatedNavigationTarget) {
+  chrome.webNavigation.onCreatedNavigationTarget.addListener(async (details) => {
+    try {
+      if (TabRegistry) {
+        const adoption = await TabRegistry.handleNavigationTarget(details);
+        if (adoption?.adopted) {
+          await ensureContentScript(details.tabId);
+        }
+      }
+    } catch (err) {
+      console.warn("Atlas: Error in webNavigation.onCreatedNavigationTarget", err);
+    }
+  });
+}
+
+if (typeof chrome !== "undefined" && chrome.tabs?.onReplaced) {
+  chrome.tabs.onReplaced.addListener(async (addedTabId, removedTabId) => {
+    try {
+      if (TabRegistry) {
+        await TabRegistry.remapTabId(removedTabId, addedTabId);
+      }
+    } catch (err) {
+      console.warn("Atlas: Error in tabs.onReplaced listener", err);
+    }
+  });
+}
+
 // ── Tab Cleanup Listener ─────────────────────────────────────────────────────
 if (typeof chrome !== "undefined" && chrome.tabs?.onRemoved) {
   chrome.tabs.onRemoved.addListener(async (closedTabId) => {
     await GoalStore.clear(closedTabId);
+    try {
+      if (TabRegistry) {
+        const removalResult = await TabRegistry.handleTabRemoved(closedTabId);
+        if (removalResult?.leaseTransferred && removalResult.newLeaseTabId) {
+          // Notify reclaimed lease tab (opener tab) so it can verify DOM state transition (H8)
+          try {
+            await chrome.tabs.sendMessage(removalResult.newLeaseTabId, {
+              type: "ATLAS_CHILD_TAB_CLOSED",
+              closedTabId,
+              leaseEpoch: removalResult.newEpoch,
+              sessionId: removalResult.sessionId,
+            });
+          } catch (_) {
+            // If opener is navigating, pull-based ATLAS_HELLO handles resumption
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("Atlas: Error in TabRegistry.handleTabRemoved", err);
+    }
   });
+}
+
+// ── Periodic Stale Lease Reclamation (§R1 / H3) ──────────────────────────────
+if (typeof setInterval !== "undefined" && typeof chrome !== "undefined" && chrome.runtime) {
+  const leaseReclaimTimer = setInterval(async () => {
+    try {
+      if (TabRegistry) {
+        await TabRegistry.checkAndReclaimStaleLeases(20000);
+      }
+    } catch (_) {}
+  }, 5000);
+  if (leaseReclaimTimer && typeof leaseReclaimTimer.unref === "function") {
+    leaseReclaimTimer.unref();
+  }
 }
 
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     GoalStore,
+    TabRegistry,
+    AsyncMutex,
     sanitizeBaseUrl,
     recordDownloadEvidence,
     downloadEvidenceList,
@@ -566,5 +823,6 @@ if (typeof module !== "undefined" && module.exports) {
     clearDnrLanguageRule,
     toggleSidebarOnTab,
     triggerVoiceOnTab,
+    handleGoalStep,
   };
 }

@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CareLink Enterprise Identity & Portal Access</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      :root {
+        --primary: #1a56a0; --primary-dark: #0e3d7a; --primary-lt: #e8f0fb;
+        --secondary: #107040; --warning: #d97706; --danger: #b91c1c;
+        --bg-page: #f8fafc; --card-bg: #ffffff; --border-color: #cbd5e1;
+        --text-main: #0f172a; --text-muted: #475569; --radius: 8px;
+        --shadow: 0 4px 12px rgba(0,0,0,0.06);
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: var(--bg-page); color: var(--text-main); line-height: 1.5; padding: 30px 15px;
+      }
+      .container {
+        max-width: 640px; margin: 0 auto; background: var(--card-bg); border-radius: var(--radius);
+        padding: 32px; box-shadow: var(--shadow); border: 1px solid var(--border-color);
+      }
+      header { text-align: center; margin-bottom: 24px; }
+      h1 { font-size: 24px; color: var(--primary-dark); margin-bottom: 8px; }
+      p.subtitle { color: var(--text-muted); font-size: 14px; }
+      .nav-links { display: flex; gap: 12px; justify-content: center; margin-bottom: 20px; }
+      .nav-links a { color: var(--primary); text-decoration: none; font-size: 14px; font-weight: 500; }
+      .nav-links a:hover { text-decoration: underline; }
+      
+      .status-card {
+        background: var(--primary-lt); border: 1px solid #bfdbfe; border-radius: var(--radius);
+        padding: 18px; margin-bottom: 24px;
+      }
+      .status-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+      .status-badge {
+        display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 13px; font-weight: 600;
+        background: #e2e8f0; color: #475569;
+      }
+      .status-badge[data-authenticated="true"] {
+        background: #dcfce7; color: #166534;
+      }
+      
+      .btn {
+        display: inline-block; width: 100%; padding: 12px 18px; border-radius: var(--radius);
+        font-size: 15px; font-weight: 600; text-align: center; cursor: pointer; text-decoration: none;
+        transition: background 0.15s ease; border: 1px solid transparent; margin-bottom: 12px;
+      }
+      .btn-primary { background: var(--primary); color: white; }
+      .btn-primary:hover { background: var(--primary-dark); }
+      .btn-secondary { background: #f1f5f9; color: var(--text-main); border-color: var(--border-color); }
+      .btn-secondary:hover { background: #e2e8f0; }
+      .btn-warning { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+      .btn-warning:hover { background: #fde68a; }
+
+      .assisted-click-box {
+        background: #fffbeb; border: 2px dashed #f59e0b; border-radius: var(--radius);
+        padding: 16px; margin: 16px 0; text-align: center;
+      }
+      .glowing-prompt-btn {
+        background: #f59e0b; color: white; font-weight: 700; border: none; padding: 10px 16px;
+        border-radius: var(--radius); cursor: pointer; margin-top: 10px;
+        box-shadow: 0 0 12px rgba(245, 158, 11, 0.6);
+        animation: pulse-glow 1.8s infinite;
+      }
+      @keyframes pulse-glow {
+        0% { box-shadow: 0 0 6px rgba(245, 158, 11, 0.4); }
+        50% { box-shadow: 0 0 18px rgba(245, 158, 11, 0.9); }
+        100% { box-shadow: 0 0 6px rgba(245, 158, 11, 0.4); }
+      }
+
+      .alert-success {
+        background: #dcfce7; border: 1px solid #86efac; color: #14532d; padding: 14px;
+        border-radius: var(--radius); margin-top: 14px; font-weight: 600;
+      }
+      .profile-section {
+        background: #ffffff; border: 1px solid var(--border-color); border-radius: var(--radius);
+        padding: 16px; margin-top: 14px;
+      }
+      .human-input-group {
+        margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--border-color);
+      }
+      .human-input-group label {
+        display: block; font-weight: 600; font-size: 13px; margin-bottom: 6px; color: var(--text-muted);
+      }
+      .human-input-group input {
+        width: 100%; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: var(--radius);
+        font-size: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <div class="nav-links">
+          <a href="index.html">Home</a>
+          <a href="signup.html">Registration</a>
+          <a href="checkout.html">Checkout</a>
+        </div>
+        <h1>CareLink Portal Access</h1>
+        <p class="subtitle">Multi-Tab & Popup Authentication Verification Testbed</p>
+      </header>
+
+      <section class="status-card" aria-labelledby="status-header">
+        <div class="status-row">
+          <h2 id="status-header" style="font-size: 16px; color: var(--primary-dark);">Authentication State</h2>
+          <span id="auth-status" class="status-badge" data-authenticated="false">Unauthenticated</span>
+        </div>
+        <div class="status-row" style="font-size: 13px; color: var(--text-muted);">
+          <span>Active Session ID:</span>
+          <span id="session-display" style="font-family: monospace;">session-portal-8821</span>
+        </div>
+
+        <div id="user-profile" style="display: none;" class="profile-section">
+          <div style="font-size: 14px; color: var(--text-muted); margin-bottom: 4px;">Connected Account:</div>
+          <div id="user-email-display" style="font-size: 16px; font-weight: 700; color: var(--primary-dark);">user@example.com</div>
+          <div id="auth-success-badge" role="status" class="alert-success">
+            ✓ Identity Verified: Multi-Tab OAuth Protocol Completed
+          </div>
+        </div>
+      </section>
+
+      <section aria-labelledby="actions-header">
+        <h2 id="actions-header" style="font-size: 15px; margin-bottom: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Authentication Actions</h2>
+        
+        <button id="open-oauth-popup" class="btn btn-primary" type="button" onclick="openAuthPopup()">
+          Connect via Secure OAuth Popup Window
+        </button>
+
+        <a id="link-external-auth" href="popup_auth_window.html" target="_blank" class="btn btn-secondary">
+          Open OAuth in New Tab (target="_blank")
+        </a>
+
+        <button id="trigger-blocked-popup" class="btn btn-warning" type="button" onclick="triggerBlockedPopup(true)">
+          Simulate Blocked Popup (Intercepted Call Returning Null)
+        </button>
+
+        <div id="popup-blocked-notice" class="assisted-click-box" style="display: none;" role="alert">
+          <p style="font-size: 14px; color: #92400e; font-weight: 600;">Browser Popup Blocked Detected</p>
+          <p style="font-size: 12px; color: #b45309; margin-top: 4px;">Automated script execution cannot open popups without a direct user gesture.</p>
+          <button id="assisted-click-target" class="glowing-prompt-btn" type="button" onclick="openAuthPopup()">
+            Click to Open Authentication Window (Assisted Click)
+          </button>
+        </div>
+      </section>
+
+      <section class="human-input-group">
+        <label for="human-input-field">Human Agency Test Input (Type here to pause automation):</label>
+        <input id="human-input-field" type="text" placeholder="User intervention trigger..." />
+        <div id="human-agency-status" style="font-size: 12px; color: var(--secondary); margin-top: 6px; display: none;">
+          [Human Agency Detected: Autonomous loop yielded to manual user input]
+        </div>
+      </section>
+    </div>
+
+    <script>
+      let authPopupHandle = null;
+
+      function openAuthPopup() {
+        const notice = document.getElementById('popup-blocked-notice');
+        if (notice) notice.style.display = 'none';
+
+        const width = 520;
+        const height = 640;
+        const left = Math.max(0, (window.screen.width - width) / 2);
+        const top = Math.max(0, (window.screen.height - height) / 2);
+
+        authPopupHandle = window.open(
+          'popup_auth_window.html',
+          'atlas_oauth_popup',
+          `width=${width},height=${height},top=${top},left=${left},resizable=yes,scrollbars=yes`
+        );
+        return authPopupHandle;
+      }
+
+      function triggerBlockedPopup(forceBlocked = true) {
+        let testWin = null;
+        if (!forceBlocked) {
+          try {
+            testWin = window.open('popup_auth_window.html', 'atlas_blocked_test', 'width=520,height=640');
+          } catch (e) {
+            testWin = null;
+          }
+        }
+        if (!testWin || testWin.closed || typeof testWin.closed === 'undefined') {
+          const notice = document.getElementById('popup-blocked-notice');
+          if (notice) notice.style.display = 'block';
+        }
+      }
+
+      function handleAuthSuccess(data) {
+        const statusEl = document.getElementById('auth-status');
+        const profileEl = document.getElementById('user-profile');
+        const emailEl = document.getElementById('user-email-display');
+
+        if (statusEl) {
+          statusEl.textContent = 'Authenticated (Session: Active)';
+          statusEl.setAttribute('data-authenticated', 'true');
+        }
+        if (profileEl) {
+          profileEl.style.display = 'block';
+        }
+        if (emailEl && data && data.email) {
+          emailEl.textContent = data.email;
+        }
+      }
+
+      // 1. PostMessage receiver from popup
+      window.addEventListener('message', (event) => {
+        if (event.data && event.data.type === 'AUTH_COMPLETE') {
+          handleAuthSuccess(event.data);
+        }
+      });
+
+      // 2. Storage event receiver for cross-tab (_blank) communication
+      window.addEventListener('storage', (event) => {
+        if (event.key === 'atlas_auth_result' && event.newValue) {
+          try {
+            const parsed = JSON.parse(event.newValue);
+            if (parsed && parsed.type === 'AUTH_COMPLETE') {
+              handleAuthSuccess(parsed);
+            }
+          } catch (_) {}
+        }
+      });
+
+      // 3. Human input listener for human agency test
+      const inputField = document.getElementById('human-input-field');
+      if (inputField) {
+        inputField.addEventListener('input', (e) => {
+          if (e.isTrusted) {
+            const agencyBadge = document.getElementById('human-agency-status');
+            if (agencyBadge) agencyBadge.style.display = 'block';
+          }
+        });
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,1064 @@
+{
+  "$defs": {
+    "AgenticPlan": {
+      "description": "Backward-compatible agentic action plan structure.",
+      "properties": {
+        "type": {
+          "default": "plan",
+          "description": "'plan', 'conversation', or 'confirmation'",
+          "title": "Type",
+          "type": "string"
+        },
+        "thought": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "",
+          "description": "Internal reasoning leading to the plan",
+          "title": "Thought"
+        },
+        "reply": {
+          "description": "Friendly user-facing conversational reply or audio TTS summary",
+          "title": "Reply",
+          "type": "string"
+        },
+        "steps": {
+          "description": "Action steps to execute",
+          "items": {
+            "$ref": "#/$defs/PlanStep"
+          },
+          "title": "Steps",
+          "type": "array"
+        },
+        "requires_confirmation": {
+          "default": false,
+          "description": "Flag indicating human-in-the-loop confirmation is required",
+          "title": "Requires Confirmation",
+          "type": "boolean"
+        },
+        "confirmation_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Clear prompt explaining the consequential action",
+          "title": "Confirmation Prompt"
+        },
+        "confirmation_options": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Confirmation Options"
+        },
+        "pending_step": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PlanStep"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The consequential action step held pending confirmation"
+        },
+        "confirmation_success_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "Done! Action completed.",
+          "title": "Confirmation Success Message"
+        }
+      },
+      "required": [
+        "reply"
+      ],
+      "title": "AgenticPlan",
+      "type": "object"
+    },
+    "Branch": {
+      "properties": {
+        "id": {
+          "default": "b-0",
+          "description": "Branch identifier",
+          "title": "Id",
+          "type": "string"
+        },
+        "milestone_ids": {
+          "description": "Milestone IDs assigned to this branch",
+          "items": {
+            "type": "string"
+          },
+          "title": "Milestone Ids",
+          "type": "array"
+        },
+        "tab_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Browser tab ID if running parallel",
+          "title": "Tab Id"
+        },
+        "status": {
+          "default": "pending",
+          "enum": [
+            "pending",
+            "active",
+            "done",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "depends_on": {
+          "description": "Prerequisite branch IDs",
+          "items": {
+            "type": "string"
+          },
+          "title": "Depends On",
+          "type": "array"
+        }
+      },
+      "title": "Branch",
+      "type": "object"
+    },
+    "Budget": {
+      "properties": {
+        "max_hops": {
+          "default": 8,
+          "description": "Maximum navigations / page transitions",
+          "title": "Max Hops",
+          "type": "integer"
+        },
+        "hop_count": {
+          "default": 0,
+          "description": "Navigations completed",
+          "title": "Hop Count",
+          "type": "integer"
+        },
+        "max_field_ops": {
+          "default": 40,
+          "description": "Maximum field operations",
+          "title": "Max Field Ops",
+          "type": "integer"
+        },
+        "field_ops": {
+          "default": 0,
+          "description": "Field operations completed",
+          "title": "Field Ops",
+          "type": "integer"
+        },
+        "max_llm_calls": {
+          "default": 25,
+          "description": "Maximum total LLM calls across all agents",
+          "title": "Max Llm Calls",
+          "type": "integer"
+        },
+        "llm_calls": {
+          "default": 0,
+          "description": "LLM calls completed",
+          "title": "Llm Calls",
+          "type": "integer"
+        },
+        "max_handoffs": {
+          "default": 4,
+          "description": "Maximum tab handoffs permitted",
+          "title": "Max Handoffs",
+          "type": "integer"
+        },
+        "handoff_count": {
+          "default": 0,
+          "description": "Tab handoffs completed",
+          "title": "Handoff Count",
+          "type": "integer"
+        }
+      },
+      "title": "Budget",
+      "type": "object"
+    },
+    "FieldPlan": {
+      "properties": {
+        "ref": {
+          "description": "Stable element ref of target field",
+          "title": "Ref",
+          "type": "string"
+        },
+        "action": {
+          "default": "fill",
+          "description": "Action to perform: fill, select_option, set_checkbox, set_radio, upload_file",
+          "enum": [
+            "click",
+            "open",
+            "double_click",
+            "triple_click",
+            "fill",
+            "scroll",
+            "focus",
+            "select_option",
+            "set_checkbox",
+            "set_radio",
+            "press_key",
+            "upload_file",
+            "wait_for",
+            "switch_tab"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Input string value or vault token e.g. '{password}', '{profile.email}'",
+          "title": "Value"
+        },
+        "source": {
+          "default": "user",
+          "enum": [
+            "profile",
+            "user",
+            "generated",
+            "default",
+            "vault"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "confidence": {
+          "default": 1.0,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "rationale": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Explanation for this field mapping",
+          "title": "Rationale"
+        }
+      },
+      "required": [
+        "ref"
+      ],
+      "title": "FieldPlan",
+      "type": "object"
+    },
+    "FormPlan": {
+      "properties": {
+        "form_id": {
+          "default": "",
+          "description": "Identifier of the target form",
+          "title": "Form Id",
+          "type": "string"
+        },
+        "fields": {
+          "description": "Fields to fill in batch",
+          "items": {
+            "$ref": "#/$defs/FieldPlan"
+          },
+          "title": "Fields",
+          "type": "array"
+        },
+        "submit_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Held-back submit control ref (never in fields)",
+          "title": "Submit Ref"
+        },
+        "missing_required": {
+          "description": "Refs for required fields lacking values",
+          "items": {
+            "type": "string"
+          },
+          "title": "Missing Required",
+          "type": "array"
+        },
+        "blockers": {
+          "description": "Observed blockers e.g. captcha, otp",
+          "items": {
+            "type": "string"
+          },
+          "title": "Blockers",
+          "type": "array"
+        }
+      },
+      "title": "FormPlan",
+      "type": "object"
+    },
+    "GoalState": {
+      "description": "Persistent state tracking across multi-step execution hops.\nPassed between browser client and backend on every turn.",
+      "properties": {
+        "goal": {
+          "description": "Original user goal statement",
+          "title": "Goal",
+          "type": "string"
+        },
+        "milestones": {
+          "description": "List of milestone checkpoints",
+          "items": {
+            "$ref": "#/$defs/Milestone"
+          },
+          "title": "Milestones",
+          "type": "array"
+        },
+        "active_milestone_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "ID of currently active milestone",
+          "title": "Active Milestone Id"
+        },
+        "hop_count": {
+          "default": 0,
+          "description": "Number of navigation/execution hops completed",
+          "minimum": 0,
+          "title": "Hop Count",
+          "type": "integer"
+        },
+        "max_hops": {
+          "default": 8,
+          "description": "Strict safety boundary limit for hops (default 8)",
+          "minimum": 1,
+          "title": "Max Hops",
+          "type": "integer"
+        },
+        "status": {
+          "default": "in_progress",
+          "description": "Current overall execution status",
+          "enum": [
+            "in_progress",
+            "milestone_complete",
+            "goal_complete",
+            "goal_failed",
+            "requires_confirmation",
+            "awaiting_user_input"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "current_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Current page URL",
+          "title": "Current Url"
+        },
+        "dom_state": {
+          "anyOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Snapshot/fingerprint of DOM state from previous hop",
+          "title": "Dom State"
+        },
+        "last_action_result": {
+          "anyOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Execution outcome of previous client action",
+          "title": "Last Action Result"
+        },
+        "plan_steps": {
+          "description": "Cumulative plan steps executed across hops",
+          "items": {
+            "$ref": "#/$defs/PlanStep"
+          },
+          "title": "Plan Steps",
+          "type": "array"
+        },
+        "verifier_result": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VerifierResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Result of last verification evaluation"
+        },
+        "requires_confirmation": {
+          "default": false,
+          "description": "Consequential action confirmation gate",
+          "title": "Requires Confirmation",
+          "type": "boolean"
+        },
+        "confirmation_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Prompt asking user to confirm consequential action",
+          "title": "Confirmation Prompt"
+        },
+        "confirmation_options": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Confirmation Options"
+        },
+        "pending_step": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PlanStep"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Step held for human confirmation"
+        },
+        "error_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Error explanation if status is 'goal_failed'",
+          "title": "Error Message"
+        },
+        "branches": {
+          "items": {
+            "$ref": "#/$defs/Branch"
+          },
+          "title": "Branches",
+          "type": "array"
+        },
+        "budget": {
+          "$ref": "#/$defs/Budget"
+        },
+        "awaiting": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UserInputRequest"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "trace_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Trace Id"
+        },
+        "page_kind": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Page Kind"
+        },
+        "form_plan": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FormPlan"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "language": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Preferred language locale e.g. 'ar-EG'",
+          "title": "Language"
+        }
+      },
+      "required": [
+        "goal"
+      ],
+      "title": "GoalState",
+      "type": "object"
+    },
+    "Milestone": {
+      "description": "Discrete milestone checkpoint within a multi-step goal.\nIn Phase 1, the entire goal constitutes a single implicit active milestone.",
+      "properties": {
+        "id": {
+          "default": "m-0",
+          "description": "Unique milestone identifier (e.g. 'm-0', 'm-1')",
+          "title": "Id",
+          "type": "string"
+        },
+        "description": {
+          "description": "Human-readable description of what this milestone accomplishes",
+          "title": "Description",
+          "type": "string"
+        },
+        "status": {
+          "default": "active",
+          "description": "Status: pending, active, completed, failed",
+          "enum": [
+            "pending",
+            "active",
+            "completed",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "target_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Target URL or URL pattern expected on completion",
+          "title": "Target Url"
+        },
+        "success_criteria": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Observable criteria for verification",
+          "title": "Success Criteria"
+        },
+        "steps": {
+          "description": "Plan steps associated with this milestone",
+          "items": {
+            "$ref": "#/$defs/PlanStep"
+          },
+          "title": "Steps",
+          "type": "array"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Internal reasoning notes",
+          "title": "Notes"
+        },
+        "is_final": {
+          "default": true,
+          "description": "True if milestone represents final goal completion",
+          "title": "Is Final",
+          "type": "boolean"
+        },
+        "satisfied_by_navigation": {
+          "default": false,
+          "description": "True if navigation alone satisfies milestone",
+          "title": "Satisfied By Navigation",
+          "type": "boolean"
+        },
+        "branch_id": {
+          "default": "b-0",
+          "description": "Branch identifier",
+          "title": "Branch Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "description"
+      ],
+      "title": "Milestone",
+      "type": "object"
+    },
+    "PlanStep": {
+      "description": "Atomic interactive browser action step.",
+      "properties": {
+        "action": {
+          "description": "Action type: click, open, double_click, triple_click, fill, scroll, focus",
+          "enum": [
+            "click",
+            "open",
+            "double_click",
+            "triple_click",
+            "fill",
+            "scroll",
+            "focus",
+            "select_option",
+            "set_checkbox",
+            "set_radio",
+            "press_key",
+            "upload_file",
+            "wait_for",
+            "switch_tab"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "element_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Synthetic data-atlas-id of the target DOM element",
+          "title": "Element Id"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Input string value when action is 'fill'",
+          "title": "Value"
+        },
+        "click_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Number of clicks to perform when action is click",
+          "title": "Click Count"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "",
+          "description": "Human-readable description of this step",
+          "title": "Description"
+        },
+        "delay_ms": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 600,
+          "description": "Execution delay in milliseconds before next action",
+          "title": "Delay Ms"
+        },
+        "tab_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Target browser tab ID for multi-tab actions (e.g. switch_tab)",
+          "title": "Tab Id"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "title": "PlanStep",
+      "type": "object"
+    },
+    "UserInputRequest": {
+      "properties": {
+        "kind": {
+          "description": "Type of user input requested",
+          "enum": [
+            "otp",
+            "captcha",
+            "choice",
+            "missing_field",
+            "credential"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "prompt": {
+          "description": "Human-readable explanation of needed input",
+          "title": "Prompt",
+          "type": "string"
+        },
+        "field_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Associated DOM ref",
+          "title": "Field Ref"
+        },
+        "options": {
+          "description": "Selectable options if kind is choice",
+          "items": {
+            "type": "string"
+          },
+          "title": "Options",
+          "type": "array"
+        },
+        "resumable": {
+          "default": true,
+          "description": "Whether goal can resume once supplied",
+          "title": "Resumable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "prompt"
+      ],
+      "title": "UserInputRequest",
+      "type": "object"
+    },
+    "VerifierResult": {
+      "description": "Outcome verification evaluating post-action state against observable signals.",
+      "properties": {
+        "status": {
+          "description": "Outcome: milestone_complete, in_progress, goal_complete, goal_failed",
+          "enum": [
+            "milestone_complete",
+            "in_progress",
+            "goal_complete",
+            "goal_failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "reason": {
+          "description": "Explanation of verification determination",
+          "title": "Reason",
+          "type": "string"
+        },
+        "confidence": {
+          "default": 1.0,
+          "description": "Verification confidence score (0.0 - 1.0)",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "signals_detected": {
+          "description": "Observable signals detected (e.g. 'url_changed', 'element_disappeared:atlas-001')",
+          "items": {
+            "type": "string"
+          },
+          "title": "Signals Detected",
+          "type": "array"
+        },
+        "verification_method": {
+          "default": "rules",
+          "description": "Method employed: 'rules', 'llm', or 'initial'",
+          "enum": [
+            "rules",
+            "llm",
+            "initial"
+          ],
+          "title": "Verification Method",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "reason"
+      ],
+      "title": "VerifierResult",
+      "type": "object"
+    }
+  },
+  "description": "Response payload returned by POST /v1/chat/goal_step to the browser client.",
+  "properties": {
+    "status": {
+      "description": "Current status: in_progress, milestone_complete, goal_complete, goal_failed, requires_confirmation",
+      "enum": [
+        "in_progress",
+        "milestone_complete",
+        "goal_complete",
+        "goal_failed",
+        "requires_confirmation",
+        "awaiting_user_input"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "goal_state": {
+      "$ref": "#/$defs/GoalState",
+      "description": "Updated persistent goal state"
+    },
+    "reply": {
+      "description": "User-facing conversational feedback or audio message",
+      "title": "Reply",
+      "type": "string"
+    },
+    "steps": {
+      "description": "Action steps to execute in the current turn",
+      "items": {
+        "$ref": "#/$defs/PlanStep"
+      },
+      "title": "Steps",
+      "type": "array"
+    },
+    "plan": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AgenticPlan"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "AgenticPlan representation for backward-compatibility"
+    },
+    "requires_confirmation": {
+      "default": false,
+      "description": "Consequential action confirmation gate",
+      "title": "Requires Confirmation",
+      "type": "boolean"
+    },
+    "confirmation_prompt": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Confirmation prompt text if confirmation is required",
+      "title": "Confirmation Prompt"
+    },
+    "confirmation_options": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Confirmation Options"
+    },
+    "pending_step": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PlanStep"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Consequential action awaiting confirmation"
+    },
+    "verifier_result": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/VerifierResult"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Verification outcome from evaluating previous action"
+    },
+    "contract_version": {
+      "default": 2,
+      "description": "Contract version: 1 (legacy), 2 (multi-tab aware)",
+      "title": "Contract Version",
+      "type": "integer"
+    },
+    "close_tab": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Directive to close child tab",
+      "title": "Close Tab"
+    },
+    "switch_tab_id": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Directive to switch active tab",
+      "title": "Switch Tab Id"
+    },
+    "requires_origin_confirmation": {
+      "default": false,
+      "description": "Gate for cross-origin confirmation",
+      "title": "Requires Origin Confirmation",
+      "type": "boolean"
+    },
+    "assisted_click": {
+      "anyOf": [
+        {
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Assisted click prompt configuration",
+      "title": "Assisted Click"
+    }
+  },
+  "required": [
+    "status",
+    "goal_state",
+    "reply"
+  ],
+  "title": "GoalStepResponse",
+  "type": "object"
+}

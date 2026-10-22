@@ -1,0 +1,103 @@
+================================================================================
+                    PROJECT ATLAS — LOCAL SETUP & RUN GUIDE
+================================================================================
+
+1. PREREQUISITES
+----------------
+- Python 3.11+ ('python3 --version')
+- Docker running (for PostgreSQL container)
+- Chromium browser (Google Chrome, Brave, Edge, etc.)
+
+
+2. QUICK START (1 COMMAND)
+--------------------------
+From the repository root, run:
+
+    ./run_atlas.sh
+
+What this script automates:
+  a. Starts PostgreSQL container ('atlas-pg') on port 5432.
+  b. Activates Python venv ('venv_linux' or 'venv') and verifies dependencies.
+  c. Applies idempotent database migrations (001_init.sql, 003_security_events.sql).
+  d. Seeds demo tenant and API key:
+       Tenant : Atlas Demo Corp (demo@atlas-saas.com)
+       API Key: atlas_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6
+  e. Starts Backend API at http://localhost:8000 (Swagger docs at /docs).
+  f. Starts Demo Site at http://localhost:5500.
+
+To stop everything later:
+    ./run_atlas.sh stop
+
+
+3. LOAD THE CHROME EXTENSION
+----------------------------
+Browser extensions must be loaded via the browser GUI:
+  1. Open your browser and navigate to:
+       Chrome: chrome://extensions
+       Brave : brave://extensions
+       Edge  : edge://extensions
+  2. Toggle "Developer mode" ON (top right corner).
+  3. Click "Load unpacked" (top left).
+  4. Select the 'client-script' directory inside this repository.
+
+
+4. CONFIGURE THE EXTENSION (FIRST-RUN SETUP WIZARD)
+---------------------------------------------------
+  1. Open http://localhost:5500 in your browser.
+  2. Click the Atlas toolbar icon (or right-click extension -> Options).
+  3. The 3-Step Setup Wizard will appear:
+       Step 1 (Backend URL): http://localhost:8000
+              Click "Test Connection" -> verifies green "Connected".
+       Step 2 (API Key): Paste the demo key:
+              atlas_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6
+              Click "Validate Key" -> verifies green "Key Validated".
+       Step 3 (Finish): Complete Setup.
+
+
+5. HOW TO USE ATLAS
+-------------------
+  1. Open any page (e.g., http://localhost:5500/healthcare-intake.html,
+     http://localhost:5500/checkout.html, or any real website).
+  2. Press Alt+A (or click the floating Atlas notch on the right edge)
+     to expand the sidebar.
+  3. Available Features:
+     - "Scan & Simplify": Generates accessible plain-language numbers and highlights.
+     - Voice Navigation: Press Alt+V or click the microphone icon.
+     - Multi-Step Goals: Type a command (e.g., "Fill out intake form" or
+       "Order medical supplies") to run the milestone planner with real-time
+       progress tracking.
+     - Instant Stop: Click the red Stop button at any time to abort execution.
+
+
+6. RUNNING TESTS & RE-VERIFICATION
+----------------------------------
+To run the automated test suite locally:
+
+  # Full CI Gatekeeper verification (67 test files, 1,516+ tests):
+  python3 ci/verify_all_tests_run.py
+
+  # Automated axe-core accessibility audit (19 operational states):
+  node ci/e2e/a11y_axe.js
+
+  # Package extension into clean store-ready MV3 zip:
+  ./package_extension.sh
+  # Zip output: dist/project-atlas-extension.zip
+
+
+7. MANUAL TERMINAL STARTUP (ALTERNATIVE TO run_atlas.sh)
+---------------------------------------------------------
+Terminal 1 (Database):
+  docker run --name atlas-pg -e POSTGRES_USER=atlas -e POSTGRES_PASSWORD=atlas -e POSTGRES_DB=atlas_db -p 5432:5432 -d postgres:16
+
+Terminal 2 (Backend):
+  cd backend
+  source venv_linux/bin/activate
+  docker exec -i atlas-pg psql -U atlas -d atlas_db < app/migrations/001_init.sql
+  docker exec -i atlas-pg psql -U atlas -d atlas_db < app/migrations/003_security_events.sql
+  python -m app.migrations.seed
+  uvicorn app.main:app --port 8000 --reload
+
+Terminal 3 (Demo Site):
+  cd demo-site
+  python3 -m http.server 5500
+================================================================================

@@ -125,6 +125,9 @@
     }
 
     // 5. Update Sidebar UI
+    window.AtlasSidebar?.setAutoHide?.(false);
+    window.AtlasSidebar?.hideResumeButton?.();
+    isPausedForHuman = false;
     window.AtlasSidebar?.setExecuting(false);
     window.AtlasSidebar?.hideGoalProgress();
     window.AtlasSidebar?.removeThinking();
@@ -133,34 +136,493 @@
     speakIfVoiceMode("Goal stopped by user.");
   };
 
+  // ── URL & Token Redaction (§R2 / §H10) ─────────────────────────────────────
+  const redactUrl = (rawUrl) => {
+    if (!rawUrl || typeof rawUrl !== "string") return "";
+    try {
+      const u = new URL(rawUrl);
+      return `${u.origin}${u.pathname}`;
+    } catch (_) {
+      return rawUrl.split(/[?#]/)[0];
+    }
+  };
+
+  const sanitizeTokens = (text) => {
+    if (!text || typeof text !== "string") return "";
+    return text.replace(/\b(?:access_token|code|token)=[^&\s]+/gi, "[REDACTED]");
+  };
+
+
+  const capTitle = (title, maxChars = 80) => {
+    if (!title || typeof title !== "string") return "";
+    return title.trim().slice(0, maxChars);
+  };
+
+  // ── Settle Window with 1s Quiet Period (§R2 / §H9) ─────────────────────────
+  const waitForNavigationSettle = async (timeoutMs = 5000, signal = null) => {
+    if (typeof document === "undefined" || !document.readyState) return;
+    const start = Date.now();
+    // Wait for document.readyState === "complete"
+    while (document.readyState !== "complete" && Date.now() - start < timeoutMs) {
+      if (signal?.aborted) return;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    if (signal?.aborted) return;
+
+    let mutationOccurred = false;
+    let observer = null;
+
+    if (typeof MutationObserver !== "undefined" && typeof document !== "undefined") {
+      try {
+        observer = new MutationObserver(() => {
+          mutationOccurred = true;
+        });
+        const target = document.body || document.documentElement || document;
+        if (target && typeof target.nodeType === "number") {
+          observer.observe(target, { childList: true, subtree: true, attributes: true, characterData: true });
+        }
+      } catch (_) {}
+    }
+
+    // 1-second quiet window: URL and DOM must remain stable for 1000ms
+    let lastUrl = typeof window !== "undefined" ? window.location.href : "";
+    let lastDomSnapshot = typeof document !== "undefined" && document.body && typeof document.body.innerHTML === "string"
+      ? document.body.innerHTML
+      : "";
+    let quietElapsed = 0;
+
+    try {
+      while (quietElapsed < 1000 && Date.now() - start < timeoutMs) {
+        if (signal?.aborted) return;
+        await new Promise((r) => setTimeout(r, 100));
+
+        const currUrl = typeof window !== "undefined" ? window.location.href : "";
+        const currDomSnapshot = typeof document !== "undefined" && document.body && typeof document.body.innerHTML === "string"
+          ? document.body.innerHTML
+          : "";
+
+        const urlChanged = currUrl !== lastUrl;
+        const domChanged = (currDomSnapshot !== lastDomSnapshot) || mutationOccurred;
+
+        if (urlChanged || domChanged) {
+          lastUrl = currUrl;
+          lastDomSnapshot = currDomSnapshot;
+          mutationOccurred = false;
+          quietElapsed = 0; // reset quiet timer on redirect/URL mutation or DOM mutation
+        } else {
+          quietElapsed += 100;
+        }
+      }
+    } finally {
+      if (observer) {
+        try { observer.disconnect(); } catch (_) {}
+      }
+    }
+  };
+
+  // ── Milestone 3: Semantic Diffing & Anti-Blind-Trust (H8) ────────────────────
+  const captureSemanticSnapshot = () => {
+    const url = typeof window !== "undefined" && window.location ? window.location.href.split(/[?#]/)[0] : "";
+    const pathname = typeof window !== "undefined" && window.location ? window.location.pathname : "";
+
+    let elements = [];
+    if (typeof window !== "undefined" && window.AtlasSerializer?.serialize) {
+      try {
+        elements = window.AtlasSerializer.serialize();
+      } catch (_) {
+        elements = [];
+      }
+    }
+
+    const authRegex = /\b(sign[\s-_]?in|log[\s-_]?in|sign[\s-_]?up|register|authenticate|authorize|connect|oauth)\b/i;
+    const userRegex = /\b(sign[\s-_]?out|log[\s-_]?out|my\s*account|profile|dashboard|avatar|user[-_ ]?menu|settings|welcome)\b/i;
+
+    const authElements = [];
+    const userElements = [];
+
+    if (Array.isArray(elements) && elements.length > 0) {
+      for (const el of elements) {
+        const text = [el.resolved_label, el.inner_text, el.aria_label, el.href].filter(Boolean).join(" ");
+        if (authRegex.test(text)) {
+          authElements.push(`${el.tag}:${el.role || ""}:${text.slice(0, 40)}`);
+        }
+        if (userRegex.test(text)) {
+          userElements.push(`${el.tag}:${el.role || ""}:${text.slice(0, 40)}`);
+        }
+      }
+    } else if (typeof document !== "undefined" && typeof document.querySelectorAll === "function") {
+      const buttonsAndLinks = document.querySelectorAll("button, a, [role='button'], [role='link']");
+      for (const el of buttonsAndLinks) {
+        const text = (el.innerText || el.getAttribute("aria-label") || el.getAttribute("title") || "").trim();
+        if (authRegex.test(text)) {
+          authElements.push(`${el.tagName?.toLowerCase() || ""}:${text.slice(0, 40)}`);
+        }
+        if (userRegex.test(text)) {
+          userElements.push(`${el.tagName?.toLowerCase() || ""}:${text.slice(0, 40)}`);
+        }
+      }
+    }
+
+    if (typeof document !== "undefined" && typeof document.querySelector === "function") {
+      const authStatusEl = document.querySelector('[data-authenticated="true"]');
+      const authSuccessBadge = document.querySelector('.alert-success, [role="status"]');
+      if (authStatusEl || (authSuccessBadge && authSuccessBadge.style?.display !== "none" && !authSuccessBadge.hidden)) {
+        userElements.push("dom:authenticated_marker");
+      }
+    }
+
+    return {
+      timestamp: Date.now(),
+      url,
+      pathname,
+      authElements,
+      userElements,
+      interactiveCount: elements.length,
+    };
+  };
+
+  const diffSemanticSnapshots = (baseline, current) => {
+    if (!baseline || !current) {
+      return { verified: false, reason: "NO_BASELINE", confidence: 0 };
+    }
+
+    // 1. Pathname transition away from login/auth (High Confidence)
+    if (baseline.pathname !== current.pathname && !/login|signin|auth/i.test(current.pathname)) {
+      return {
+        verified: true,
+        confidence: 0.95,
+        reason: "PATHNAME_TRANSITION",
+        details: `Path transitioned from '${baseline.pathname}' to '${current.pathname}'`,
+      };
+    }
+
+    // 2. Auth entry removed AND user session control emerged (Golden Auth Swap)
+    const authDecreased = baseline.authElements.length > 0 && current.authElements.length === 0;
+    const userIncreased = current.userElements.length > baseline.userElements.length;
+
+    if (authDecreased && userIncreased) {
+      return {
+        verified: true,
+        confidence: 0.98,
+        reason: "AUTH_SWAP_VERIFIED",
+        details: "Sign-in controls were replaced by user session/logout controls",
+      };
+    }
+
+    // 3. User elements emerged (e.g. Avatar / My Account menu added)
+    if (userIncreased) {
+      return {
+        verified: true,
+        confidence: 0.90,
+        reason: "USER_CONTROLS_EMERGED",
+        details: "New user profile or logout controls detected on opener",
+      };
+    }
+
+    // 4. Auth controls completely removed (e.g. login form disappeared)
+    if (authDecreased) {
+      return {
+        verified: true,
+        confidence: 0.85,
+        reason: "AUTH_CONTROLS_REMOVED",
+        details: "Sign-in controls are no longer present on opener",
+      };
+    }
+
+    // 5. No semantic change detected -> Ambiguous or Premature Close
+    return {
+      verified: false,
+      confidence: 0.05,
+      reason: "NO_SEMANTIC_CHANGE",
+      details: "Opener DOM unchanged; no evidence of completed action",
+    };
+  };
+
+  const handleChildTabClosed = async (message = {}) => {
+    console.log("Atlas: Reclaimed lease tab notified child popup closed:", message);
+    try {
+      await waitForNavigationSettle(1500, currentAbortController?.signal);
+    } catch (_) {}
+
+    const baseline = window.__atlasBaselineSnapshot;
+    const currentSnapshot = captureSemanticSnapshot();
+    const diffResult = diffSemanticSnapshots(baseline, currentSnapshot);
+
+    console.log("Atlas: Semantic diff result on popup close:", diffResult);
+
+    if (diffResult.verified) {
+      window.AtlasSidebar?.setStatus("State change verified", "ok");
+      window.AtlasSidebar?.addChatMessage("agent", `✅ Verified: ${diffResult.details}`);
+      if (currentGoalState) {
+        isExecuting = true;
+        window.AtlasSidebar?.setExecuting?.(true);
+        await executeGoalHop(currentGoalState);
+      }
+    } else {
+      // Invariant: NEVER claim goal success without verified state change!
+      window.AtlasSidebar?.setStatus("Confirmation required", "info");
+      window.AtlasSidebar?.addChatMessage(
+        "agent",
+        "The popup was closed, but we couldn't verify changes on this page. Did you finish signing in / completing this step?",
+        {
+          actions: [
+            { label: "Yes, continue", value: "yes" },
+            { label: "No, retry", value: "no" }
+          ],
+          onAction: async (choice) => {
+            if (choice === "yes") {
+              window.AtlasSidebar?.setStatus("Resuming goal...", "info");
+              if (currentGoalState) {
+                isExecuting = true;
+                window.AtlasSidebar?.setExecuting(true);
+                await executeGoalHop(currentGoalState);
+              }
+            } else {
+              window.AtlasSidebar?.setStatus("Goal paused for retry", "info");
+              window.AtlasSidebar?.addChatMessage("agent", "Goal paused. Please reopen the authentication window or retry the step when ready.");
+              isExecuting = false;
+              window.AtlasSidebar?.setExecuting(false);
+            }
+          }
+        }
+      );
+    }
+  };
+
+  // ── Milestone 3: Yield to Human Agency (H21) ─────────────────────────────────
+  let isPausedForHuman = false;
+
+  const onHumanInteraction = (e) => {
+    if (!e || !e.isTrusted || !isExecuting || isPausedForHuman) return;
+
+    // Filter Atlas internal UI events
+    const target = e.target;
+    if (target && typeof target.closest === "function") {
+      if (target.closest("#atlas-sidebar-host") || target.closest("#atlas-sidebar-root")) {
+        return;
+      }
+    }
+
+    // Filter modifier-only keystrokes
+    if (e.type === "keydown") {
+      if (["Shift", "Control", "Alt", "Meta", "CapsLock", "Tab"].includes(e.key)) return;
+      if (e.altKey && (e.code === "KeyA" || e.code === "KeyV" || e.key === "a" || e.key === "v")) return;
+    }
+
+    console.log(`Atlas: Yielding to human agency on trusted ${e.type} event.`);
+    isPausedForHuman = true;
+
+    // 1. Abort in-flight hop/request without wiping goalState
+    if (currentAbortController) {
+      try {
+        currentAbortController.abort();
+      } catch (_) {}
+    }
+
+    // 2. Stop voice output
+    try {
+      window.AtlasTTS?.stop?.();
+      window.AtlasSpeech?.stop?.();
+    } catch (_) {}
+
+    // 3. Update Sidebar UI
+    window.AtlasSidebar?.setExecuting?.(false);
+    window.AtlasSidebar?.setStatus?.("Paused for human interaction", "info");
+    window.AtlasSidebar?.addChatMessage?.(
+      "agent",
+      "⏸️ Paused for human interaction. Click Resume when ready."
+    );
+    window.AtlasSidebar?.showResumeButton?.(() => resumeAfterHumanAgency());
+  };
+
+  const resumeAfterHumanAgency = async () => {
+    if (!isPausedForHuman) return;
+    console.log("Atlas: Resuming execution following human interaction.");
+    isPausedForHuman = false;
+    isExecuting = true;
+    currentAbortController = new AbortController();
+
+    window.AtlasSidebar?.hideResumeButton?.();
+    window.AtlasSidebar?.setExecuting?.(true);
+    window.AtlasSidebar?.setStatus?.("Resuming goal...", "info");
+    window.AtlasSidebar?.addChatMessage?.("agent", "▶️ Resuming goal execution.");
+
+    if (currentGoalState) {
+      await executeGoalHop(currentGoalState);
+    }
+  };
+
+  // ── Milestone 3: Popup Blocker Interception & Assisted Click (H6) ────────────
+  let isAssistedClickAwaiting = false;
+
+  const handlePopupBlocked = (e) => {
+    const detail = e?.detail || {};
+    console.warn("Atlas: Intercepted blocked popup window:", detail);
+
+    // Retrieve active target element from executor (lastActionElement) or semantic heuristics
+    let targetEl = null;
+    if (window.AtlasExecutor?.getLastActionElement) {
+      targetEl = window.AtlasExecutor.getLastActionElement();
+    }
+    if (!targetEl && typeof document !== "undefined") {
+      targetEl = document.querySelector("[aria-haspopup='true'], [role='button'][aria-expanded], a[target='_blank']");
+    }
+
+    isAssistedClickAwaiting = true;
+
+    window.AtlasSidebar?.showAssistedClickPrompt?.({
+      message: "Browser popup was blocked. Please click the glowing button to open the authentication window.",
+      targetEl,
+      onUserClick: (clickEvent) => {
+        isAssistedClickAwaiting = false;
+        if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
+          try {
+            chrome.runtime.sendMessage({ type: "ATLAS_ARM_CAUSAL_WINDOW", windowMs: 3000 });
+          } catch (_) {}
+        }
+        window.AtlasSidebar?.hideAssistedClickPrompt?.(targetEl);
+        window.AtlasSidebar?.setStatus?.("Popup opened. Continuing...", "info");
+        if (detail?.url) {
+          try {
+            window.open(detail.url, detail.target || "_blank", detail.features || "");
+          } catch (_) {}
+        }
+        if (currentGoalState && !isExecuting) {
+          isExecuting = true;
+          executeGoalHop(currentGoalState);
+        }
+      }
+    });
+  };
+
+  // ── Milestone 3: Browser-Native Auth Guidance (H17) ──────────────────────────
+  let isGuidedAuthMode = false;
+
+  const handleNativeAuthStart = (e) => {
+    const detail = e?.detail || {};
+    console.log("Atlas: Native credential ceremony started:", detail);
+    isGuidedAuthMode = true;
+
+    window.AtlasSidebar?.setGuidedAuthMode?.(true, detail);
+  };
+
+  const handleNativeAuthEnd = (e) => {
+    const detail = e?.detail || {};
+    console.log("Atlas: Native credential ceremony ended:", detail);
+    isGuidedAuthMode = false;
+
+    window.AtlasSidebar?.setGuidedAuthMode?.(false, detail);
+
+    // Concurrency guard: Do not launch a second loop if already executing or in flight
+    if (!isExecuting && !isHopInProgress && currentGoalState && detail.success) {
+      isExecuting = true;
+      window.AtlasSidebar?.setExecuting?.(true);
+      executeGoalHop(currentGoalState);
+    }
+  };
+
+  let isHopInProgress = false;
+
   const executeGoalHop = async (goalState) => {
     if (!goalState) return;
+    if (isHopInProgress) {
+      console.warn("Atlas: executeGoalHop already in flight; ignoring concurrent request");
+      return;
+    }
+    isHopInProgress = true;
+
+    // Enforce budgets & bounds (§R2 / §H9)
+    const budget = goalState.budget || {};
+    const maxHandoffs = budget.max_handoffs || 4;
+    const handoffCount = budget.handoff_count || 0;
+    if (budget.max_llm_calls && budget.llm_calls >= budget.max_llm_calls) {
+      window.AtlasSidebar?.setStatus("Goal stopped: LLM budget exceeded", "error");
+      window.AtlasSidebar?.addChatMessage("agent", "🛑 Goal stopped: LLM budget exceeded.");
+      isExecuting = false;
+      isHopInProgress = false;
+      return;
+    }
+    if (handoffCount >= maxHandoffs) {
+      window.AtlasSidebar?.setStatus("Goal stopped: Maximum tab handoffs reached", "error");
+      window.AtlasSidebar?.addChatMessage("agent", "🛑 Goal stopped: Maximum tab handoffs reached.");
+      isExecuting = false;
+      isHopInProgress = false;
+      return;
+    }
+
     isExecuting = true;
     currentAbortController = new AbortController();
     window.AtlasSidebar?.setExecuting(true);
     window.AtlasSidebar?.setGoalProgress(goalState);
 
     try {
+      // Settle window: wait for navigation/redirects to quiet down before DOM perception
+      await waitForNavigationSettle(5000, currentAbortController.signal);
+      if (!isExecuting || currentAbortController.signal.aborted) return;
+
       const { apiKey, baseUrl } = await getStoredSettings();
       const domMap = window.AtlasSerializer.serialize();
+
+      // Clean URL before sending (§R2 / §H10)
+      const rawUrl = typeof window !== "undefined" ? window.location.href : "";
+      const currentUrl = redactUrl(rawUrl);
+
       const requestPayload = {
-        goal_state: goalState,
+        goal: goalState.goal || "",
+        current_url: currentUrl,
+        url: currentUrl,
         dom_map: domMap,
-        url: window.location.href,
+        goal_state: goalState,
+        contract_version: 2,
+        capabilities: ["switch_tab", "tab_context", "assisted_click"],
       };
 
-      const res = await fetch(`${baseUrl}/v1/chat/goal_step`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Atlas-Key": apiKey || "",
-        },
-        body: JSON.stringify(requestPayload),
-        signal: currentAbortController.signal,
-      });
+      // Proxy request via background service worker (§R2 / §H5)
+      let data = null;
 
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
+        data = await new Promise((resolve, reject) => {
+          let responded = false;
+          const onAbort = () => {
+            if (!responded) {
+              responded = true;
+              reject(new DOMException("Aborted", "AbortError"));
+            }
+          };
+          currentAbortController.signal.addEventListener("abort", onAbort, { once: true });
+
+          try {
+            chrome.runtime.sendMessage(
+              {
+                type: "ATLAS_GOAL_STEP",
+                baseUrl,
+                apiKey: apiKey || "",
+                payload: requestPayload,
+                leaseEpoch: window.__atlasLeaseEpoch || 1,
+                sessionId: window.__atlasSessionId || null,
+              },
+              (res) => {
+                if (responded) return;
+                responded = true;
+                if (chrome.runtime.lastError) {
+                  return reject(new Error(chrome.runtime.lastError.message));
+                }
+                if (!res || !res.ok) {
+                  return reject(new Error(res?.error || "Goal step failed"));
+                }
+                resolve(res.data);
+              }
+            );
+          } catch (e) {
+            responded = true;
+            reject(e);
+          }
+        });
+      } else {
+        throw new Error("Atlas: Background service worker unavailable for goal_step");
+      }
+
+
 
       if (!isExecuting || currentAbortController.signal.aborted) return;
 
@@ -169,9 +631,32 @@
         window.AtlasSidebar?.setGoalProgress(data.goal_state);
       }
 
+      if (!window.__atlasBaselineSnapshot) {
+        window.__atlasBaselineSnapshot = captureSemanticSnapshot();
+      }
+
       if (data.action) {
-        await window.AtlasExecutor.executeStep(data.action);
+        window.AtlasSidebar?.setAutoHide?.(true);
+        try {
+          await window.AtlasExecutor.executeStep(data.action);
+        } finally {
+          window.AtlasSidebar?.setAutoHide?.(false);
+        }
         await interruptibleSleep(600, currentAbortController.signal);
+      }
+
+      // Handle tab switching if returned by backend and handoff budget permits
+      if (data.switch_tab_id) {
+        const currentHandoff = data.goal_state?.budget?.handoff_count || 0;
+        if (currentHandoff >= maxHandoffs) {
+          window.AtlasSidebar?.setStatus("Goal stopped: Maximum tab handoffs reached", "error");
+          window.AtlasSidebar?.addChatMessage("agent", "🛑 Goal stopped: Maximum tab handoffs reached.");
+          isExecuting = false;
+          return;
+        }
+        if (data.goal_state?.budget) {
+          data.goal_state.budget.handoff_count = currentHandoff + 1;
+        }
       }
 
       if (data.goal_state?.status === "goal_complete") {
@@ -180,8 +665,18 @@
         window.AtlasSidebar?.hideGoalProgress();
         isExecuting = false;
         window.AtlasSidebar?.setExecuting(false);
+        window.__atlasBaselineSnapshot = null;
       } else if (isExecuting && data.goal_state?.status === "in_progress") {
+        if ((data.goal_state?.budget?.handoff_count || 0) >= maxHandoffs) {
+          window.AtlasSidebar?.setStatus("Goal stopped: Maximum tab handoffs reached", "error");
+          window.AtlasSidebar?.addChatMessage("agent", "🛑 Goal stopped: Maximum tab handoffs reached.");
+          isExecuting = false;
+          isHopInProgress = false;
+          return;
+        }
+        isHopInProgress = false;
         await executeGoalHop(data.goal_state);
+        return;
       }
     } catch (err) {
       if (err.name === "AbortError" || !isExecuting) {
@@ -191,12 +686,14 @@
         window.AtlasSidebar?.setStatus(`Goal error: ${err.message}`, "error");
       }
     } finally {
+      isHopInProgress = false;
       if (!isExecuting) {
         window.AtlasSidebar?.setExecuting(false);
         window.AtlasSidebar?.hideGoalProgress();
       }
     }
   };
+
 
   // ── Universal Language Switcher Pre-Scanner (W3C / Prime Directive) ──────
   const AtlasLanguageSwitcher = {
@@ -1075,6 +1572,13 @@ const handleElementClick = async (atlasId) => {
         sendResponse({ ok: true });
         return true;
       }
+      if (message.type === "ATLAS_CHILD_TAB_CLOSED") {
+        (async () => {
+          await handleChildTabClosed(message);
+        })();
+        sendResponse({ ok: true });
+        return true;
+      }
       if (message.type === "ATLAS_TRIGGER_VOICE" || message.type === "ATLAS_VOICE_INPUT") {
         (async () => {
           if (!active) {
@@ -1116,10 +1620,49 @@ const handleElementClick = async (atlasId) => {
 
   if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
     window.addEventListener("keydown", handleKeyboardShortcuts);
+
+    // Yield to Human Agency (H21) capture-phase listeners
+    window.addEventListener("keydown", onHumanInteraction, { capture: true, passive: true });
+    window.addEventListener("pointerdown", onHumanInteraction, { capture: true, passive: true });
+    window.addEventListener("input", onHumanInteraction, { capture: true, passive: true });
+
+    // Popup blocker & browser-native auth event listeners
+    window.addEventListener("__atlas_popup_blocked__", handlePopupBlocked);
+    window.addEventListener("__atlas_native_auth_start__", handleNativeAuthStart);
+    window.addEventListener("__atlas_native_auth_end__", handleNativeAuthEnd);
+
+    // Initialize popup blocker and native auth interception hooks
+    if (window.AtlasExecutor) {
+      window.AtlasExecutor.installPopupBlockerHook?.(window);
+      if (typeof navigator !== "undefined") {
+        window.AtlasExecutor.installNativeAuthHook?.(navigator);
+      }
+    }
   }
 
   if (typeof window !== "undefined") {
     window.AtlasLanguageSwitcher = AtlasLanguageSwitcher;
+    window.AtlasGoalHandoff = {
+      redactUrl,
+      sanitizeTokens,
+      capTitle,
+      waitForNavigationSettle,
+    };
+    window.AtlasMultiTabOrchestration = {
+      captureSemanticSnapshot,
+      diffSemanticSnapshots,
+      onHumanInteraction,
+      resumeAfterHumanAgency,
+      handleChildTabClosed,
+      handlePopupBlocked,
+      handleNativeAuthStart,
+      handleNativeAuthEnd,
+      isPausedForHuman: () => isPausedForHuman,
+      isGuidedAuthMode: () => isGuidedAuthMode,
+      setExecuting: (val) => { isExecuting = Boolean(val); },
+      isExecuting: () => isExecuting,
+      isHopInProgress: () => isHopInProgress,
+    };
   }
   if (typeof module !== "undefined" && module.exports) {
     module.exports = {
@@ -1127,6 +1670,24 @@ const handleElementClick = async (atlasId) => {
       stopGoalExecution,
       interruptibleSleep,
       executeGoalHop,
+      redactUrl,
+      sanitizeTokens,
+      capTitle,
+      waitForNavigationSettle,
+      captureSemanticSnapshot,
+      diffSemanticSnapshots,
+      onHumanInteraction,
+      resumeAfterHumanAgency,
+      handleChildTabClosed,
+      handlePopupBlocked,
+      handleNativeAuthStart,
+      handleNativeAuthEnd,
+      isPausedForHuman: () => isPausedForHuman,
+      isGuidedAuthMode: () => isGuidedAuthMode,
+      setExecuting: (val) => { isExecuting = Boolean(val); },
+      isExecuting: () => isExecuting,
+      isHopInProgress: () => isHopInProgress,
     };
   }
 })();
+

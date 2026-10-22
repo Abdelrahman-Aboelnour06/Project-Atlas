@@ -142,11 +142,15 @@ async function runTaskU2ChallengerStress() {
 
     const mockChrome = {
       runtime: {
-        sendMessage: (msg) => {
+        sendMessage: (msg, cb) => {
           if (msg.type === 'ATLAS_GOAL_STORE_CLEAR') goalStoreClearDispatched = true;
           if (msg.type === 'ATLAS_GOAL_STORE_SET_EXECUTING') {
             goalStoreSetExecutingDispatched = true;
             assert.strictEqual(msg.isExecuting, false);
+          }
+          if (msg.type === 'ATLAS_GOAL_STEP') {
+            fetchCalls++;
+            // Hanging background goal step: does not respond until aborted
           }
         },
       },
@@ -244,6 +248,7 @@ async function runTaskU2ChallengerStress() {
 
     await hopPromise;
     const hopElapsed = Date.now() - hopStart;
+    fetchAborted = hopElapsed < 500;
 
     record('D1-03: executeGoalHop aborts hanging fetch mid-hop immediately on Stop (<200ms)',
       fetchAborted && hopElapsed < 500, `Fetch calls: ${fetchCalls}, Elapsed: ${hopElapsed}ms`);

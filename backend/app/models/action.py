@@ -16,6 +16,7 @@ ActionType = Literal[
     "press_key",
     "upload_file",
     "wait_for",
+    "switch_tab",
 ]
 
 

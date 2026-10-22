@@ -1704,5 +1704,74 @@
   }
 }
 
+/* ── Small-Window Responsive 56px Draggable Pill Mode (<700px) (H11) ── */
+#atlas-sidebar-root.atlas-compact-pill {
+  width: 56px !important;
+  height: 56px !important;
+  min-width: 56px !important;
+  min-height: 56px !important;
+  max-width: 56px !important;
+  max-height: 56px !important;
+  border-radius: 50% !important;
+  padding: 0 !important;
+  overflow: visible !important;
+}
+
+#atlas-sidebar-root.atlas-compact-pill .atlas-collapsed-badge {
+  display: flex !important;
+  width: 56px !important;
+  height: 56px !important;
+}
+
+#atlas-sidebar-root.atlas-compact-pill .atlas-header,
+#atlas-sidebar-root.atlas-compact-pill .atlas-status,
+#atlas-sidebar-root.atlas-compact-pill .atlas-pane {
+  display: none !important;
+}
+
+@media (max-width: 699px) {
+  #atlas-sidebar-root.atlas-collapsed {
+    width: 56px !important;
+    height: 56px !important;
+    min-width: 56px !important;
+    min-height: 56px !important;
+    max-width: 56px !important;
+    max-height: 56px !important;
+  }
+  #atlas-sidebar-root.atlas-collapsed .atlas-collapsed-badge {
+    width: 56px !important;
+    height: 56px !important;
+  }
+}
+
+/* ── Auto-Hide During Action Execution (H11) ── */
+#atlas-sidebar-root.atlas-auto-hidden {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
+  transition: opacity 0.15s ease, visibility 0.15s ease !important;
+}
+
+#atlas-sidebar-root.atlas-auto-hidden * {
+  pointer-events: none !important;
+}
+
+/* ── Guided Auth Mode Indicator (H17) ── */
+#atlas-sidebar-root.atlas-guided-auth {
+  box-shadow: 0 0 24px rgba(245, 158, 11, 0.5), 0 0 0 2px #f59e0b !important;
+}
+
+/* ── Glowing Assisted Click Animation (H6) ── */
+.glowing-prompt-btn, .atlas-assisted-click-glow {
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.6) !important;
+  animation: pulse-glow 1.8s infinite !important;
+}
+@keyframes pulse-glow {
+  0% { box-shadow: 0 0 6px rgba(245, 158, 11, 0.4); }
+  50% { box-shadow: 0 0 18px rgba(245, 158, 11, 0.9); }
+  100% { box-shadow: 0 0 6px rgba(245, 158, 11, 0.4); }
+}
+
+
 
 

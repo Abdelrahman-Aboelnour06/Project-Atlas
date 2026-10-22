@@ -29,6 +29,7 @@ class PlanStep(BaseModel):
     click_count: Optional[int] = Field(default=None, description="Number of clicks to perform when action is click")
     description: Optional[str] = Field(default="", description="Human-readable description of this step")
     delay_ms: Optional[int] = Field(default=600, description="Execution delay in milliseconds before next action")
+    tab_id: Optional[int] = Field(default=None, description="Target browser tab ID for multi-tab actions (e.g. switch_tab)")
 
 
 class AgenticPlan(BaseModel):
@@ -115,6 +116,8 @@ class Budget(BaseModel):
     field_ops: int = Field(default=0, description="Field operations completed")
     max_llm_calls: int = Field(default=25, description="Maximum total LLM calls across all agents")
     llm_calls: int = Field(default=0, description="LLM calls completed")
+    max_handoffs: int = Field(default=4, description="Maximum tab handoffs permitted")
+    handoff_count: int = Field(default=0, description="Tab handoffs completed")
 
 
 class Branch(BaseModel):
@@ -210,6 +213,31 @@ class GoalState(BaseModel):
             self.error_message = f"Goal execution stopped: reached maximum allowed hops limit ({self.max_hops})."
 
 
+# ── Multi-Tab Coordination Models (Milestone 2 / Track R1 & R2) ───────────────
+
+class TabInfo(BaseModel):
+    """Information about a browser tab or popup window tracked in multi-tab sessions."""
+    tab_id: int = Field(..., description="Unique browser tab ID")
+    url: str = Field(..., description="Sanitized page URL (query & hash stripped)")
+    title: Optional[str] = Field(default=None, max_length=80, description="Page title capped at 80 characters")
+    is_active: bool = Field(default=False, description="Whether this tab is currently the active foreground tab")
+    is_opener: bool = Field(default=False, description="Whether this tab opened the child window/tab")
+    is_child: bool = Field(default=False, description="Whether this tab is a child popup/tab")
+    status: Optional[str] = Field(default=None, description="Tab load status (e.g. 'complete', 'loading')")
+    window_id: Optional[int] = Field(default=None, description="Browser window ID containing this tab")
+    created_at: Optional[float] = Field(default=None, description="Creation timestamp")
+
+
+class TabContext(BaseModel):
+    """Multi-tab coordination context passed between browser client and backend."""
+    self_tab_id: int = Field(..., description="Tab ID executing this step")
+    opener_tab_id: Optional[int] = Field(default=None, description="Opener tab ID if child popup")
+    tabs: List[TabInfo] = Field(default_factory=list, description="All tabs tracked in active session")
+    resume_reason: Optional[str] = Field(default=None, description="Resume reason: initial, child_ready, popup_blocked, etc.")
+    close_hint: bool = Field(default=False, description="Hint if child is ready to be closed")
+    origin_confirmed: bool = Field(default=False, description="User confirmed cross-origin boundary")
+
+
 class GoalStepRequest(BaseModel):
     """Payload sent from browser extension or test harness to POST /v1/chat/goal_step."""
     goal: str = Field(..., max_length=2000, description="Natural language user goal")
@@ -222,6 +250,12 @@ class GoalStepRequest(BaseModel):
     session_id: Optional[str] = Field(default=None, max_length=256, description="Session ID for tracking and correlation")
     api_key: Optional[str] = Field(default=None, max_length=256, description="Optional inline tenant API key")
     language: Optional[str] = Field(default=None, max_length=32, description="Preferred language locale e.g. 'ar-EG'")
+    contract_version: int = Field(default=2, description="Contract version: 1 (legacy), 2 (multi-tab aware)")
+    capabilities: List[str] = Field(
+        default_factory=lambda: ["switch_tab", "tab_context", "assisted_click"],
+        description="Client declared capabilities",
+    )
+    tab_context: Optional[TabContext] = Field(default=None, description="Multi-tab session context")
 
 
 class GoalStepResponse(BaseModel):
@@ -236,3 +270,9 @@ class GoalStepResponse(BaseModel):
     confirmation_options: Optional[List[str]] = Field(default_factory=lambda: ["Yes, proceed", "No, cancel"])
     pending_step: Optional[PlanStep] = Field(default=None, description="Consequential action awaiting confirmation")
     verifier_result: Optional[VerifierResult] = Field(default=None, description="Verification outcome from evaluating previous action")
+    contract_version: int = Field(default=2, description="Contract version: 1 (legacy), 2 (multi-tab aware)")
+    close_tab: Optional[bool] = Field(default=None, description="Directive to close child tab")
+    switch_tab_id: Optional[int] = Field(default=None, description="Directive to switch active tab")
+    requires_origin_confirmation: bool = Field(default=False, description="Gate for cross-origin confirmation")
+    assisted_click: Optional[Dict[str, Any]] = Field(default=None, description="Assisted click prompt configuration")
+

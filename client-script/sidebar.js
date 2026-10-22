@@ -6,8 +6,25 @@
   const DEFAULT_WIDTH = 348;
   const DEFAULT_HEIGHT = 520;
   const COLLAPSED_SIZE = 52;
+  const COMPACT_VIEWPORT_THRESHOLD = 700;
+  const COMPACT_PILL_SIZE = 56;
   const VIEWPORT_PADDING = 12;
   const SCROLLBAR_CLEARANCE = 20;
+
+  let isAutoCollapsedForCompact = false;
+  let isDeliberatelyExpandedInCompact = false;
+  let isAutoHiddenForExecution = false;
+
+  const isCompactViewport = () => {
+    return typeof window !== "undefined" && window.innerWidth < COMPACT_VIEWPORT_THRESHOLD;
+  };
+
+  const getCollapsedSize = () => {
+    if (rootEl && rootEl.classList && rootEl.classList.contains("atlas-compact-pill")) {
+      return COMPACT_PILL_SIZE;
+    }
+    return isCompactViewport() ? COMPACT_PILL_SIZE : COLLAPSED_SIZE;
+  };
 
   let hostEl = null;
   let shadowRoot = null;
@@ -65,6 +82,36 @@
 }
 #atlas-sidebar-root .atlas-voice-meter.atlas-meter-active {
   display: inline-flex;
+}
+#atlas-sidebar-root.atlas-compact-pill {
+  width: 56px !important;
+  height: 56px !important;
+  min-width: 56px !important;
+  min-height: 56px !important;
+  max-width: 56px !important;
+  max-height: 56px !important;
+  border-radius: 50% !important;
+  padding: 0 !important;
+  overflow: visible !important;
+}
+#atlas-sidebar-root.atlas-compact-pill .atlas-collapsed-badge {
+  display: flex !important;
+  width: 56px !important;
+  height: 56px !important;
+}
+#atlas-sidebar-root.atlas-compact-pill .atlas-header,
+#atlas-sidebar-root.atlas-compact-pill .atlas-status,
+#atlas-sidebar-root.atlas-compact-pill .atlas-pane {
+  display: none !important;
+}
+#atlas-sidebar-root.atlas-auto-hidden {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
+  transition: opacity 0.15s ease, visibility 0.15s ease !important;
+}
+#atlas-sidebar-root.atlas-auto-hidden * {
+  pointer-events: none !important;
 }
 `;
 
@@ -241,8 +288,9 @@
 
   const applyPosition = (x, y) => {
     if (!rootEl) return;
-    const width = isCollapsed ? COLLAPSED_SIZE : (rootEl.offsetWidth || DEFAULT_WIDTH);
-    const height = isCollapsed ? COLLAPSED_SIZE : (rootEl.offsetHeight || DEFAULT_HEIGHT);
+    const collapsedDim = getCollapsedSize();
+    const width = isCollapsed ? collapsedDim : (rootEl.offsetWidth || DEFAULT_WIDTH);
+    const height = isCollapsed ? collapsedDim : (rootEl.offsetHeight || DEFAULT_HEIGHT);
     // 20px clearance ensures floating badge never blocks host page vertical scrollbar
     const maxX = Math.max(VIEWPORT_PADDING, window.innerWidth - width - SCROLLBAR_CLEARANCE);
     const maxY = Math.max(VIEWPORT_PADDING, window.innerHeight - height - VIEWPORT_PADDING);
@@ -256,25 +304,33 @@
 
   const resetPosition = () => {
     if (!rootEl) return;
-    const width = isCollapsed ? COLLAPSED_SIZE : DEFAULT_WIDTH;
-    const height = isCollapsed ? COLLAPSED_SIZE : DEFAULT_HEIGHT;
+    const collapsedDim = getCollapsedSize();
+    const width = isCollapsed ? collapsedDim : DEFAULT_WIDTH;
+    const height = isCollapsed ? collapsedDim : DEFAULT_HEIGHT;
     const defaultX = Math.max(VIEWPORT_PADDING, window.innerWidth - width - 24);
     const defaultY = Math.max(VIEWPORT_PADDING, window.innerHeight - height - 24);
     const pos = applyPosition(defaultX, defaultY);
     if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
       chrome.storage.local.set({ atlasWindowPos: pos });
     }
+    return pos;
   };
 
   const collapse = () => {
-    if (!rootEl || isCollapsed) return;
+    if (isCollapsed) return;
     isCollapsed = true;
-    rootEl.classList.add("atlas-collapsed");
-    rootEl.setAttribute("aria-expanded", "false");
+    isDeliberatelyExpandedInCompact = false;
+    if (rootEl) {
+      rootEl.classList.add("atlas-collapsed");
+      if (isCompactViewport()) {
+        rootEl.classList.add("atlas-compact-pill");
+      }
+      rootEl.setAttribute("aria-expanded", "false");
 
-    // Re-clamp position for circular notch dimensions
-    const rect = rootEl.getBoundingClientRect();
-    applyPosition(rect.left, rect.top);
+      // Re-clamp position for circular notch dimensions
+      const rect = rootEl.getBoundingClientRect();
+      applyPosition(rect.left, rect.top);
+    }
 
     if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
       chrome.storage.local.set({ atlasIsCollapsed: true });
@@ -282,18 +338,29 @@
   };
 
   const expand = () => {
-    if (!rootEl || !isCollapsed) return;
+    if (!isCollapsed) return;
     isCollapsed = false;
-    rootEl.classList.remove("atlas-collapsed");
-    rootEl.setAttribute("aria-expanded", "true");
+    isAutoCollapsedForCompact = false; // User intentional override
+    if (isCompactViewport()) {
+      isDeliberatelyExpandedInCompact = true;
+    }
+    const defaultX = Math.max(VIEWPORT_PADDING, (typeof window !== "undefined" ? window.innerWidth : 1024) - DEFAULT_WIDTH - 24);
+    const defaultY = Math.max(VIEWPORT_PADDING, (typeof window !== "undefined" ? window.innerHeight : 768) - DEFAULT_HEIGHT - 24);
+    let targetX = defaultX;
+    let targetY = defaultY;
 
-    // Overlap project edge case: Auto-adjust position if expanding pushes it past the right or bottom
-    const rect = rootEl.getBoundingClientRect();
-    const maxX = Math.max(VIEWPORT_PADDING, window.innerWidth - DEFAULT_WIDTH - SCROLLBAR_CLEARANCE);
-    const maxY = Math.max(VIEWPORT_PADDING, window.innerHeight - DEFAULT_HEIGHT - VIEWPORT_PADDING);
-    const targetX = clamp(rect.left, VIEWPORT_PADDING, maxX);
-    const targetY = clamp(rect.top, VIEWPORT_PADDING, maxY);
-    applyPosition(targetX, targetY);
+    if (rootEl) {
+      rootEl.classList.remove("atlas-collapsed", "atlas-compact-pill");
+      rootEl.setAttribute("aria-expanded", "true");
+
+      // Overlap project edge case: Auto-adjust position if expanding pushes it past the right or bottom
+      const rect = rootEl.getBoundingClientRect();
+      const maxX = Math.max(VIEWPORT_PADDING, window.innerWidth - DEFAULT_WIDTH - SCROLLBAR_CLEARANCE);
+      const maxY = Math.max(VIEWPORT_PADDING, window.innerHeight - DEFAULT_HEIGHT - VIEWPORT_PADDING);
+      targetX = clamp(rect.left, VIEWPORT_PADDING, maxX);
+      targetY = clamp(rect.top, VIEWPORT_PADDING, maxY);
+      applyPosition(targetX, targetY);
+    }
 
     if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
       chrome.storage.local.set({
@@ -326,9 +393,220 @@
         if (result?.atlasIsCollapsed) {
           collapse();
         }
+        checkViewportResponsive();
       });
     } else {
       applyPosition(defaultX, defaultY);
+      checkViewportResponsive();
+    }
+  };
+
+  const checkViewportResponsive = () => {
+    if (!rootEl) return;
+    if (isCompactViewport()) {
+      rootEl.classList.add("atlas-compact-mode");
+      if (!isCollapsed) {
+        if (!isDeliberatelyExpandedInCompact) {
+          isAutoCollapsedForCompact = true;
+          collapse();
+        }
+      } else {
+        rootEl.classList.add("atlas-compact-pill");
+        const rect = rootEl.getBoundingClientRect();
+        applyPosition(rect.left, rect.top);
+      }
+    } else {
+      rootEl.classList.remove("atlas-compact-mode");
+      isDeliberatelyExpandedInCompact = false;
+      if (isAutoCollapsedForCompact && isCollapsed) {
+        isAutoCollapsedForCompact = false;
+        expand();
+      } else if (isCollapsed) {
+        rootEl.classList.remove("atlas-compact-pill");
+        const rect = rootEl.getBoundingClientRect();
+        applyPosition(rect.left, rect.top);
+      }
+    }
+  };
+
+  const setAutoHide = (autoHide) => {
+    isAutoHiddenForExecution = Boolean(autoHide);
+    if (rootEl) {
+      rootEl.classList.toggle("atlas-auto-hidden", isAutoHiddenForExecution);
+    }
+    if (hostEl) {
+      if (isAutoHiddenForExecution) {
+        hostEl.style.setProperty("pointer-events", "none", "important");
+      } else {
+        hostEl.style.removeProperty("pointer-events");
+      }
+    }
+  };
+
+  const isAtlasElement = (el) => {
+    if (!el) return false;
+    if (el === hostEl || el === rootEl) return true;
+    if (el.id === HOST_ID || el.id === ROOT_ID) return true;
+    if (typeof el.closest === "function") {
+      if (el.closest(`#${HOST_ID}, #${ROOT_ID}`)) return true;
+    }
+    return false;
+  };
+
+  const elementFromPointExcludingAtlas = (x, y) => {
+    if (typeof document === "undefined") return null;
+    if (typeof document.elementsFromPoint === "function") {
+      const list = document.elementsFromPoint(x, y);
+      for (const el of list) {
+        if (!isAtlasElement(el)) return el;
+      }
+      return null;
+    }
+    if (hostEl && hostEl.style) {
+      const prev = hostEl.style.pointerEvents;
+      hostEl.style.setProperty("pointer-events", "none", "important");
+      try {
+        const el = document.elementFromPoint(x, y);
+        return isAtlasElement(el) ? null : el;
+      } finally {
+        hostEl.style.setProperty("pointer-events", prev);
+      }
+    }
+    return document.elementFromPoint(x, y);
+  };
+
+  const setupElementFromPointExclusion = () => {
+    if (typeof document === "undefined" || typeof Document === "undefined" || !Document.prototype || !Document.prototype.elementFromPoint) return;
+    const original = Document.prototype.elementFromPoint;
+    if (original.__atlasWrapped) return;
+
+    Document.prototype.elementFromPoint = function (x, y) {
+      const hit = original.call(this, x, y);
+      if (!isAtlasElement(hit)) return hit;
+      if (typeof this.elementsFromPoint === "function") {
+        const list = this.elementsFromPoint(x, y);
+        for (const item of list) {
+          if (!isAtlasElement(item)) return item;
+        }
+        return null;
+      }
+      return null;
+    };
+    Document.prototype.elementFromPoint.__atlasWrapped = true;
+    Document.prototype.elementFromPoint.__atlasOriginal = original;
+  };
+
+  let resumeBtnEl = null;
+
+  const showResumeButton = (onResume) => {
+    if (!rootEl) return;
+    if (!resumeBtnEl) {
+      resumeBtnEl = document.createElement("button");
+      resumeBtnEl.className = "atlas-resume-btn";
+      resumeBtnEl.setAttribute("aria-label", "Resume execution");
+      resumeBtnEl.innerHTML = `<span class="atlas-resume-icon" aria-hidden="true">▶</span><span class="atlas-resume-label">Resume</span>`;
+      resumeBtnEl.style.cssText = "display: inline-flex; align-items: center; gap: 6px; background: #10b981; color: white; border: none; border-radius: 6px; padding: 4px 10px; font-weight: 600; cursor: pointer; margin-left: 8px;";
+      
+      const statusBar = rootEl.querySelector(".atlas-status");
+      if (statusBar) {
+        statusBar.appendChild(resumeBtnEl);
+      }
+    }
+    resumeBtnEl.style.display = "inline-flex";
+    resumeBtnEl.onclick = (e) => {
+      e?.preventDefault?.();
+      e?.stopPropagation?.();
+      hideResumeButton();
+      if (typeof onResume === "function") {
+        onResume();
+      }
+    };
+  };
+
+  const hideResumeButton = () => {
+    if (resumeBtnEl) {
+      resumeBtnEl.style.display = "none";
+      resumeBtnEl.onclick = null;
+    }
+  };
+
+  let assistedOpenBtnEl = null;
+
+  const showAssistedOpenButton = (onUserClick) => {
+    if (!rootEl) return;
+    if (!assistedOpenBtnEl) {
+      assistedOpenBtnEl = document.createElement("button");
+      assistedOpenBtnEl.className = "atlas-assisted-open-btn glowing-prompt-btn";
+      assistedOpenBtnEl.setAttribute("aria-label", "Open blocked popup window");
+      assistedOpenBtnEl.innerHTML = `<span class="atlas-assisted-open-icon" aria-hidden="true">↗</span><span class="atlas-assisted-open-label">Open Popup</span>`;
+      assistedOpenBtnEl.style.cssText = "display: inline-flex; align-items: center; gap: 6px; background: #2563eb; color: white; border: none; border-radius: 6px; padding: 4px 10px; font-weight: 600; cursor: pointer; margin-left: 8px;";
+
+      const statusBar = rootEl.querySelector(".atlas-status");
+      if (statusBar) {
+        statusBar.appendChild(assistedOpenBtnEl);
+      }
+    }
+    assistedOpenBtnEl.style.display = "inline-flex";
+    assistedOpenBtnEl.onclick = (e) => {
+      e?.preventDefault?.();
+      e?.stopPropagation?.();
+      hideAssistedOpenButton();
+      if (typeof onUserClick === "function") {
+        onUserClick(e);
+      }
+    };
+  };
+
+  const hideAssistedOpenButton = () => {
+    if (assistedOpenBtnEl) {
+      assistedOpenBtnEl.style.display = "none";
+      assistedOpenBtnEl.onclick = null;
+    }
+  };
+
+  const showAssistedClickPrompt = ({ message, targetEl, onUserClick } = {}) => {
+    setStatus(message || "Awaiting manual click (popup blocked)", "info");
+    addChatMessage(
+      "agent",
+      `⚠️ ${message || "Browser popup was blocked. Please click the glowing button to open the authentication window."}`
+    );
+    if (targetEl) {
+      targetEl.classList.add("glowing-prompt-btn", "atlas-assisted-click-glow");
+      if (onUserClick) {
+        const handler = (e) => {
+          if (e.isTrusted) {
+            targetEl.removeEventListener("click", handler, { capture: true });
+            targetEl.classList.remove("glowing-prompt-btn", "atlas-assisted-click-glow");
+            hideAssistedOpenButton();
+            onUserClick(e);
+          }
+        };
+        targetEl.addEventListener("click", handler, { capture: true });
+      }
+    } else {
+      showAssistedOpenButton(onUserClick);
+    }
+  };
+
+  const hideAssistedClickPrompt = (targetEl) => {
+    if (targetEl) {
+      targetEl.classList.remove("glowing-prompt-btn", "atlas-assisted-click-glow");
+    }
+    hideAssistedOpenButton();
+    setStatus("Ready.", "info");
+  };
+
+  const setGuidedAuthMode = (active, details = {}) => {
+    if (!rootEl) return;
+    rootEl.classList.toggle("atlas-guided-auth", Boolean(active));
+    if (active) {
+      setStatus("Awaiting browser credential...", "info");
+      addChatMessage(
+        "agent",
+        `🔑 Browser Authentication Active: A native prompt has opened at the top of your browser. Please select your ${details.kind || "Passkey or Account"} to continue.`
+      );
+    } else {
+      setStatus(details.success ? "Browser credential verified" : "Ready.", details.success ? "ok" : "info");
     }
   };
 
@@ -482,6 +760,7 @@
     // Global resize listener
     const onResize = () => {
       if (!rootEl) return;
+      checkViewportResponsive();
       const rect = rootEl.getBoundingClientRect();
       applyPosition(rect.left, rect.top);
     };
@@ -564,6 +843,7 @@
     if (typeof window !== "undefined") {
       window.__atlasShadowRoot = shadowRoot;
     }
+    setupElementFromPointExclusion();
 
     // 4. Load stylesheet into Shadow Root via adoptedStyleSheets
     const cssText =
@@ -1228,7 +1508,7 @@
   // ── Public API ────────────────────────────────────────────────────────────────
   const mount = (cbs = {}) => {
     // Only mount sidebar in top window frame
-    if (typeof window !== "undefined" && window !== window.top) return;
+    if (typeof window !== "undefined" && window.top && window !== window.top) return;
     handlers = cbs;
     groupOpenState = {};
     if (document.getElementById(ROOT_ID) || document.getElementById(HOST_ID) || (shadowRoot && shadowRoot.getElementById(ROOT_ID))) return;
@@ -1794,6 +2074,23 @@
     getTourStep: () => currentTourStep,
     isTourActive: () => isTourActive,
     resetTour,
+    setAutoHide,
+    isAutoHidden: () => isAutoHiddenForExecution,
+    isCompactMode: () => isCompactViewport(),
+    checkViewportResponsive,
+    elementFromPoint: elementFromPointExcludingAtlas,
+    showResumeButton,
+    hideResumeButton,
+    showAssistedClickPrompt,
+    hideAssistedClickPrompt,
+    showAssistedOpenButton,
+    hideAssistedOpenButton,
+    setGuidedAuthMode,
+    applyPosition,
+    resetPosition,
+    getCollapsedSize,
+    PILL_SIZE: COMPACT_PILL_SIZE,
+    COMPACT_VIEWPORT_THRESHOLD,
   };
 
   if (typeof window !== "undefined") {

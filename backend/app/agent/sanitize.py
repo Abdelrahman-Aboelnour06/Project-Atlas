@@ -1,6 +1,7 @@
 import copy
 import re
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
+from urllib.parse import urlsplit, urlunsplit
 
 MAX_TEXT_LENGTH = 200
 
@@ -179,3 +180,54 @@ def trim_log_payload(command: str, action_response: dict) -> dict:
         "target_element": action_response.get("element_id") if isinstance(action_response, dict) else None,
         "status": action_response.get("status") if isinstance(action_response, dict) else None
     }
+
+
+# ── URL & Token Redaction (Milestone 2 / Track R2 / §H10) ────────────────────
+
+TOKEN_SANITIZE_REGEX = re.compile(r'(?i)\b(?:access_token|code|token)=[^&\s]+')
+
+
+def redact_url(url: Optional[str]) -> str:
+    """
+    Strips query parameters, hash fragments, and embedded basic authentication credentials
+    from a URL to prevent sensitive tokens, passwords, or session state from leaking
+    into logs, telemetry, LLM prompts, or persistence stores.
+
+    Example:
+      'https://admin:pass@auth.example.com:8443/oauth/authorize?code=xyz#step' -> 'https://auth.example.com:8443/oauth/authorize'
+    """
+    if not url or not isinstance(url, str):
+        return ""
+    try:
+        parsed = urlsplit(url)
+        host = parsed.hostname or ""
+        if ":" in host:
+            host = f"[{host}]"
+        netloc = f"{host}:{parsed.port}" if parsed.port else host
+        return urlunsplit((parsed.scheme, netloc, parsed.path, "", ""))
+    except Exception:
+        clean = url.split("?")[0].split("#")[0]
+        return re.sub(r'://[^/@]+@', '://', clean)
+
+
+def sanitize_tokens(text: Optional[str]) -> str:
+    """
+    Replaces sensitive credential parameters (code=..., access_token=..., token=...)
+    in query strings, URLs, or arbitrary text with [REDACTED].
+    """
+    if not text or not isinstance(text, str):
+        return "" if text is None else str(text)
+    return TOKEN_SANITIZE_REGEX.sub("[REDACTED]", text)
+
+
+sanitize_url_tokens = sanitize_tokens
+
+
+def cap_title(title: Optional[str], max_chars: int = 80) -> str:
+    """
+    Caps page or window title to max_chars (default 80) to avoid prompt bloat
+    and context window exhaustion across agent perception loops.
+    """
+    if not title or not isinstance(title, str):
+        return ""
+    return title.strip()[:max_chars]

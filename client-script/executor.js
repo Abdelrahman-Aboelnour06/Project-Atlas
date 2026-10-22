@@ -29,6 +29,15 @@ const ensureHighlightStyleInjected = () => {
       transition: box-shadow 0.2s ease, outline 0.2s ease;
       border-radius: 6px;
     }
+    .glowing-prompt-btn, .atlas-assisted-click-glow {
+      box-shadow: 0 0 12px rgba(245, 158, 11, 0.6) !important;
+      animation: pulse-glow 1.8s infinite !important;
+    }
+    @keyframes pulse-glow {
+      0% { box-shadow: 0 0 6px rgba(245, 158, 11, 0.4); }
+      50% { box-shadow: 0 0 18px rgba(245, 158, 11, 0.9); }
+      100% { box-shadow: 0 0 6px rgba(245, 158, 11, 0.4); }
+    }
   `
     document.head.appendChild(style)
 }
@@ -76,7 +85,25 @@ const dispatchMouseSequence = (el, detail = 1) => {
     el.dispatchEvent(new MouseEvent('click', eventInit));
 };
 
+let lastActionElement = null;
+
+const getLastActionElement = () => lastActionElement;
+const setLastActionElement = (el) => { lastActionElement = el; };
+
+const checkAndArmTargetBlank = (link) => {
+    if (!link) return;
+    const target = (link.target || (typeof link.getAttribute === 'function' && link.getAttribute('target')) || '').toLowerCase().trim();
+    if (target === '_blank' || target === '_new') {
+        if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+            try {
+                chrome.runtime.sendMessage({ type: "ATLAS_ARM_CAUSAL_WINDOW", windowMs: 3000 });
+            } catch (_) {}
+        }
+    }
+};
+
 const doClick = (el) => {
+    lastActionElement = el;
     scrollToElement(el);
     glow(el);
     el.focus();
@@ -85,6 +112,9 @@ const doClick = (el) => {
 
     // If this element or a parent/child is an anchor with href, activate it
     const link = el.tagName === 'A' ? el : (el.closest('a[href]') || el.querySelector('a[href]'));
+    if (link) {
+        checkAndArmTargetBlank(link);
+    }
     if (link && link !== el && link.href) {
         link.click();
         return;
@@ -98,6 +128,7 @@ const doClick = (el) => {
 };
 
 const doOpen = async (el) => {
+    lastActionElement = el;
     scrollToElement(el);
     glow(el);
     el.focus();
@@ -146,6 +177,9 @@ const doOpen = async (el) => {
 
     // 4. If anchor with href — navigate directly (most reliable for links)
     const link = el.tagName === 'A' ? el : (el.closest('a[href]') || el.querySelector('a[href]'));
+    if (link) {
+        checkAndArmTargetBlank(link);
+    }
     if (link && link.href) {
         link.click();
         return;
@@ -685,6 +719,11 @@ const execute = async (actionResponse, options = {}) => {
         }
     }
 
+    const isInteractingAction = ['click', 'open', 'double_click', 'dblclick', 'triple_click', 'tripleclick', 'fill', 'select_option', 'set_checkbox', 'set_radio', 'press_key', 'upload_file'].includes(action);
+    if (isInteractingAction && typeof window !== 'undefined') {
+        window.AtlasSidebar?.setAutoHide?.(true);
+    }
+
     try {
         let clickCount = actionResponse.click_count;
         if (!clickCount && action === 'click') {
@@ -757,6 +796,10 @@ const execute = async (actionResponse, options = {}) => {
         }
     } catch (err) {
         return { ok: false, message: `Failed to perform action: ${err.message}` };
+    } finally {
+        if (isInteractingAction && typeof window !== 'undefined') {
+            window.AtlasSidebar?.setAutoHide?.(false);
+        }
     }
     return { ok: true, message: actionResponse.message };
 };
@@ -790,6 +833,122 @@ const executeBatch = async (steps, options = {}) => {
     return report;
 };
 
+const installPopupBlockerHook = (targetWindow = typeof window !== 'undefined' ? window : null) => {
+    if (!targetWindow || !targetWindow.open) return;
+    if (targetWindow.open.__atlasWrapped) return targetWindow.open;
+
+    const originalOpen = targetWindow.open;
+    const wrappedOpen = function (url, target, features) {
+        let win = null;
+        let thrownErr = null;
+        try {
+            win = originalOpen.apply(this, arguments);
+        } catch (err) {
+            thrownErr = err;
+        }
+
+        const isBlocked = thrownErr !== null || !win || win.closed || typeof win.closed === 'undefined';
+        if (isBlocked) {
+            try {
+                if (typeof targetWindow.dispatchEvent === 'function' && typeof CustomEvent !== 'undefined') {
+                    targetWindow.dispatchEvent(new CustomEvent('__atlas_popup_blocked__', {
+                        detail: { url, target, features, error: thrownErr?.message, timestamp: Date.now() }
+                    }));
+                }
+            } catch (_) {}
+            if (thrownErr) throw thrownErr;
+        }
+        return win;
+    };
+
+    wrappedOpen.__atlasWrapped = true;
+    wrappedOpen.__atlasOriginal = originalOpen;
+    targetWindow.open = wrappedOpen;
+    return wrappedOpen;
+};
+
+const installNativeAuthHook = (targetNavigator = typeof navigator !== 'undefined' ? navigator : null) => {
+    if (!targetNavigator || !targetNavigator.credentials) return;
+    if (targetNavigator.credentials.get?.__atlasWrapped) return;
+
+    const originalGet = targetNavigator.credentials.get.bind(targetNavigator.credentials);
+    const originalCreate = targetNavigator.credentials.create ? targetNavigator.credentials.create.bind(targetNavigator.credentials) : null;
+
+    const wrappedGet = async function (options) {
+        const isFedCM = Boolean(options?.identity?.providers);
+        const isWebAuthn = Boolean(options?.publicKey);
+        const kind = isFedCM ? 'FedCM (Federated ID)' : isWebAuthn ? 'Passkey / WebAuthn' : 'Browser Credential';
+
+        if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof CustomEvent !== 'undefined') {
+            try {
+                window.dispatchEvent(new CustomEvent('__atlas_native_auth_start__', {
+                    detail: { action: 'get', kind, timestamp: Date.now() }
+                }));
+            } catch (_) {}
+        }
+
+        try {
+            const cred = await originalGet(options);
+            if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof CustomEvent !== 'undefined') {
+                try {
+                    window.dispatchEvent(new CustomEvent('__atlas_native_auth_end__', {
+                        detail: { action: 'get', kind, success: true, timestamp: Date.now() }
+                    }));
+                } catch (_) {}
+            }
+            return cred;
+        } catch (err) {
+            if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof CustomEvent !== 'undefined') {
+                try {
+                    window.dispatchEvent(new CustomEvent('__atlas_native_auth_end__', {
+                        detail: { action: 'get', kind, success: false, error: err?.name || err?.message, timestamp: Date.now() }
+                    }));
+                } catch (_) {}
+            }
+            throw err;
+        }
+    };
+
+    wrappedGet.__atlasWrapped = true;
+    targetNavigator.credentials.get = wrappedGet;
+
+    if (originalCreate) {
+        const wrappedCreate = async function (options) {
+            const kind = options?.publicKey ? 'Passkey Registration' : 'Browser Credential Creation';
+            if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof CustomEvent !== 'undefined') {
+                try {
+                    window.dispatchEvent(new CustomEvent('__atlas_native_auth_start__', {
+                        detail: { action: 'create', kind, timestamp: Date.now() }
+                    }));
+                } catch (_) {}
+            }
+
+            try {
+                const cred = await originalCreate(options);
+                if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof CustomEvent !== 'undefined') {
+                    try {
+                        window.dispatchEvent(new CustomEvent('__atlas_native_auth_end__', {
+                            detail: { action: 'create', kind, success: true, timestamp: Date.now() }
+                        }));
+                    } catch (_) {}
+                }
+                return cred;
+            } catch (err) {
+                if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof CustomEvent !== 'undefined') {
+                    try {
+                        window.dispatchEvent(new CustomEvent('__atlas_native_auth_end__', {
+                            detail: { action: 'create', kind, success: false, error: err?.name || err?.message, timestamp: Date.now() }
+                        }));
+                    } catch (_) {}
+                }
+                throw err;
+            }
+        };
+        wrappedCreate.__atlasWrapped = true;
+        targetNavigator.credentials.create = wrappedCreate;
+    }
+};
+
 const executorApi = {
     execute,
     executeStep,
@@ -808,6 +967,11 @@ const executorApi = {
     isCredentialField,
     requestNativeCredentials,
     TOKEN_REGEX,
+    checkAndArmTargetBlank,
+    getLastActionElement,
+    setLastActionElement,
+    installPopupBlockerHook,
+    installNativeAuthHook,
 };
 if (typeof window !== 'undefined') {
     window.AtlasExecutor = executorApi;

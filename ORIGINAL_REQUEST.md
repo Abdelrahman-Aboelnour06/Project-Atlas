@@ -582,3 +582,89 @@ Wave 4 Iteration 2 implementation and verification are 100% complete:
 6. Package produced: `dist/project-atlas-extension.zip` verified clean MV3 with 0 test leaks.
 
 Please coordinate the final Victory Audit certification.
+
+
+## 2026-10-22T14:08:34Z
+
+# Teamwork Project Prompt — Final
+
+> Status: Launched
+> Goal: Delegated to teamwork_preview
+> Requested team: Full 7-agent multi-agent team (A0 Lead/Integrator, A1 Tab Registry, A2 Goal Handoff, A3 Orchestration/UX, A4 Backend, A5 Tests/Fixtures, A6 Independent Red Team & Reviewer)
+
+Project Atlas: Multi-Tab & Popup-Window Awareness (v0.2.0 → v0.3.0) — enable Atlas to seamlessly track, adopt, orchestrate, and complete multi-step goals across popup windows (OAuth/login) and new tabs (`target="_blank"`) while upholding 100% universal web compatibility, closed Shadow DOM encapsulation, and strict verifier rails.
+
+Working directory: /media/abdelrahman-abdelrahman/Acer/Users/abdel/OneDrive/Desktop/Hackthon/shit2
+Integrity mode: benchmark
+
+## Verification Resources
+- `ci/verify_all_tests_run.py`: AST CI Gatekeeper verifying 100% test file execution and enforcing quality floors.
+- `client-script/test_tab_registry.js`: Unit test suite verifying causal window adoption, idempotent registration, SW restart recovery, and fencing epochs.
+- `client-script/test_goal_handoff.js`: Unit test suite verifying session-keyed storage CAS writes, background message proxying, and URL redaction.
+- `client-script/test_multi_tab_orchestration.js`: Unit suite verifying compact pill UI (<700px), assisted click on popup blockers, and completion detectors.
+- `backend/tests/test_multi_tab_contracts.py` & `test_multi_tab_reasoning.py`: Contract schema validation (`contracts/goal_step.*.schema.json`), capability gating, and multi-tab golden replays.
+- `ci/e2e/run_multi_tab_suite.js`: Playwright E2E suite executing against the unpacked release zip (`dist/atlas`) across popup and multi-tab fixtures.
+
+---
+
+## Requirements
+
+### R1. Tab Registry, Causal Adoption & Fenced Leases (A1)
+Implement `client-script/tab-registry.js` and update `background.js` to manage multi-tab session lifecycles.
+- **Causal Adoption (H7)**: Adopt child windows/tabs created within a 3s causal window (`expectChildUntil`) triggered by an Atlas action or trusted user click. Unadopted children trigger notification only.
+- **Pull-Based Resume (H1)**: Injected content scripts call `ATLAS_HELLO` on ready; background returns session state, lease epoch, and pending resume. Eliminate push message race conditions.
+- **Fenced Execution Lease (H2/H3)**: Strictly one tab holds the execution lease per session. Leases increment `epoch` on grant; stale epochs are rejected. Lease heartbeat every 5s with 20s TTL for stale lease reclamation.
+- **Durable Serialized State (H4)**: Store all session metadata in `chrome.storage.session` with an asynchronous write mutex and `rev` compare-and-set guards. Ensure survival across Service Worker suspension/restart.
+- **Opener Health & Reconnect (H12)**: Validate opener tab health via `tabs.get` before returning; reload discarded openers and remap IDs on `tabs.onReplaced`.
+
+### R2. Network Path Isolation, Schema Contracts & URL Redaction (A2, A4)
+Establish secure, CORS-immune communication and strictly typed contracts.
+- **Single Network Path (H5)**: Route all `/v1/chat/goal_step` calls through the background script (`ATLAS_GOAL_STEP`). Remove direct `fetch` calls from content scripts to eliminate CORS and Local Network Access blocks on external websites.
+- **Contract Schemas (H14)**: Generate and check JSON schemas (`contracts/goal_step.request.schema.json`, `contracts/goal_step.response.schema.json`) from Pydantic models. Support `contract_version: 2` and `capabilities: ["switch_tab", "tab_context", "assisted_click"]`.
+- **URL & Secret Redaction (H10)**: Strip query parameters and hash fragments on client and server before logging, prompts, or persistence. Cap titles at 80 characters and sanitize tokens (`code=`, `access_token=`).
+- **Budgets & Settle Windows (H9)**: Replace rigid hop counts with `max_llm_calls` and `maxHandoffs=4`. Wait for navigations to settle (1s quiet, `readyState === "complete"`) so redirects do not consume LLM hops.
+
+### R3. In-Page Orchestration, Compact UI & Popup-Blocker Resilience (A3)
+Adapt the extension UI and execution loop to small popup windows.
+- **Small-Window Compact UI (H11)**: When viewport width < 700px, collapse sidebar into a 56px draggable pill in the bottom-right corner. Automatically hide/collapse during click/fill execution and ensure Atlas nodes are excluded from `elementFromPoint` hit-testing.
+- **Popup-Blocker Strategy & Assisted Click (H6)**: Handle `target="_blank"` anchors via `chrome.tabs.create`. For JS `window.open`, intercept blocked calls and provide an "assisted click" glowing prompt requesting a user gesture.
+- **Completion Detection Without Blind Trust (H8)**: Never treat popup closure alone as goal completion. Require verifiable evidence in the opener DOM (semantic diff showing auth change) or prompt the user if ambiguous.
+- **Yield to Human Agency (H21)**: Pause autonomous execution if trusted user input is detected in the lease tab.
+- **Browser-Native Auth Guidance (H17)**: Detect `navigator.credentials.get/create` (FedCM/passkeys) and enter guided mode instructing the user.
+
+### R4. Backend Multi-Tab Reasoning & Verifier Rails (A4)
+Extend backend models and verifiers to handle multi-tab contexts without violating sacred rails.
+- **TabContext Modeling**: Ingest `tab_context` (`self_tab_id`, `opener_tab_id`, `tabs[]`, `resume_reason`, `close_hint`, `origin_confirmed`).
+- **Capability Gating**: Only emit `switch_tab` actions when the client declares `"switch_tab"` in `capabilities`. Validate target tab ID against active session tabs.
+- **Immutable Verifier Rails**: Maintain Rules 4, 5, and 6 in `backend/app/agent/verifier.py` with zero diff lines.
+- **Feature Flag / Kill Switch (H15)**: Provide `multiTab.enabled` in `/v1/config` allowing instant backend kill-switch fallback to single-tab behavior.
+
+### R5. Extension Packaging, Universality & Red Team Governance (A0, A6)
+- **Universal Rule Non-Negotiable**: Zero domain hardcoding (`amazon.com`, `google.com`, `window.location.hostname`). All heuristics must use standard W3C DOM and ARIA semantics.
+- **Unified Packaging Manifest (H13)**: Define `client-script/extension-files.json` as the single source of truth for packaging, excluding dev/test artifacts. Run E2E suites against the unpacked release zip.
+- **Independent Red Team & Reviewer (A6)**: Validate against adversarial threat models (pop-unders, phishing lookalikes, popup storms, prompt injection in titles). A6 review approval required for all merges.
+
+---
+
+## Acceptance Criteria
+
+### Functional & Multi-Tab Life-Cycle
+- [ ] Child popups and `_blank` tabs opened within the 3s causal window are adopted into the session; unadopted popups receive notification only.
+- [ ] Content scripts resume execution via `ATLAS_HELLO` pull protocol without missing push messages.
+- [ ] Only one tab holds the execution lease; stale epochs are rejected with `STALE_EPOCH`.
+- [ ] Service Worker termination (CDP `stopAllWorkers`) mid-handoff recovers cleanly from `chrome.storage.session`.
+- [ ] Closing a popup without opener DOM changes does NOT claim goal success.
+
+### Security, Privacy & Invariants
+- [ ] Verifier Rules 4, 5, and 6 in `backend/app/agent/verifier.py` remain 100% untouched (0 diff lines).
+- [ ] Zero domain or site-specific hardcoding across all newly added code (`git grep` clean).
+- [ ] Query strings (`code=`, `token=`) and hash fragments are stripped before transmission and logging.
+- [ ] Cross-origin popup handoff prompts for explicit user origin confirmation prior to credential auto-fill.
+- [ ] All backend traffic routes through background service worker (zero content-script fetch to backend).
+
+### Quality Gates, Packaging & Coverage
+- [ ] All new unit test suites (`test_tab_registry.js`, `test_goal_handoff.js`, `test_multi_tab_orchestration.js`, `test_multi_tab_contracts.py`, `test_multi_tab_reasoning.py`) pass 100% green.
+- [ ] `ci/e2e/run_multi_tab_suite.js` passes cleanly against the packaged zip archive.
+- [ ] Axe-core accessibility audit confirms 0 critical and 0 serious violations in popup pill mode (<700px).
+- [ ] CI Gatekeeper (`python3 ci/verify_all_tests_run.py`) runs 100% of discovered test files with zero omissions and passes with elevated floors (Backend >= 782, JS >= 814).
+- [ ] Three consecutive clean regression runs across the full repository test suite.
