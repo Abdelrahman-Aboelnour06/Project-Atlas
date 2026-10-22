@@ -3,190 +3,285 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Clinical Patient Intake — CareLink Health Systems</title>
+    <title>Clinical Intake & Triage — CareLink Health Enterprise</title>
     <style>
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
       :root {
-        --primary: #1a56a0; --primary-dark: #0e3d7a; --primary-lt: #e8f0fb;
-        --secondary: #107040; --danger: #b91c1c; --bg-page: #f8fafc;
-        --card-bg: #ffffff; --border-color: #cbd5e1; --text-main: #0f172a;
-        --text-muted: #475569; --radius: 8px; --shadow: 0 4px 12px rgba(0,0,0,0.06);
+        --primary: #0e5a9e; --primary-dark: #093f70; --primary-lt: #e0f2fe;
+        --secondary: #059669; --danger: #dc2626; --warning: #d97706;
+        --bg-page: #f0fdf4; --card-bg: #ffffff; --border-color: #cbd5e1;
+        --text-main: #0f172a; --text-muted: #475569; --radius: 10px;
+        --shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
       }
       body {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        background: var(--bg-page); color: var(--text-main); line-height: 1.5; padding: 30px 15px;
+        background: #f8fafc; color: var(--text-main); line-height: 1.6; padding: 40px 16px;
       }
       .container {
-        max-width: 680px; margin: 0 auto; background: var(--card-bg); border-radius: var(--radius);
-        padding: 36px 32px; box-shadow: var(--shadow); border: 1px solid var(--border-color);
+        max-width: 760px; margin: 0 auto; background: var(--card-bg); border-radius: var(--radius);
+        padding: 40px; box-shadow: var(--shadow); border: 1px solid var(--border-color);
       }
-      header { text-align: center; margin-bottom: 24px; }
-      h1 { font-size: 24px; color: var(--primary-dark); margin-bottom: 8px; }
-      p.subtitle { color: var(--text-muted); font-size: 14px; }
-      .nav-links { display: flex; gap: 12px; justify-content: center; margin-bottom: 20px; flex-wrap: wrap; }
-      .nav-links a { color: var(--primary); text-decoration: none; font-size: 14px; font-weight: 500; }
+      header { text-align: center; margin-bottom: 30px; border-bottom: 1px solid #e2e8f0; padding-bottom: 20px; }
+      .badge-hipaa {
+        display: inline-flex; align-items: center; gap: 6px; background: #ecfdf5; color: #047857;
+        font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; margin-bottom: 12px;
+        border: 1px solid #a7f3d0; text-transform: uppercase; letter-spacing: 0.5px;
+      }
+      h1 { font-size: 26px; color: #0f172a; margin-bottom: 8px; font-weight: 800; }
+      p.subtitle { color: var(--text-muted); font-size: 15px; }
+      .nav-links { display: flex; gap: 14px; justify-content: center; margin-bottom: 24px; flex-wrap: wrap; }
+      .nav-links a { color: var(--primary); text-decoration: none; font-size: 14px; font-weight: 600; }
       .nav-links a:hover { text-decoration: underline; }
-      fieldset { border: 1px solid var(--border-color); border-radius: var(--radius); padding: 20px; margin-bottom: 24px; }
-      legend { font-weight: 700; font-size: 15px; color: var(--primary-dark); padding: 0 8px; }
-      .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-      .form-group { margin-bottom: 16px; }
-      .form-group.full-width { grid-column: 1 / -1; }
-      label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 6px; }
-      input[type="text"], input[type="email"], input[type="tel"], select, textarea {
-        width: 100%; padding: 10px 14px; border: 1px solid var(--border-color); border-radius: var(--radius);
-        font-size: 14px; outline: none; transition: border-color 0.15s ease; font-family: inherit;
+      
+      .fieldset-card {
+        border: 1px solid #e2e8f0; border-radius: var(--radius); padding: 24px; margin-bottom: 24px;
+        background: #ffffff;
       }
-      input:focus, select:focus, textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-lt); }
-      .checkbox-group { display: flex; align-items: flex-start; gap: 12px; margin: 20px 0; padding: 16px; background: #f1f5f9; border-radius: var(--radius); }
-      .checkbox-group input { margin-top: 3px; width: 18px; height: 18px; cursor: pointer; }
-      .checkbox-group label { font-weight: normal; font-size: 13px; color: var(--text-main); margin-bottom: 0; line-height: 1.4; }
+      legend {
+        font-weight: 700; font-size: 16px; color: var(--primary-dark); padding: 0 10px;
+        display: flex; align-items: center; gap: 8px;
+      }
+      .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+      @media (max-width: 600px) { .grid-2 { grid-template-columns: 1fr; } }
+      .form-group { margin-bottom: 18px; }
+      label { display: block; font-weight: 600; font-size: 14px; margin-bottom: 6px; color: #334155; }
+      label .req { color: var(--danger); }
+      input[type="text"], input[type="email"], input[type="tel"], input[type="date"], select, textarea {
+        width: 100%; padding: 11px 14px; border: 1px solid var(--border-color); border-radius: 6px;
+        font-size: 14px; color: #0f172a; outline: none; transition: all 0.2s ease;
+      }
+      input:focus, select:focus, textarea:focus {
+        border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-lt);
+      }
+      textarea { resize: vertical; min-height: 80px; }
+      
+      .radio-chips { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
+      .radio-chip {
+        display: flex; align-items: center; gap: 6px; border: 1px solid var(--border-color);
+        padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500;
+        transition: all 0.15s ease;
+      }
+      .radio-chip:hover { border-color: var(--primary); background: var(--primary-lt); }
+      .radio-chip input { margin: 0; cursor: pointer; }
+      
+      .checkbox-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin-top: 6px; }
+      .checkbox-item { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+      .checkbox-item input { width: 16px; height: 16px; cursor: pointer; }
+      
+      .consent-box {
+        background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 16px;
+        margin-bottom: 20px; font-size: 13px; color: var(--text-muted);
+      }
       .submit-btn {
-        width: 100%; padding: 14px; background: var(--primary); color: white; border: none;
-        border-radius: var(--radius); font-size: 16px; font-weight: 600; cursor: pointer;
-        transition: background 0.15s ease, opacity 0.15s ease;
+        width: 100%; padding: 14px; background: #0284c7; color: white; border: none;
+        border-radius: 8px; font-size: 16px; font-weight: 700; cursor: pointer;
+        transition: background 0.15s ease, transform 0.05s ease; box-shadow: 0 4px 6px -1px rgba(2, 132, 199, 0.2);
       }
       .submit-btn:disabled { background: #94a3b8; cursor: not-allowed; opacity: 0.7; }
-      .submit-btn:not(:disabled):hover { background: var(--primary-dark); }
-      .confirmation-banner {
+      .submit-btn:not(:disabled):hover { background: #0369a1; }
+      .submit-btn:not(:disabled):active { transform: translateY(1px); }
+      
+      #confirmation-panel {
         display: none; background: #ecfdf5; border: 1px solid #10b981; border-radius: var(--radius);
-        padding: 24px; text-align: center; margin-top: 20px;
+        padding: 24px; margin-top: 24px; text-align: center;
       }
-      .confirmation-banner h2 { color: var(--secondary); font-size: 20px; margin-bottom: 8px; }
-      .confirmation-banner p { color: var(--text-muted); font-size: 14px; }
+      #confirmation-panel h2 { color: #065f46; font-size: 20px; margin-bottom: 8px; }
+      #confirmation-panel p { color: var(--text-muted); font-size: 14px; margin-bottom: 12px; }
+      .booking-ref {
+        display: inline-block; font-family: monospace; font-size: 16px; font-weight: 700;
+        background: #d1fae5; color: #065f46; padding: 4px 12px; border-radius: 4px;
+      }
     </style>
   </head>
   <body>
     <div class="container">
       <header>
-        <div class="nav-links">
-          <a href="index.html">Home</a>
-          <a href="signup.html">Registration</a>
-          <a href="timetable.html">Timetable</a>
-          <a href="finance-statement.html">Finance Statement</a>
-          <a href="checkout.html">Checkout</a>
+        <div class="badge-hipaa">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+          HIPAA & HITRUST Certified Intake Portal
         </div>
-        <h1>Clinical Patient Intake</h1>
-        <p class="subtitle">CareLink Health Systems — Confidential Medical Intake &amp; Demographics</p>
+        <h1>Clinical Intake & Triage Assessment</h1>
+        <p class="subtitle">Secure, tokenized electronic patient admission and urgent care routing</p>
       </header>
 
+      <nav class="nav-links" aria-label="Enterprise Demos">
+        <a href="index.html">← Back to Hub</a>
+        <a href="financial-reconciliation.html">Financial Ledger Demo</a>
+        <a href="ecommerce-checkout.html">Procurement Checkout Demo</a>
+        <a href="finance-statement.html">Tabular Statement Demo</a>
+        <a href="checkout.html">Prescription Checkout Demo</a>
+      </nav>
+
       <form id="healthcare-intake-form" novalidate>
-        <!-- Section 1: Demographics & Sensitive PII -->
-        <fieldset>
-          <legend>1. Patient Demographics &amp; Identification</legend>
-          <div class="form-grid">
-            <div class="form-group full-width">
-              <label for="full-name">Legal Full Name *</label>
-              <input type="text" id="full-name" name="full_name" autocomplete="name" required placeholder="Jane Marie Doe" />
+        <!-- Demographics -->
+        <fieldset class="fieldset-card">
+          <legend>1. Patient Demographics & Identification</legend>
+          <div class="grid-2">
+            <div class="form-group">
+              <label for="patient-id">Medical Record Number (MRN) <span class="req">*</span></label>
+              <input type="text" id="patient-id" name="patient_id" placeholder="e.g. MRN-984210" required />
             </div>
             <div class="form-group">
-              <label for="patient-dob">Date of Birth (YYYY-MM-DD) *</label>
-              <input type="text" id="patient-dob" name="date_of_birth" autocomplete="bday" placeholder="1980-05-15" required />
+              <label for="patient-name">Legal Full Name <span class="req">*</span></label>
+              <input type="text" id="patient-name" name="full_name" placeholder="First Last" autocomplete="name" required />
+            </div>
+          </div>
+
+          <div class="grid-2">
+            <div class="form-group">
+              <label for="dob">Date of Birth <span class="req">*</span></label>
+              <input type="date" id="dob" name="dob" autocomplete="bday" required />
             </div>
             <div class="form-group">
-              <label for="patient-ssn">Social Security Number (SSN) *</label>
+              <label for="patient-ssn">Social Security Number (SSN) <span class="req">*</span></label>
               <input type="text" id="patient-ssn" name="ssn" autocomplete="off" placeholder="XXX-XX-XXXX" required />
             </div>
+          </div>
+
+          <div class="grid-2">
             <div class="form-group">
-              <label for="patient-email">Email Address *</label>
-              <input type="email" id="patient-email" name="email" autocomplete="email" required placeholder="patient@example.com" />
+              <label for="patient-email">Email Address <span class="req">*</span></label>
+              <input type="email" id="patient-email" name="email" autocomplete="email" placeholder="patient@example.com" required />
             </div>
             <div class="form-group">
-              <label for="patient-phone">Primary Phone *</label>
-              <input type="tel" id="patient-phone" name="phone" autocomplete="tel" required placeholder="(555) 019-2834" />
+              <label for="patient-phone">Phone Number <span class="req">*</span></label>
+              <input type="tel" id="patient-phone" name="phone" autocomplete="tel" placeholder="(555) 019-2834" required />
             </div>
-            <div class="form-group full-width">
-              <label for="patient-address">Street Address</label>
-              <input type="text" id="patient-address" name="address_line1" autocomplete="street-address" placeholder="742 Evergreen Terrace" />
+          </div>
+
+          <div class="grid-2">
+            <div class="form-group">
+              <label for="insurance-carrier">Primary Insurance Carrier <span class="req">*</span></label>
+              <select id="insurance-carrier" name="insurance_carrier" required>
+                <option value="">Select Carrier...</option>
+                <option value="blue-cross">Blue Cross Blue Shield</option>
+                <option value="aetna">Aetna Enterprise Health</option>
+                <option value="united">UnitedHealthcare Oxford</option>
+                <option value="cigna">Cigna Global</option>
+                <option value="medicare">Medicare Part B</option>
+              </select>
             </div>
             <div class="form-group">
-              <label for="patient-city">City</label>
-              <input type="text" id="patient-city" name="city" autocomplete="address-level2" placeholder="Springfield" />
-            </div>
-            <div class="form-group">
-              <label for="patient-zip">Postal / ZIP Code</label>
-              <input type="text" id="patient-zip" name="postal_code" autocomplete="postal-code" placeholder="97477" />
+              <label for="policy-number">Policy / Member ID <span class="req">*</span></label>
+              <input type="text" id="policy-number" name="policy_number" placeholder="e.g. INS-4482019-X" required />
             </div>
           </div>
         </fieldset>
 
-        <!-- Section 2: Clinical Medical History -->
-        <fieldset>
-          <legend>2. Clinical Medical History</legend>
+        <!-- Clinical Triage -->
+        <fieldset class="fieldset-card">
+          <legend>2. Clinical Triage & Urgency Evaluation</legend>
+          
           <div class="form-group">
-            <label for="primary-condition">Primary Diagnosis / Chronic Condition</label>
-            <select id="primary-condition" name="primary_condition">
-              <option value="">-- Select Condition --</option>
-              <option value="diabetes-t2">Type 2 Diabetes Mellitus</option>
-              <option value="hypertension">Essential Hypertension</option>
-              <option value="asthma">Chronic Asthma</option>
-              <option value="coronary">Coronary Artery Disease</option>
-              <option value="none">No Chronic Diagnosis</option>
+            <label for="clinical-dept">Consulting Specialty / Department <span class="req">*</span></label>
+            <select id="clinical-dept" name="department" required>
+              <option value="">Select Clinical Department...</option>
+              <option value="cardiology">Cardiology</option>
+              <option value="neurology">Neurology</option>
+              <option value="orthopedics">Orthopedics</option>
+              <option value="pulmonology">Pulmonology & Respiration</option>
+              <option value="telehealth-general">General Internal Medicine</option>
             </select>
           </div>
+
           <div class="form-group">
-            <label for="daily-medications">Current Daily Prescriptions &amp; Dosages</label>
-            <textarea id="daily-medications" name="daily_medications" rows="3" placeholder="e.g. Metformin 500mg twice daily, Lisinopril 10mg morning"></textarea>
+            <label>Urgency Level <span class="req">*</span></label>
+            <div class="radio-chips">
+              <label class="radio-chip">
+                <input type="radio" name="urgency" value="routine" checked /> Routine Checkup
+              </label>
+              <label class="radio-chip">
+                <input type="radio" name="urgency" value="urgent" /> Urgent (< 48 hrs)
+              </label>
+              <label class="radio-chip">
+                <input type="radio" name="urgency" value="immediate" /> Immediate Consult
+              </label>
+            </div>
           </div>
+
           <div class="form-group">
-            <label for="drug-allergies">Drug Allergies &amp; Sensitivities</label>
-            <input type="text" id="drug-allergies" name="drug_allergies" placeholder="e.g. Penicillin, Sulfa antibiotics" />
+            <label>Pre-existing Health Indicators</label>
+            <div class="checkbox-grid">
+              <label class="checkbox-item"><input type="checkbox" name="conditions" value="hypertension" /> Hypertension</label>
+              <label class="checkbox-item"><input type="checkbox" name="conditions" value="diabetes" /> Type 2 Diabetes</label>
+              <label class="checkbox-item"><input type="checkbox" name="conditions" value="asthma" /> Asthma / COPD</label>
+              <label class="checkbox-item"><input type="checkbox" name="conditions" value="allergies" /> Severe Drug Allergies</label>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="symptoms-desc">Primary Symptoms & Reason for Visit <span class="req">*</span></label>
+            <textarea id="symptoms-desc" name="symptoms" placeholder="Describe symptoms, onset, and current pain levels..." required></textarea>
           </div>
         </fieldset>
 
-        <!-- Section 3: Insurance & Emergency Contact -->
-        <fieldset>
-          <legend>3. Insurance Coverage &amp; Emergency Contact</legend>
-          <div class="form-grid">
+        <!-- Scheduling -->
+        <fieldset class="fieldset-card">
+          <legend>3. Preferred Consultation Slot</legend>
+          <div class="grid-2">
             <div class="form-group">
-              <label for="insurance-provider">Insurance Carrier</label>
-              <input type="text" id="insurance-provider" name="insurance_provider" placeholder="CareLink BlueShield Plan" />
+              <label for="consult-date">Preferred Date <span class="req">*</span></label>
+              <input type="date" id="consult-date" name="consult_date" required />
             </div>
             <div class="form-group">
-              <label for="policy-number">Policy / Member ID</label>
-              <input type="text" id="policy-number" name="policy_number" placeholder="CLM-9402851" />
-            </div>
-            <div class="form-group full-width">
-              <label for="emergency-contact">Emergency Contact (Name &amp; Phone)</label>
-              <input type="text" id="emergency-contact" name="emergency_contact" placeholder="Robert Doe — (555) 019-2835" />
+              <label for="consult-time">Available Window <span class="req">*</span></label>
+              <select id="consult-time" name="consult_time" required>
+                <option value="">Choose Time Window...</option>
+                <option value="09:00">09:00 AM – 10:00 AM</option>
+                <option value="11:30">11:30 AM – 12:30 PM</option>
+                <option value="14:00">02:00 PM – 03:00 PM</option>
+                <option value="16:30">04:30 PM – 05:30 PM</option>
+              </select>
             </div>
           </div>
         </fieldset>
 
-        <!-- Section 4: HIPAA Regulatory Consent & Submission -->
-        <div class="checkbox-group">
-          <input type="checkbox" id="consent-hipaa" name="consent_hipaa" required />
-          <label for="consent-hipaa">
-            I authorize CareLink Health Systems to process and store my protected health information under HIPAA regulations.
+        <!-- HIPAA Consent -->
+        <div class="consent-box">
+          <label class="checkbox-item" for="consent-hipaa">
+            <input type="checkbox" id="consent-hipaa" name="hipaa_consent" required />
+            <span>I authorize CareLink Health to process clinical data in accordance with HIPAA standards. All sensitive identifiers are tokenized client-side via Atlas Secret Vault.</span>
           </label>
         </div>
 
-        <button type="submit" id="submit-intake-btn" class="submit-btn" disabled>Submit Patient Intake</button>
+        <button type="submit" id="submit-intake-btn" class="submit-btn" disabled>Submit Triage Intake & Lock Appointment</button>
       </form>
 
-      <div id="intake-confirmation" class="confirmation-banner" role="status" aria-live="polite">
-        <h2>Intake Successfully Submitted</h2>
-        <p>Patient intake submitted successfully under HIPAA compliance. Reference: #CLH-2026-90412</p>
+      <div id="confirmation-panel" class="confirmation-banner" role="alert" aria-live="polite">
+        <h2>✓ Clinical Intake Confirmed</h2>
+        <p>Your triage assessment has been securely logged and dispatched to the attending physician.</p>
+        <div>Booking Reference: <span id="confirmed-ref" class="booking-ref">HLTH-2026-X892</span></div>
+        <p style="font-size: 13px; color: #065f46;">A confirmation receipt and encrypted telehealth meeting link have been generated.</p>
       </div>
     </div>
 
     <script>
       (function() {
-        const form = document.getElementById('healthcare-intake-form');
-        const consentCheckbox = document.getElementById('consent-hipaa');
-        const submitBtn = document.getElementById('submit-intake-btn');
-        const confirmationBanner = document.getElementById('intake-confirmation');
+        const today = new Date().toISOString().split("T")[0];
+        const dateInputs = document.querySelectorAll('input[type="date"]');
+        if (dateInputs[1]) dateInputs[1].value = today;
+
+        const form = document.getElementById("healthcare-intake-form");
+        const consentCheckbox = document.getElementById("consent-hipaa");
+        const submitBtn = document.getElementById("submit-intake-btn");
+        const confirmPanel = document.getElementById("confirmation-panel");
+        const refSpan = document.getElementById("confirmed-ref");
 
         function updateSubmitState() {
           submitBtn.disabled = !consentCheckbox.checked;
         }
 
-        consentCheckbox.addEventListener('change', updateSubmitState);
+        consentCheckbox.addEventListener("change", updateSubmitState);
 
-        form.addEventListener('submit', function(e) {
+        form.addEventListener("submit", function(e) {
           e.preventDefault();
           if (!consentCheckbox.checked) return;
-          form.style.display = 'none';
-          confirmationBanner.style.display = 'block';
+          const randId = "HLTH-" + Math.floor(100000 + Math.random() * 900000);
+          if (refSpan) refSpan.textContent = randId;
+          form.style.display = "none";
+          confirmPanel.style.display = "block";
         });
       })();
     </script>

@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Enterprise Procurement Checkout — NovaStore Global</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      :root {
+        --primary: #4f46e5; --primary-dark: #3730a3; --primary-lt: #eef2ff;
+        --border-color: #e5e7eb; --bg-page: #f9fafb; --card-bg: #ffffff;
+        --text-main: #111827; --text-muted: #6b7280; --radius: 8px;
+        --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: var(--bg-page); color: var(--text-main); line-height: 1.5; padding: 40px 16px;
+      }
+      .container {
+        max-width: 900px; margin: 0 auto; display: grid; grid-template-columns: 1fr 340px; gap: 24px;
+      }
+      @media (max-width: 768px) { .container { grid-template-columns: 1fr; } }
+      .main-column, .sidebar-column {
+        background: var(--card-bg); border-radius: var(--radius); padding: 28px;
+        box-shadow: var(--shadow); border: 1px solid var(--border-color); height: fit-content;
+      }
+      header { margin-bottom: 24px; border-bottom: 1px solid var(--border-color); padding-bottom: 16px; }
+      h1 { font-size: 22px; font-weight: 800; color: #1e1b4b; }
+      .nav-links { display: flex; gap: 12px; margin-top: 8px; }
+      .nav-links a { color: var(--primary); text-decoration: none; font-size: 13px; font-weight: 600; }
+      .nav-links a:hover { text-decoration: underline; }
+      
+      .section-title { font-size: 15px; font-weight: 700; margin-bottom: 14px; color: #1f2937; }
+      .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+      .form-group { margin-bottom: 14px; }
+      label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: #374151; }
+      input[type="text"], select {
+        width: 100%; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 6px;
+        font-size: 14px; outline: none; transition: border-color 0.15s ease;
+      }
+      input:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-lt); }
+      
+      .shipping-options { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
+      .shipping-option {
+        display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--border-color);
+        padding: 10px 14px; border-radius: 6px; cursor: pointer; font-size: 13px;
+      }
+      .shipping-option:hover { border-color: var(--primary); background: var(--primary-lt); }
+      .shipping-option input { margin-right: 8px; }
+      
+      /* Order Summary Sidebar */
+      .summary-title { font-size: 16px; font-weight: 700; margin-bottom: 16px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; }
+      .cart-item { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 10px; }
+      .cart-item-name { color: #374151; font-weight: 500; }
+      .summary-row { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 8px; color: var(--text-muted); }
+      .summary-total { display: flex; justify-content: space-between; font-size: 16px; font-weight: 800; border-top: 1px solid var(--border-color); padding-top: 12px; margin-top: 12px; color: #111827; }
+      
+      .btn-submit {
+        width: 100%; padding: 12px; background: var(--primary); color: white; border: none;
+        border-radius: 6px; font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 20px;
+        transition: background 0.15s ease;
+      }
+      .btn-submit:hover { background: var(--primary-dark); }
+      
+      /* Human In The Loop Confirmation Modal */
+      #confirm-modal {
+        display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5); z-index: 1000;
+        align-items: center; justify-content: center; padding: 20px;
+      }
+      .modal-card {
+        background: white; border-radius: var(--radius); max-width: 480px; width: 100%; padding: 24px;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); border: 2px solid var(--primary);
+      }
+      .modal-card h2 { font-size: 18px; color: #1e1b4b; margin-bottom: 8px; }
+      .modal-card p { font-size: 13px; color: var(--text-muted); margin-bottom: 16px; }
+      .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+      .btn-cancel { padding: 8px 14px; background: #e5e7eb; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; }
+      .btn-confirm { padding: 8px 16px; background: var(--primary); color: white; border: none; border-radius: 6px; font-weight: 700; cursor: pointer; }
+      
+      #order-success {
+        display: none; background: #ecfdf5; border: 1px solid #10b981; border-radius: var(--radius);
+        padding: 32px; text-align: center; grid-column: 1 / -1;
+      }
+      #order-success h2 { color: #065f46; font-size: 22px; margin-bottom: 8px; }
+      .order-id { font-family: monospace; font-size: 18px; font-weight: 800; color: #047857; margin: 10px 0; }
+    </style>
+  </head>
+  <body>
+    <div class="container" id="checkout-container">
+      <div class="main-column">
+        <header>
+          <h1>NovaStore B2B Hardware Checkout</h1>
+          <div class="nav-links">
+            <a href="index.html">← All Demos</a>
+            <a href="healthcare-intake.html">Healthcare Demo</a>
+            <a href="financial-reconciliation.html">Financial Demo</a>
+          </div>
+        </header>
+
+        <form id="checkout-form">
+          <div class="section-title">1. Shipping & Logistics Destination</div>
+          <div class="grid-2">
+            <div class="form-group">
+              <label for="contact-name">Procurement Officer Name *</label>
+              <input type="text" id="contact-name" name="recipient" placeholder="Alex Morgan" required />
+            </div>
+            <div class="form-group">
+              <label for="company-tax">Company Tax / VAT ID *</label>
+              <input type="text" id="company-tax" name="tax_id" placeholder="US-99120412" required />
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="shipping-address">Warehouse / Office Street Address *</label>
+            <input type="text" id="shipping-address" name="address" placeholder="500 Tech Parkway, Suite 400" required />
+          </div>
+          <div class="grid-2">
+            <div class="form-group">
+              <label for="shipping-city">City *</label>
+              <input type="text" id="shipping-city" name="city" placeholder="Austin" required />
+            </div>
+            <div class="form-group">
+              <label for="shipping-zip">Postal Code *</label>
+              <input type="text" id="shipping-zip" name="postal_code" placeholder="78701" required />
+            </div>
+          </div>
+
+          <div class="section-title" style="margin-top: 18px;">2. Freight Tier Selection</div>
+          <div class="shipping-options">
+            <label class="shipping-option">
+              <div><input type="radio" name="freight_tier" value="standard" checked /> Fedex Priority Freight (2 Days)</div>
+              <span>$45.00</span>
+            </label>
+            <label class="shipping-option">
+              <div><input type="radio" name="freight_tier" value="overnight" /> Critical Overnight Express (Next Day AM)</div>
+              <span>$120.00</span>
+            </label>
+          </div>
+
+          <div class="section-title">3. Payment Token & Corporate Card</div>
+          <div class="form-group">
+            <label for="card-holder">Name on Corporate Card *</label>
+            <input type="text" id="card-holder" name="card_holder" placeholder="Alex Morgan" required />
+          </div>
+          <div class="form-group">
+            <label for="card-token">Corporate Card Token / Number *</label>
+            <input type="text" id="card-token" name="card_token" placeholder="{card_number} or 4242••••••••4242" required />
+          </div>
+          <div class="grid-2">
+            <div class="form-group">
+              <label for="card-exp">Expiry (MM/YY) *</label>
+              <input type="text" id="card-exp" name="card_exp" placeholder="12/28" required />
+            </div>
+            <div class="form-group">
+              <label for="card-cvc">CVC Token *</label>
+              <input type="text" id="card-cvc" name="card_cvc" placeholder="{card_cvc} or •••" required />
+            </div>
+          </div>
+
+          <button type="button" id="btn-review-order" class="btn-submit">Review & Authorize Order ($4,845.00)</button>
+        </form>
+      </div>
+
+      <!-- Order Summary -->
+      <div class="sidebar-column">
+        <div class="summary-title">Procurement Manifest</div>
+        <div class="cart-item">
+          <span class="cart-item-name">2x High-Density AI Server Rack Unit</span>
+          <span>$4,200.00</span>
+        </div>
+        <div class="cart-item">
+          <span class="cart-item-name">8x 100GbE QSFP28 Direct-Attach Cables</span>
+          <span>$600.00</span>
+        </div>
+        <div class="summary-row" style="margin-top: 14px;">
+          <span>Subtotal</span>
+          <span>$4,800.00</span>
+        </div>
+        <div class="summary-row">
+          <span>Freight Delivery</span>
+          <span id="summary-freight">$45.00</span>
+        </div>
+        <div class="summary-row">
+          <span>Estimated Taxes</span>
+          <span>$0.00 (Exempt)</span>
+        </div>
+        <div class="summary-total">
+          <span>Total Order</span>
+          <span id="summary-total">$4,845.00</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Human In The Loop Modal Gate -->
+    <div id="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="modal-card">
+        <h2 id="modal-title">⚠️ Human Authorization Gate</h2>
+        <p>Project Atlas has completed the procurement checkout form. Because this is a high-consequence purchase exceeding $1,000, human confirmation is required.</p>
+        <div style="background: #f1f5f9; padding: 12px; border-radius: 6px; font-size: 13px; margin-bottom: 16px;">
+          <div><strong>Order Total:</strong> $4,845.00</div>
+          <div><strong>Destination:</strong> Austin, TX</div>
+          <div><strong>Payment Method:</strong> Tokenized Vault Payment</div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" id="btn-cancel-modal" class="btn-cancel">Cancel</button>
+          <button type="button" id="btn-confirm-order" class="btn-confirm">Approve & Execute Charge</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Success Screen -->
+    <div id="order-success" role="alert" aria-live="polite">
+      <h2>✓ Order Placed Successfully</h2>
+      <p>Your procurement order has been routed to the fulfillment distribution center.</p>
+      <div>Order Tracking Reference:</div>
+      <div class="order-id">ORD-NOVA-89210-TX</div>
+      <p style="font-size: 14px; color: #047857; margin-top: 8px;">Packing slip, invoice PDF, and tracking telemetry have been issued.</p>
+    </div>
+
+    <script>
+      const reviewBtn = document.getElementById("btn-review-order");
+      const modal = document.getElementById("confirm-modal");
+      const cancelBtn = document.getElementById("btn-cancel-modal");
+      const confirmBtn = document.getElementById("btn-confirm-order");
+      const container = document.getElementById("checkout-container");
+      const successScreen = document.getElementById("order-success");
+
+      reviewBtn.addEventListener("click", function() {
+        modal.style.display = "flex";
+      });
+
+      cancelBtn.addEventListener("click", function() {
+        modal.style.display = "none";
+      });
+
+      confirmBtn.addEventListener("click", function() {
+        modal.style.display = "none";
+        container.style.display = "none";
+        successScreen.style.display = "block";
+      });
+    </script>
+  </body>
+</html>

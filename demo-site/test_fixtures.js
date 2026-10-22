@@ -105,8 +105,33 @@ test('healthcare-intake.html contains sensitive PII, HIPAA consent, and disabled
   assert(/autocomplete=["']bday["']/i.test(content), 'DOB input with autocomplete="bday" required');
   assert(/type=["']email["']/i.test(content), 'Email input required');
   assert(/type=["']tel["']/i.test(content), 'Phone input required');
-  assert(/id=["']consent-hipaa["']|name=["']consent_hipaa["']/i.test(content), 'HIPAA consent checkbox required');
+  assert(/id=["']consent-hipaa["']|name=["']consent_hipaa["']|name=["']hipaa_consent["']/i.test(content), 'HIPAA consent checkbox required');
   assert(/id=["']submit-intake-btn["'][^>]*disabled|disabled[^>]*id=["']submit-intake-btn["']/i.test(content), 'Submit button initially disabled');
+});
+
+test('healthcare-intake.html contains clinical triage, demographics, and HIPAA consent', () => {
+  const content = fs.readFileSync(path.join(DEMO_DIR, 'healthcare-intake.html'), 'utf8');
+  assert(/name=["']patient_id["']/i.test(content), 'patient_id input required');
+  assert(/name=["']insurance_carrier["']/i.test(content), 'insurance_carrier select required');
+  assert(/name=["']urgency["']/i.test(content), 'urgency radio chips required');
+  assert(/name=["']hipaa_consent["']|name=["']consent_hipaa["']/i.test(content), 'hipaa consent required');
+  assert(/confirmation-panel|intake-confirmation/i.test(content), 'confirmation alert panel required');
+});
+
+test('financial-reconciliation.html contains multi-entity ledger, transactions table, and attestation', () => {
+  const content = fs.readFileSync(path.join(DEMO_DIR, 'financial-reconciliation.html'), 'utf8');
+  assert(/id=["']transactions-table["']/i.test(content), 'transactions table required');
+  assert(/id=["']auditor-token["']/i.test(content), 'auditor token input required');
+  assert(/id=["']btn-commit-reconciliation["']/i.test(content), 'commit reconciliation button required');
+  assert(/reconciliation-success/i.test(content), 'reconciliation success alert required');
+});
+
+test('ecommerce-checkout.html contains procurement cart, address inputs, and human confirmation modal', () => {
+  const content = fs.readFileSync(path.join(DEMO_DIR, 'ecommerce-checkout.html'), 'utf8');
+  assert(/id=["']shipping-address["']/i.test(content), 'shipping address required');
+  assert(/id=["']card-token["']/i.test(content), 'payment card token input required');
+  assert(/id=["']confirm-modal["']/i.test(content), 'human confirmation modal required');
+  assert(/id=["']order-success["']/i.test(content), 'order success alert required');
 });
 
 test('finance-statement.html contains tabular ledger, filter controls, and CSV export link', () => {
@@ -134,5 +159,5 @@ test('checkout.html contains cart breakdown, sensitive payment fields, and conse
   assert(/Complete Payment|Place Order/i.test(content), 'Consequential payment button text required');
 });
 
-console.log(`\nTrack 1j & E1 Test Summary: ${passed} passed, ${failed} failed.\n`);
+console.log(`\nDemo Site Fixture & E1 Test Summary: ${passed} passed, ${failed} failed.\n`);
 if (failed > 0) process.exit(1);

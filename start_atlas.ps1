@@ -23,7 +23,28 @@ if (-not $RootDir) {
 
 try {
     $RunScript = Join-Path $RootDir "run_atlas.ps1"
-    $ChromePath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
+    $BravePaths = @(
+        "C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe",
+        "C:\Program Files (x86)\BraveSoftware\Brave-Browser\Application\brave.exe",
+        "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\Application\brave.exe"
+    )
+    $BravePath = $BravePaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+    # Detect user's main profile in Brave ('Marwan Nader')
+    $BraveProfileDir = "Profile 1"
+    try {
+        $localStatePath = "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\User Data\Local State"
+        if (Test-Path $localStatePath) {
+            $localStateJson = Get-Content $localStatePath -Raw | ConvertFrom-Json
+            foreach ($prop in $localStateJson.profile.info_cache.PSObject.Properties) {
+                if ($prop.Value.name -like "*Marwan*") {
+                    $BraveProfileDir = $prop.Name
+                    break
+                }
+            }
+        }
+    } catch {}
+
     $DemoUrl = "http://localhost:5500"
     $BackendUrl = "http://localhost:8000"
     $DemoApiKey = "atlas_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6"
@@ -41,10 +62,10 @@ try {
         Write-Host "[2/4] Demo API Key: $DemoApiKey" -ForegroundColor Green
     }
 
-    # 3. Launch Chrome browser
-    Write-Host "[3/4] Launching Google Chrome to $DemoUrl..." -ForegroundColor Yellow
-    if (Test-Path $ChromePath) {
-        Start-Process $ChromePath $DemoUrl
+    # 3. Launch Brave browser in user's main profile
+    Write-Host "[3/4] Launching Brave Browser (Main Profile: Marwan Nader) to $DemoUrl..." -ForegroundColor Yellow
+    if ($BravePath) {
+        Start-Process -FilePath $BravePath -ArgumentList @("--profile-directory=$BraveProfileDir", $DemoUrl)
     } else {
         Start-Process $DemoUrl
     }
@@ -61,14 +82,14 @@ try {
     Write-Host "  [*] Extension Folder   : $RootDir\client-script" -ForegroundColor White
     Write-Host "  [*] Demo API Key       : $DemoApiKey" -ForegroundColor Green
     Write-Host "======================================================================" -ForegroundColor Cyan
-    Write-Host "  Extension Quick Setup (First time only):" -ForegroundColor Gray
-    Write-Host "  1. Open chrome://extensions -> Enable 'Developer mode' (top right)." -ForegroundColor Gray
+    Write-Host "  Extension Quick Setup in Brave (First time only):" -ForegroundColor Gray
+    Write-Host "  1. In Brave, go to brave://extensions -> Enable 'Developer mode' (top right)." -ForegroundColor Gray
     Write-Host "  2. Click 'Load unpacked' -> Select: $RootDir\client-script" -ForegroundColor Gray
     Write-Host "  3. Click the Atlas toolbar icon, paste the API key (already in clipboard)," -ForegroundColor Gray
     Write-Host "     and click Save!" -ForegroundColor Gray
     Write-Host "======================================================================" -ForegroundColor Cyan
     Write-Host "  Controls:" -ForegroundColor White
-    Write-Host "  [B] Open Demo Site in Browser    [D] Open API Documentation" -ForegroundColor Yellow
+    Write-Host "  [B] Open Demo Site in Brave      [E] Open Extensions Manager in Brave" -ForegroundColor Yellow
     Write-Host "  [C] Copy API Key to Clipboard    [Q] Stop Atlas and Exit" -ForegroundColor Yellow
     Write-Host "======================================================================" -ForegroundColor Cyan
 
@@ -85,11 +106,17 @@ try {
                 $key = [Console]::ReadKey($true).Key
                 switch ($key) {
                     "B" {
-                        Write-Host "Opening Demo Site in browser..." -ForegroundColor Yellow
-                        if (Test-Path $ChromePath) {
-                            Start-Process $ChromePath $DemoUrl
+                        Write-Host "Opening Demo Site in Brave ($BraveProfileDir)..." -ForegroundColor Yellow
+                        if ($BravePath) {
+                            Start-Process -FilePath $BravePath -ArgumentList @("--profile-directory=$BraveProfileDir", $DemoUrl)
                         } else {
                             Start-Process $DemoUrl
+                        }
+                    }
+                    "E" {
+                        Write-Host "Opening Extensions Manager in Brave ($BraveProfileDir)..." -ForegroundColor Yellow
+                        if ($BravePath) {
+                            Start-Process -FilePath $BravePath -ArgumentList @("--profile-directory=$BraveProfileDir", "brave://extensions")
                         }
                     }
                     "D" {

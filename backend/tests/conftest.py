@@ -7,8 +7,14 @@ Patches the 3 known blockers from ATLAS_PROGRESS_2.md before any app import:
   3. _log_usage                 — missing from app.db.connection
 """
 import sys
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 import pytest
+
+# Ensure repository root is on sys.path for tools/scripts test imports
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 # ── Patch missing modules BEFORE any app import ───────────────────────────────
 

@@ -32,11 +32,10 @@ async function runHarness() {
 
   let context;
   try {
-    context = await chromium.launchPersistentContext(userDataDir, {
-      channel: 'chromium',
+    const chromePath = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+    const launchOptions = {
       headless: false,
       args: [
-        '--headless=new',
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-gpu',
@@ -44,7 +43,8 @@ async function runHarness() {
         `--disable-extensions-except=${extensionPath}`,
         `--load-extension=${extensionPath}`,
       ],
-    });
+    };
+    context = await chromium.launchPersistentContext(userDataDir, launchOptions);
 
     console.log('[E2E] Chromium context launched successfully.');
 
