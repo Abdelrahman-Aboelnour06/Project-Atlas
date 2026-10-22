@@ -1,5 +1,5 @@
 # WS4 Perception
-Branch: feat/latent-nodes   Last commit: ed0cd5bdc8b713def24995508a5474c379c87569   Model used: Gemini 3.8 Flash
+Branch: feat/latent-nodes   Last commit: ae7f4dd   Model used: Gemini 3.8 Flash
 Status: in progress
 Done:
 - Created branch `feat/latent-nodes` off `origin/main` (after WS1 merged).
