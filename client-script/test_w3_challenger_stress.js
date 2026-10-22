@@ -219,29 +219,36 @@ function runW3PackagingChallengerSuite() {
     const scratchFiles = extractedFiles.filter(f => f.endsWith('.tmp') || f.endsWith('.bak') || f.endsWith('.swp') || f.endsWith('.log'));
     record('Blacklist: Strictly zero temporary/scratch assets in package', scratchFiles.length === 0, `Found: ${scratchFiles.join(', ')}`);
 
-    // Whitelist check: only allowed extension assets
-    const allowedExact = new Set([
-      'manifest.json',
-      'background.js',
-      'content.js',
-      'dom-serializer.js',
-      'executor.js',
-      'options.html',
-      'options.css',
-      'options.js',
-      'secret-vault.js',
-      'sidebar.css',
-      'sidebar.js',
-      'speech.js',
-      'tts.js',
-      'websocket-client.js',
-      'connection-manager.js',
-      'ws-client.js',
-      'icons/atlas.ico',
-      'icons/icon16.png',
-      'icons/icon48.png',
-      'icons/icon128.png'
-    ]);
+    // Whitelist check: only authorized extension production assets included (H13)
+    let allowedExact;
+    const extFilesPath = path.join(__dirname, 'extension-files.json');
+    if (fs.existsSync(extFilesPath)) {
+      const extConfig = JSON.parse(fs.readFileSync(extFilesPath, 'utf8'));
+      allowedExact = new Set(extConfig.production_files || []);
+    } else {
+      allowedExact = new Set([
+        'manifest.json',
+        'background.js',
+        'content.js',
+        'dom-serializer.js',
+        'executor.js',
+        'options.html',
+        'options.css',
+        'options.js',
+        'secret-vault.js',
+        'sidebar.css',
+        'sidebar.js',
+        'speech.js',
+        'tts.js',
+        'websocket-client.js',
+        'connection-manager.js',
+        'ws-client.js',
+        'icons/atlas.ico',
+        'icons/icon16.png',
+        'icons/icon48.png',
+        'icons/icon128.png'
+      ]);
+    }
 
     const unauthorizedFiles = extractedFiles.filter(f => !allowedExact.has(f));
     record('Whitelist: Only authorized extension production assets included', unauthorizedFiles.length === 0, `Unauthorized: ${unauthorizedFiles.join(', ')}`);

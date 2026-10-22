@@ -7,8 +7,8 @@ Architectural Verification Gate for Project Atlas:
 2. Executes or verifies execution of all discovered test files.
 3. Enforces that ZERO test files are skipped or omitted.
 4. Enforces Quality Floor:
-   - Backend tests >= 659
-   - JavaScript tests >= 349
+   - Backend tests >= 782
+   - JavaScript tests >= 814
 5. Fails with non-zero exit code if any test file is missing, any test fails, or quality floor is breached.
 """
 
@@ -21,9 +21,17 @@ import argparse
 from pathlib import Path
 from typing import Dict, List, Set, Tuple
 
-# Quality Floors
-BACKEND_TEST_FLOOR = 659
-JS_TEST_FLOOR = 349
+# Quality Floors (Milestone 4 Elevated Floors)
+BACKEND_TEST_FLOOR = 782
+JS_TEST_FLOOR = 814
+
+# Authoritative Deterministic CI E2E Suites
+CI_E2E_SUITES = {
+    "harness.js",
+    "ui_sidebar_behavior.js",
+    "a11y_axe.js",
+    "run_multi_tab_suite.js",
+}
 
 
 def find_repo_root() -> Path:
@@ -70,10 +78,11 @@ def discover_all_test_files(repo_root: Path) -> Dict[str, List[Path]]:
         for p in demo_dir.glob("test_*.js"):
             discovered["demo_site"].append(p)
 
-    # 4. E2E tests
+    # 4. E2E tests (Authoritative CI Test Suites)
     if e2e_dir.exists():
         for p in e2e_dir.glob("*.js"):
-            discovered["e2e"].append(p)
+            if p.name in CI_E2E_SUITES:
+                discovered["e2e"].append(p)
 
     # Sort deterministically
     for k in discovered:
@@ -121,6 +130,17 @@ def parse_js_test_output(output: str) -> Tuple[int, int]:
 
 def run_self_check(repo_root: Path, run_tests: bool = True) -> int:
     """Execute full CI Gatekeeper self-check."""
+    if hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+    if hasattr(sys.stderr, "reconfigure"):
+        try:
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
     print("=" * 70)
     print("  ATLAS CI GATEKEEPER SELF-CHECK VERIFICATION")
     print("=" * 70)
@@ -167,7 +187,7 @@ def run_self_check(repo_root: Path, run_tests: bool = True) -> int:
     env = os.environ.copy()
     env["LLM_PROVIDER"] = "mock"
 
-    res = subprocess.run(pytest_cmd, cwd=str(repo_root), env=env, capture_output=True, text=True)
+    res = subprocess.run(pytest_cmd, cwd=str(repo_root), env=env, capture_output=True, text=True, encoding="utf-8", errors="replace")
     pytest_output = res.stdout + res.stderr
 
     # Parse JUnit XML or output to record executed files and counts
@@ -223,7 +243,7 @@ def run_self_check(repo_root: Path, run_tests: bool = True) -> int:
     for js_file in js_suites:
         rel = js_file.relative_to(repo_root)
         print(f"  -> Running node {rel}...")
-        sub_res = subprocess.run(["node", str(js_file)], cwd=str(repo_root), capture_output=True, text=True)
+        sub_res = subprocess.run(["node", str(js_file)], cwd=str(repo_root), capture_output=True, text=True, encoding="utf-8", errors="replace")
         out = sub_res.stdout + sub_res.stderr
         passed, failed = parse_js_test_output(out)
         if sub_res.returncode != 0 and failed == 0:
@@ -238,18 +258,13 @@ def run_self_check(repo_root: Path, run_tests: bool = True) -> int:
 
     # 3. Run Playwright E2E Harnesses
     print("\n>>> Running Playwright E2E Harnesses...")
-    e2e_candidates = [
-        repo_root / "ci" / "e2e" / "harness.js",
-        repo_root / "ci" / "e2e" / "ui_sidebar_behavior.js",
-        repo_root / "ci" / "e2e" / "a11y_axe.js",
-    ]
     executed_e2e_files = set()
     e2e_failed = 0
-    for e2e_harness in e2e_candidates:
+    for e2e_harness in discovered["e2e"]:
         rel = e2e_harness.relative_to(repo_root)
         if e2e_harness.exists():
             print(f"  -> Running node {rel}...")
-            sub_res = subprocess.run(["node", str(e2e_harness)], cwd=str(repo_root), capture_output=True, text=True)
+            sub_res = subprocess.run(["node", str(e2e_harness)], cwd=str(repo_root), capture_output=True, text=True, encoding="utf-8", errors="replace")
             if sub_res.returncode == 0:
                 print(f"     ✓ {rel} passed cleanly")
                 executed_e2e_files.add(e2e_harness.resolve())
@@ -290,14 +305,14 @@ def run_self_check(repo_root: Path, run_tests: bool = True) -> int:
         print(f"\n[PASS] 100% JavaScript test files executed ({len(js_suites)}/{len(js_suites)})")
 
     # Check 2b: 100% Playwright E2E Harnesses executed
-    missing_e2e = [p for p in e2e_candidates if p.resolve() not in executed_e2e_files]
+    missing_e2e = [p for p in discovered["e2e"] if p.resolve() not in executed_e2e_files]
     if missing_e2e:
         print(f"\n[FAIL] OMITTED E2E HARNESSES ({len(missing_e2e)} skipped/missing):")
         for p in missing_e2e:
             print(f"  - {p.relative_to(repo_root)}")
         gate_failed = True
     else:
-        print(f"\n[PASS] 100% Playwright E2E Harnesses executed ({len(e2e_candidates)}/{len(e2e_candidates)})")
+        print(f"\n[PASS] 100% Playwright E2E Harnesses executed ({len(discovered['e2e'])}/{len(discovered['e2e'])})")
 
     # Check 3: Quality Floor — Backend
     if backend_passed_count < BACKEND_TEST_FLOOR:

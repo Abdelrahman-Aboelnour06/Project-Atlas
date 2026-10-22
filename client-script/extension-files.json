@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "project-atlas-extension",
+  "version": "0.3.0",
+  "description": "Unified Manifest & Single Source of Truth for Project Atlas MV3 Chrome Extension Packaging (H13)",
+  "production_files": [
+    "manifest.json",
+    "background.js",
+    "tab-registry.js",
+    "goal-handoff.js",
+    "audio-feedback.js",
+    "content.js",
+    "dom-serializer.js",
+    "executor.js",
+    "options.html",
+    "options.css",
+    "options.js",
+    "secret-vault.js",
+    "sidebar.css",
+    "sidebar.js",
+    "speech.js",
+    "tts.js",
+    "websocket-client.js",
+    "connection-manager.js",
+    "icons/icon16.png",
+    "icons/icon48.png",
+    "icons/icon128.png"
+  ],
+  "exclude_patterns": [
+    "^test_.*\\.js$",
+    "^package_extension\\.js$",
+    "^extension-files\\.json$",
+    "^README\\.md$",
+    "\\.DS_Store$",
+    "\\.git.*",
+    ".*\\.map$",
+    ".*\\.tmp$",
+    ".*\\.bak$"
+  ]
+}

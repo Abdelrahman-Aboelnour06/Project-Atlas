@@ -237,30 +237,44 @@ function validateExtension() {
   const hostPermissions = manifest.host_permissions || [];
   report('Universal <all_urls> Host Permission', hostPermissions.includes('<all_urls>'), '100% Universal compliance');
 
-  // 8. Mandatory Component Files Existence
-  const componentFiles = [
-    'background.js',
-    'content.js',
-    'dom-serializer.js',
-    'executor.js',
-    'options.html',
-    'options.css',
-    'options.js',
-    'secret-vault.js',
-    'sidebar.css',
-    'sidebar.js',
-    'speech.js',
-    'tts.js',
-    'websocket-client.js',
-    'connection-manager.js',
-  ];
-  for (const file of componentFiles) {
-    const exists = fs.existsSync(path.join(CLIENT_DIR, file));
-    report(`Production Asset ${file} Exists`, exists, exists ? 'Found' : 'Missing');
+  // 8. Mandatory Component Files & Packaging Manifest (H13)
+  const manifestConfigPath = path.join(CLIENT_DIR, 'extension-files.json');
+  if (!fs.existsSync(manifestConfigPath)) {
+    report('Unified Packaging Manifest Exists', false, 'extension-files.json not found in client-script/');
+    return { passed: false, checks, issues, manifest };
+  }
+
+  let packagingConfig;
+  try {
+    packagingConfig = JSON.parse(fs.readFileSync(manifestConfigPath, 'utf8'));
+    report('Unified Packaging Manifest JSON Parsing', true, 'Valid JSON in extension-files.json');
+  } catch (err) {
+    report('Unified Packaging Manifest JSON Parsing', false, err.message);
+    return { passed: false, checks, issues, manifest };
+  }
+
+  const productionFiles = packagingConfig.production_files || [];
+  report(
+    'Production Files Whitelist Defined',
+    Array.isArray(productionFiles) && productionFiles.length >= 21,
+    `Found ${productionFiles.length} declared files`
+  );
+
+  const excludeRegexes = (packagingConfig.exclude_patterns || []).map(p => new RegExp(p));
+
+  for (const relFile of productionFiles) {
+    const fullPath = path.join(CLIENT_DIR, relFile);
+    const exists = fs.existsSync(fullPath);
+    report(`Production Asset ${relFile} Exists`, exists, exists ? 'Found' : 'Missing');
+
+    const isExcluded = excludeRegexes.some(rx => rx.test(relFile));
+    if (isExcluded) {
+      report(`Production Asset ${relFile} Not Excluded`, false, 'Matched exclude_patterns');
+    }
   }
 
   const allPassed = checks.every(c => c.passed);
-  return { passed: allPassed, checks, issues, manifest };
+  return { passed: allPassed, checks, issues, manifest, packagingConfig };
 }
 
 // ── Package Builder ──────────────────────────────────────────────────────────
@@ -293,56 +307,33 @@ function buildExtensionPackage(validationResult) {
     );
   }
 
-  // Add sanitized manifest to zip
+  // Add sanitized manifest to zip buffer placeholder
   const manifestBuf = Buffer.from(JSON.stringify(prodManifest, null, 2), 'utf8');
-  zip.addFile('manifest.json', manifestBuf);
-  fileCount++;
-  totalUncompressed += manifestBuf.length;
 
-  // Whitelist of production files to copy
-  const whitelistFiles = [
-    'background.js',
-    'content.js',
-    'dom-serializer.js',
-    'executor.js',
-    'options.html',
-    'options.css',
-    'options.js',
-    'secret-vault.js',
-    'sidebar.css',
-    'sidebar.js',
-    'speech.js',
-    'tts.js',
-    'websocket-client.js',
-    'connection-manager.js',
-  ];
+  // Load single source of truth manifest
+  const packagingConfig = validationResult.packagingConfig || JSON.parse(
+    fs.readFileSync(path.join(CLIENT_DIR, 'extension-files.json'), 'utf8')
+  );
+  const productionFiles = packagingConfig.production_files || [];
+  const excludeRegexes = (packagingConfig.exclude_patterns || []).map(p => new RegExp(p));
 
-  if (fs.existsSync(path.join(CLIENT_DIR, 'ws-client.js'))) {
-    whitelistFiles.push('ws-client.js');
-  }
+  // Package all files defined in production_files
+  for (const relFile of productionFiles) {
+    const isExcluded = excludeRegexes.some(rx => rx.test(relFile));
+    if (isExcluded) {
+      continue;
+    }
 
-  for (const relFile of whitelistFiles) {
     const fullPath = path.join(CLIENT_DIR, relFile);
-    if (fs.existsSync(fullPath)) {
+    if (relFile === 'manifest.json') {
+      zip.addFile('manifest.json', manifestBuf);
+      fileCount++;
+      totalUncompressed += manifestBuf.length;
+    } else if (fs.existsSync(fullPath)) {
       const content = fs.readFileSync(fullPath);
       zip.addFile(relFile, content);
       fileCount++;
       totalUncompressed += content.length;
-    }
-  }
-
-  // Add Icons directory
-  const iconsDir = path.join(CLIENT_DIR, 'icons');
-  if (fs.existsSync(iconsDir)) {
-    const iconFiles = fs.readdirSync(iconsDir);
-    for (const iconFile of iconFiles) {
-      if (iconFile.endsWith('.png') || iconFile.endsWith('.ico')) {
-        const fullIconPath = path.join(iconsDir, iconFile);
-        const iconBuf = fs.readFileSync(fullIconPath);
-        zip.addFile(`icons/${iconFile}`, iconBuf);
-        fileCount++;
-        totalUncompressed += iconBuf.length;
-      }
     }
   }
 

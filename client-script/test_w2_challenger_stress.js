@@ -210,6 +210,11 @@ async function runWave2ChallengerStress() {
     `);
 
     await page.waitForTimeout(300);
+    await page.evaluate(() => {
+      try {
+        (window.__atlasShadowRoot || document).getAnimations().forEach((a) => a.finish());
+      } catch (_) {}
+    });
 
     // ==========================================================================
     // Domain 2: Headless Browser Computed Target Dimensions (>= 44x44px)
@@ -589,7 +594,7 @@ async function runWave2ChallengerStress() {
         onError: () => {},
       });
 
-      await new Promise((r) => setTimeout(r, 120));
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
       const singleCycleDestConnections = [...window.destinationConnections];
       AtlasSpeech.stop();
       await new Promise((r) => setTimeout(r, 50));

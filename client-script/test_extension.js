@@ -44,20 +44,44 @@ try {
   console.error(`  ✗ Error parsing manifest: ${err.message}`);
 }
 
-// 2. JavaScript Syntax & Parsing Validation
+// 2. Unified Packaging Manifest (H13) & Dynamic Script Verification
+console.log('\n[Unit: Unified Packaging Manifest (H13)]');
+const extFilesPath = path.join(__dirname, 'extension-files.json');
+assert(fs.existsSync(extFilesPath), 'extension-files.json exists on disk');
+
+let extConfig = {};
+try {
+  extConfig = JSON.parse(fs.readFileSync(extFilesPath, 'utf8'));
+  assert(true, 'extension-files.json parses as valid JSON');
+} catch (e) {
+  assert(false, `extension-files.json parse error: ${e.message}`);
+}
+
+const prodFiles = extConfig.production_files || [];
+assert(Array.isArray(prodFiles) && prodFiles.length >= 21, 'production_files defines complete 21-file production list');
+assert(prodFiles.includes('manifest.json'), 'production_files explicitly includes manifest.json');
+assert(prodFiles.includes('tab-registry.js'), 'production_files explicitly includes tab-registry.js');
+assert(prodFiles.includes('goal-handoff.js'), 'production_files explicitly includes goal-handoff.js');
+assert(prodFiles.includes('audio-feedback.js'), 'production_files explicitly includes audio-feedback.js');
+assert(prodFiles.includes('icons/icon16.png'), 'production_files includes icons/icon16.png');
+assert(prodFiles.includes('icons/icon48.png'), 'production_files includes icons/icon48.png');
+assert(prodFiles.includes('icons/icon128.png'), 'production_files includes icons/icon128.png');
+assert(prodFiles.includes('options.html') && prodFiles.includes('options.css') && prodFiles.includes('sidebar.css'), 'production_files includes UI HTML and CSS assets');
+
+// Verify exclusion of test files, docs, and build scripts
+assert(!prodFiles.some(f => f.startsWith('test_')), 'production_files strictly excludes all test_*.js suites');
+assert(!prodFiles.some(f => f.endsWith('.md')), 'production_files strictly excludes markdown files');
+assert(!prodFiles.includes('package_extension.js'), 'production_files excludes package_extension.js');
+assert(!prodFiles.includes('extension-files.json'), 'production_files excludes extension-files.json');
+
+// Verify every production asset exists on disk
+for (const relFile of prodFiles) {
+  assert(fs.existsSync(path.join(__dirname, relFile)), `Production asset ${relFile} exists on disk`);
+}
+
+// 2b. JavaScript Syntax & Parsing Validation (Dynamically derived from manifest)
 console.log('\n[Unit: Script Syntax Verification]');
-const jsFiles = [
-  'background.js',
-  'content.js',
-  'dom-serializer.js',
-  'executor.js',
-  'options.js',
-  'secret-vault.js',
-  'sidebar.js',
-  'speech.js',
-  'tts.js',
-  'websocket-client.js'
-];
+const jsFiles = prodFiles.filter(f => f.endsWith('.js'));
 
 for (const file of jsFiles) {
   const filePath = path.join(__dirname, file);
@@ -353,7 +377,19 @@ assert(optionsCode.includes('/v1/session/start'), 'options.js validates API key 
 assert(backgroundCode.includes('chrome.runtime?.onInstalled') || backgroundCode.includes('chrome.runtime.onInstalled'), 'background.js registers onInstalled listener');
 assert(backgroundCode.includes('options.html?wizard=true'), 'background.js opens options.html?wizard=true on initial install');
 
+// 11. Packager Integration Quality Gates (H13)
+console.log('\n[Unit: Packager Integration Quality Gates (H13)]');
+const { validateExtension } = require('./package_extension.js');
+const validation = validateExtension();
+assert(validation.passed === true, 'validateExtension() passes with zero errors');
+assert(validation.issues.length === 0, 'validateExtension() reports zero issues');
+assert(validation.packagingConfig && validation.packagingConfig.production_files.length === 21, 'validateExtension() confirms complete 21-file production list');
+
+const distZipPath = path.join(path.resolve(__dirname, '..'), 'dist', 'project-atlas-extension.zip');
+assert(fs.existsSync(distZipPath), 'dist/project-atlas-extension.zip release archive exists on disk');
+
 console.log(`\nExtension Tests Complete: ${passed} passed, ${failures} failed.\n`);
 process.exit(failures > 0 ? 1 : 0);
+
 
 

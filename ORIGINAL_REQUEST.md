@@ -668,3 +668,59 @@ Extend backend models and verifiers to handle multi-tab contexts without violati
 - [ ] Axe-core accessibility audit confirms 0 critical and 0 serious violations in popup pill mode (<700px).
 - [ ] CI Gatekeeper (`python3 ci/verify_all_tests_run.py`) runs 100% of discovered test files with zero omissions and passes with elevated floors (Backend >= 782, JS >= 814).
 - [ ] Three consecutive clean regression runs across the full repository test suite.
+
+## 2026-10-22T19:39:00Z
+
+# Teamwork Project Prompt — Resume
+
+> Status: Launched (Resuming Multi-Tab & Popup-Window Awareness Implementation — Milestone 4)
+> Goal: Complete Milestone 4 (Backend Multi-Tab Reasoning, Kill-Switch, and Replays), Packaging, and CI Gates
+> Requested team: Full 7-agent multi-agent team (A0 Lead/Integrator, A1 Tab Registry, A2 Goal Handoff, A3 Orchestration/UX, A4 Backend, A5 Tests/Fixtures, A6 Independent Red Team & Reviewer)
+
+Project Atlas: Multi-Tab & Popup-Window Awareness (v0.2.0 → v0.3.0) — enable Atlas to seamlessly track, adopt, orchestrate, and complete multi-step goals across popup windows (OAuth/login) and new tabs (`target="_blank"`) while upholding 100% universal web compatibility, closed Shadow DOM encapsulation, and strict verifier rails.
+
+Working directory: C:\Users\marwa\Desktop\Atlas\Project-Atlas
+Integrity mode: benchmark
+
+## Verification Resources
+- `ci/verify_all_tests_run.py`: AST CI Gatekeeper verifying 100% test file execution and enforcing quality floors.
+- `client-script/test_tab_registry.js`: Unit test suite verifying causal window adoption, idempotent registration, SW restart recovery, and fencing epochs.
+- `client-script/test_goal_handoff.js` & `client-script/test_m2_2_challenger_stress.js`: Unit & challenger suites verifying session-keyed storage CAS writes, background message proxying, mutation settle window, and URL redaction.
+- `client-script/test_multi_tab_orchestration.js` & `client-script/test_m3_challenger_stress.js`: Compact UI (<700px 56px pill), auto-hide, elementFromPoint exclusion, popup blocker interception, assisted click, opener DOM diffing.
+- `backend/tests/test_multi_tab_contracts.py` & `test_multi_tab_reasoning.py`: Contract schema validation (`contracts/goal_step.*.schema.json`), capability gating, and multi-tab golden replays.
+- `ci/e2e/run_multi_tab_suite.js`: Playwright E2E suite executing against the unpacked release zip (`dist/project-atlas-extension.zip`).
+
+---
+
+## Completed Milestones
+- **Milestone 1**: Tab Registry & Causal Adoption (`client-script/tab-registry.js`, `test_tab_registry.js`) — **DONE** (Passed).
+- **Milestone 2**: Network Path Isolation, Schema Contracts & URL Redaction (`contracts/`, `client-script/test_goal_handoff.js`, `test_m2_2_challenger_stress.js`, `backend/tests/test_multi_tab_contracts.py`, `test_m2_challenger_stress.py`) — **DONE** (Passed).
+- **Milestone 3**: In-Page Orchestration, Compact UI (<700px 56px pill), Popup Blocker Interception, Opener DOM diffing (`client-script/test_multi_tab_orchestration.js`, `client-script/test_m3_challenger_stress.js`, `client-script/test_m3_2_challenger_stress.js`, `client-script/test_m3_challenger_gen12_stress.js`) — **DONE** (Passed).
+
+---
+
+## Active Milestone & Final Requirements
+
+### R4. Backend Multi-Tab Reasoning & Verifier Rails (A4)
+Extend backend models and verifiers to handle multi-tab contexts without violating sacred rails.
+- **TabContext Modeling**: Ingest `tab_context` (`self_tab_id`, `opener_tab_id`, `tabs[]`, `resume_reason`, `close_hint`, `origin_confirmed`) in `backend/app/routes/chat.py`.
+- **Capability Gating**: Only emit `switch_tab` actions when the client declares `"switch_tab"` in `capabilities`. Validate target tab ID against active session tabs.
+- **Immutable Verifier Rails**: Maintain Rules 4, 5, and 6 in `backend/app/agent/verifier.py` with zero diff lines.
+- **Feature Flag / Kill Switch (H15)**: Provide `multiTab.enabled` in `/v1/config` allowing instant backend kill-switch fallback to single-tab behavior.
+- **Multi-Tab Golden Replays**: `backend/tests/test_multi_tab_reasoning.py` verifying multi-step multi-window replay flows and capability gating.
+
+### R5. Extension Packaging, Universality & Red Team Governance (A0, A6)
+- **Universal Rule Non-Negotiable**: Zero domain hardcoding (`git grep` clean). Standard W3C DOM and ARIA semantics.
+- **Unified Packaging Manifest (H13)**: Define `client-script/extension-files.json` as single source of truth for packaging, excluding dev/test artifacts. Update `package_extension.js` and `client-script/test_extension.js`.
+- **CI Gatekeeper Elevated Floors**: Elevate `ci/verify_all_tests_run.py` quality floors (Backend >= 782, JS >= 814) and ensure 100% discovered test execution.
+- **E2E Verification**: `ci/e2e/run_multi_tab_suite.js` passing cleanly.
+
+## Acceptance Criteria
+- [ ] Verifier Rules 4, 5, and 6 in `backend/app/agent/verifier.py` remain 100% untouched (0 diff lines).
+- [ ] Zero domain or site-specific hardcoding across all newly added code (`git grep` clean).
+- [ ] `GET /v1/config` returns `{"multiTab": {"enabled": true}}` and supports disabling via environment variable.
+- [ ] Backend emits `switch_tab` step only if `"switch_tab"` is in `capabilities` and target `tab_id` is in active session tabs.
+- [ ] When `multiTab.enabled` is false, backend forces single-tab fallback behavior and suppresses multi-tab steps.
+- [ ] `client-script/extension-files.json` defines complete production file list and packaging excludes dev/test artifacts.
+- [ ] All unit and stress suites (`test_tab_registry.js`, `test_goal_handoff.js`, `test_multi_tab_orchestration.js`, `test_multi_tab_contracts.py`, `test_multi_tab_reasoning.py`) pass 100% green.
+- [ ] CI Gatekeeper (`ci/verify_all_tests_run.py`) runs 100% of discovered test files with zero omissions and passes with elevated floors (Backend >= 782, JS >= 814).
