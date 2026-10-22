@@ -554,9 +554,9 @@ Contract v3 introduces rich multi-field user input requests, latent DOM metadata
 ```json
 {
   "user_inputs": {
-    "el_national_id": "29501011234567",
-    "el_plate_letters": "ب س م",
-    "el_password": "{vault.secret_token}"
+    "el_national_id": "{vault:national_id}",
+    "el_plate": "{vault:plate}",
+    "el_password": "{vault:secret_token}"
   }
 }
 ```

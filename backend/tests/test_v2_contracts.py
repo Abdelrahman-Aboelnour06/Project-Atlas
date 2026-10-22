@@ -296,7 +296,7 @@ class TestV3Contracts:
     def test_goal_step_request_user_inputs_roundtrip(self):
         """Validates GoalStepRequest user_inputs mapping and contract_version=3."""
         inputs = {
-            "el_nat_id": "29501011234567",
+            "el_nat_id": "00000000000000",
             "el_plate": "123-ABC",
             "el_pwd": "{vault.portal_password}",
         }

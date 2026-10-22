@@ -13,7 +13,7 @@
 2. **Multi-Field Inputs (`UserInputRequest` & `InputField`)**:
    - `InputField = { ref: str, label: str | None, kind: Literal['text','number','select','date','phone','email','password','otp','other'], sensitive: bool = False, pattern: str | None, maxlength: int | None, required: bool = True, options: List[str] = [] }`.
    - `UserInputRequest.fields: List[InputField]` (safe default `[]`). Backward-compatible with single-field payloads (`kind`, `prompt`, `field_ref`, `resumable`).
-   - `GoalStepRequest.user_inputs: Optional[Dict[str, str]]` (safe default `None`) mapping field refs to values or secret-vault tokens (e.g. `{"el_national_id": "29501011234567", "el_plate": "123-ABC"}`).
+   - `GoalStepRequest.user_inputs: Optional[Dict[str, str]]` (safe default `None`) mapping field refs to values or secret-vault tokens (e.g. `{"el_national_id": "{vault:national_id}", "el_plate": "{vault:plate}"}`).
 
 3. **Exploration Metadata & Action Types (`PlanStep` & `ActionType`)**:
    - Added `"reveal"` to `ActionType` without reordering existing entries.
@@ -36,7 +36,7 @@
 ---
 
 # WS1 Contract Owner
-Branch: feat/contract-v3   Last commit: 0928e63b39906847cf1abec61f09a5c041bf288b   Model used: Gemini 1.5 / Claude (Thinking)
+Branch: feat/contract-v3   Last commit: b21dac63d12f6485f77af5051414d69a7c61051a   Model used: Gemini 1.5 / Claude (Thinking)
 Status: done
 Done:
 - backend/app/models/action.py:17: added `"reveal"` action verb to `ActionType` without reordering existing values.
@@ -47,14 +47,14 @@ Done:
 - backend/app/routes/chat.py:11: added `Literal` import and extended `ChatRequest` with `language` (max 32 chars) and `ChatResponse` with `intent_route` and `goal_state`.
 - contracts/goal_step.request.schema.json: regenerated from `GoalStepRequest.model_json_schema()` with LF line endings.
 - contracts/goal_step.response.schema.json: regenerated from `GoalStepResponse.model_json_schema()` with LF line endings.
-- docs/contracts.md: updated Contract 2 (`reveal` action, `reason`, `expect`), Contract 7 (`language`, `intent_route`, `goal_state`), Contract 12 (`user_inputs`, `fields`, latent nodes), and Versioning table (v3.0).
-- backend/tests/test_v2_contracts.py:144: added 12 new v3 unit and route integration tests in `TestV3Contracts`.
+- docs/contracts.md: updated Contract 2 (`reveal` action, `reason`, `expect`), Contract 7 (`language`, `intent_route`, `goal_state`), Contract 12 (`user_inputs` using vault tokens `{vault:national_id}`, `{vault:plate}`, `fields`, latent nodes), and Versioning table (v3.0).
+- backend/tests/test_v2_contracts.py:144: added 12 new v3 unit and route integration tests in `TestV3Contracts`, replacing realistic IDs with `00000000000000`.
 Tests run:
-- `pytest backend/tests -q`: 957 passed, 0 failed in 15.49s (from repo root).
+- `LLM_PROVIDER=mock pytest backend/tests -q`: 957 passed, 0 failed in 20.66s (from repo root).
 - `cd backend && pytest tests/ -q`: 956 passed, 1 failed (known pre-existing git diff path issue in `test_m2_challenger_stress.py` on `main` before `fix/ci-test-cwd` merge).
 - `pytest backend/tests/test_multi_tab_contracts.py -v`: 33 passed, 0 failed (strict schema equality check).
 - `pytest backend/tests/test_v2_contracts.py -v`: 17 passed, 0 failed.
-- `node client-script/test_m2_2_challenger_stress.js`: 18 passed, 0 failed.
+- `node client-script/test_m2_2_challenger_stress.js`: 18 passed, 0 failed in 1.4s.
 - `npm run test:js`: 1,136 passed across 27 suites, 0 failed.
 Next steps:
 1. WS2 (Language Backend): Consume `language` in `routes/chat.py` and pass to `app/i18n.py`.
