@@ -36,7 +36,7 @@
 ---
 
 # WS1 Contract Owner
-Branch: feat/contract-v3   Last commit: 3779392af31fe92eb2823d884a88e3bd9cd7ffd1   Model used: Gemini 1.5 / Claude (Thinking)
+Branch: feat/contract-v3   Last commit: 0928e63b39906847cf1abec61f09a5c041bf288b   Model used: Gemini 1.5 / Claude (Thinking)
 Status: done
 Done:
 - backend/app/models/action.py:17: added `"reveal"` action verb to `ActionType` without reordering existing values.
