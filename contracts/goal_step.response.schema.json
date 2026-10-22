@@ -229,7 +229,8 @@
             "press_key",
             "upload_file",
             "wait_for",
-            "switch_tab"
+            "switch_tab",
+            "reveal"
           ],
           "title": "Action",
           "type": "string"
@@ -585,6 +586,97 @@
       "title": "GoalState",
       "type": "object"
     },
+    "InputField": {
+      "description": "Structured field specification for multi-field user input requests.",
+      "properties": {
+        "ref": {
+          "description": "Stable DOM element ref",
+          "title": "Ref",
+          "type": "string"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Human-readable field label",
+          "title": "Label"
+        },
+        "kind": {
+          "default": "text",
+          "description": "Field type: text, number, select, date, phone, email, password, otp, other",
+          "enum": [
+            "text",
+            "number",
+            "select",
+            "date",
+            "phone",
+            "email",
+            "password",
+            "otp",
+            "other"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "sensitive": {
+          "default": false,
+          "description": "Whether field value is sensitive/secret",
+          "title": "Sensitive",
+          "type": "boolean"
+        },
+        "pattern": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Validation regex pattern",
+          "title": "Pattern"
+        },
+        "maxlength": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Maximum character length",
+          "title": "Maxlength"
+        },
+        "required": {
+          "default": true,
+          "description": "Whether input is mandatory",
+          "title": "Required",
+          "type": "boolean"
+        },
+        "options": {
+          "description": "Selectable options for select kind",
+          "items": {
+            "type": "string"
+          },
+          "title": "Options",
+          "type": "array"
+        }
+      },
+      "required": [
+        "ref"
+      ],
+      "title": "InputField",
+      "type": "object"
+    },
     "Milestone": {
       "description": "Discrete milestone checkpoint within a multi-step goal.\nIn Phase 1, the entire goal constitutes a single implicit active milestone.",
       "properties": {
@@ -687,7 +779,7 @@
       "description": "Atomic interactive browser action step.",
       "properties": {
         "action": {
-          "description": "Action type: click, open, double_click, triple_click, fill, scroll, focus",
+          "description": "Action type: click, open, double_click, triple_click, fill, scroll, focus, reveal, switch_tab",
           "enum": [
             "click",
             "open",
@@ -702,7 +794,8 @@
             "press_key",
             "upload_file",
             "wait_for",
-            "switch_tab"
+            "switch_tab",
+            "reveal"
           ],
           "title": "Action",
           "type": "string"
@@ -784,6 +877,39 @@
           "default": null,
           "description": "Target browser tab ID for multi-tab actions (e.g. switch_tab)",
           "title": "Tab Id"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "enum": [
+                "reveal_menu",
+                "navigate",
+                "search",
+                "backtrack",
+                "act"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Exploration rationale: reveal_menu, navigate, search, backtrack, act",
+          "title": "Reason"
+        },
+        "expect": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Expected observable outcome or element appearance after step execution",
+          "title": "Expect"
         }
       },
       "required": [
@@ -837,6 +963,14 @@
           "description": "Whether goal can resume once supplied",
           "title": "Resumable",
           "type": "boolean"
+        },
+        "fields": {
+          "description": "Structured input fields for multi-field user input requests",
+          "items": {
+            "$ref": "#/$defs/InputField"
+          },
+          "title": "Fields",
+          "type": "array"
         }
       },
       "required": [
@@ -1004,7 +1138,7 @@
     },
     "contract_version": {
       "default": 2,
-      "description": "Contract version: 1 (legacy), 2 (multi-tab aware)",
+      "description": "Contract version: 1 (legacy), 2 (multi-tab aware), 3 (exploration & input fields)",
       "title": "Contract Version",
       "type": "integer"
     },

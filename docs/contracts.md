@@ -110,6 +110,13 @@ Message sent **from FastAPI backend → browser snippet**, in response to a `typ
 | `"fill"` | Text inputs, textareas, search fields | Sets prototype value & dispatches `input` + `change` events |
 | `"scroll"` | Any page element | Centers element in viewport with accessibility glow effect |
 | `"focus"` | Any focusable element | Brings browser keyboard focus and active glow |
+| `"reveal"` | Dropdown toggles, burger buttons, menu bars | Triggers disclosure of latent/hidden menu nodes within 2000ms |
+
+### Exploration Metadata (v3)
+
+`PlanStep` objects support optional exploration intent attributes for the navigator and verifier:
+- **`reason`**: `"reveal_menu" | "navigate" | "search" | "backtrack" | "act"` (default `null`)
+- **`expect`**: Human-readable or structural expectation of what should appear after action execution (default `null`)
 
 ### Legacy Single-Action Format (Supported for Backward Compatibility)
 
@@ -316,41 +323,34 @@ If authentication fails:
 
 ---
 
-## Contract 7 — Conversational QA (`POST /v1/chat`)
+## Contract 7 — Conversational QA & Intent Routing (`POST /v1/chat`)
 
-Conversational question-answering and multi-step action planning endpoint with context injection and prompt-injection fencing.
+Conversational question-answering, multi-step action planning, and intent routing endpoint with context injection and language support.
 
-Request:
+Request (`ChatRequest`):
 ```json
 {
-  "messages": [
-    { "role": "user", "content": "How do I purchase items?" }
-  ],
-  "context": {
-    "page_text": "Extracted page text capped to 3000 chars",
-    "dom_summary": "Extracted interactive DOM summary"
-  }
+  "url": "https://example.com/portal",
+  "question": "How do I check traffic violations?",
+  "page_text": "Extracted visible page text...",
+  "api_key": "string (optional)",
+  "dom_map": [ /* Contract 3 DomNode[] */ ],
+  "history": [ { "role": "user", "content": "..." } ],
+  "language": "ar-EG (optional locale, max 32 chars)"
 }
 ```
 Headers:
-- `X-Atlas-Key`: API key string
+- `X-Atlas-Key`: API key string (or inline `api_key` in request body)
 - `Content-Type`: `application/json`
 
-Response:
+Response (`ChatResponse`):
 ```json
 {
-  "reply": "You can click on any item in the list and select checkout.",
-  "plan": {
-    "type": "plan | conversation | confirmation",
-    "steps": [
-      {
-        "action": "click",
-        "element_id": "atlas-001",
-        "description": "Click checkout"
-      }
-    ],
-    "requires_confirmation": false
-  }
+  "status": "ok | error",
+  "answer": "Plain-language reply in selected language",
+  "plan": { /* Contract 2 AgenticPlan (optional) */ },
+  "intent_route": "direct | question | goal (optional)",
+  "goal_state": { /* Contract 12 GoalState seed (optional, present when intent_route is 'goal') */ }
 }
 ```
 
@@ -546,6 +546,43 @@ redacted server-side before it reaches the LLM or any log line, and a
 | Navigator | `app/agent/navigator.py` | Yes (1 call per hop) | Resolve milestone + current DOM → one concrete `PlanStep` |
 | Verifier | `app/agent/verifier.py` | Only if rules are inconclusive | Decide: `in_progress`, `milestone_complete`, `goal_complete`, or `goal_failed` |
 
+### Contract v3 Extensions (Multi-Field Input, Exploration & Arabic)
+
+Contract v3 introduces rich multi-field user input requests, latent DOM metadata, exploration reasons, and structured user input responses:
+
+#### 1. Rich User Inputs (`GoalStepRequest.user_inputs`)
+```json
+{
+  "user_inputs": {
+    "el_national_id": "29501011234567",
+    "el_plate_letters": "ب س م",
+    "el_password": "{vault.secret_token}"
+  }
+}
+```
+Field `user_inputs` is an optional key-value dictionary (`ref -> value`) allowing the client to return multiple input values in a single turn.
+
+#### 2. Multi-Field Input Requests (`UserInputRequest.fields`)
+`UserInputRequest` now includes `fields: List[InputField]` where each `InputField` has:
+- `ref`: `string` (stable DOM element ref)
+- `label`: `string | null` (user-facing label)
+- `kind`: `"text" | "number" | "select" | "date" | "phone" | "email" | "password" | "otp" | "other"` (default `"text"`)
+- `sensitive`: `boolean` (default `false`)
+- `pattern`: `string | null` (validation regex)
+- `maxlength`: `integer | null`
+- `required`: `boolean` (default `true`)
+- `options`: `string[]` (selectable values when `kind` is `"select"`)
+
+Legacy single-field payloads without `fields` default to an empty list `[]` for full backward compatibility.
+
+#### 3. Latent DOM Node Metadata (`DomNode`)
+`DomNode` includes optional exploration fields populated by the client serializer:
+- `visible`: `boolean` (default `true`)
+- `reveal_via`: `string | null` (element ID of the toggle/trigger that reveals this node)
+- `menu`: `MenuInfo | null` (`haspopup`, `expanded`, `controls`)
+- `landmark`: `"header" | "nav" | "main" | "footer" | "aside" | null`
+- `breadcrumb`: `string[] | null`
+
 ---
 
 ## Versioning
@@ -558,3 +595,6 @@ redacted server-side before it reaches the LLM or any log line, and a
 | v1.3 | Remediation Pass | Added `open` and `double_click` to Contract 2 action types; added `resolved_label` and `group_label` to Contract 3; added Contracts 6–10 (CSWSH handshake, Chat, Summary, Fixes, and Extension internal messaging). |
 | v1.4 | Security Pass | Added Contract 11 (Client-Side Secret Tokens & Local Vault). |
 | v1.5 | Phase 1 Goal Execution | Added Contract 12 (Goal-Directed Execution — Navigator + Verifier loop, `POST /v1/chat/goal_step`). |
+| v2.0 | Milestone 2 | Added TabContext, TabInfo, multi-tab coordination, switch_tab action, and URL sanitization. |
+| v3.0 | Arabic & Multi-Step Exploration | Added Contract v3: language parameter on /v1/chat, intent_route + goal_state seed in ChatResponse, multi-field InputField schemas in UserInputRequest, user_inputs in GoalStepRequest, reveal action verb and reason/expect exploration metadata in PlanStep, latent DomNode metadata (visible, reveal_via, menu, landmark, breadcrumb). |
+

@@ -21,15 +21,20 @@ from app.models.dom import DomNode
 
 # ── Action & Step Definitions ──────────────────────────────────────────────────
 
+PlanStepReason = Literal["reveal_menu", "navigate", "search", "backtrack", "act"]
+
+
 class PlanStep(BaseModel):
     """Atomic interactive browser action step."""
-    action: ActionType = Field(..., description="Action type: click, open, double_click, triple_click, fill, scroll, focus")
+    action: ActionType = Field(..., description="Action type: click, open, double_click, triple_click, fill, scroll, focus, reveal, switch_tab")
     element_id: Optional[str] = Field(default=None, description="Synthetic data-atlas-id of the target DOM element")
     value: Optional[str] = Field(default=None, description="Input string value when action is 'fill'")
     click_count: Optional[int] = Field(default=None, description="Number of clicks to perform when action is click")
     description: Optional[str] = Field(default="", description="Human-readable description of this step")
     delay_ms: Optional[int] = Field(default=600, description="Execution delay in milliseconds before next action")
     tab_id: Optional[int] = Field(default=None, description="Target browser tab ID for multi-tab actions (e.g. switch_tab)")
+    reason: Optional[PlanStepReason] = Field(default=None, description="Exploration rationale: reveal_menu, navigate, search, backtrack, act")
+    expect: Optional[str] = Field(default=None, description="Expected observable outcome or element appearance after step execution")
 
 
 class AgenticPlan(BaseModel):
@@ -128,12 +133,38 @@ class Branch(BaseModel):
     depends_on: List[str] = Field(default_factory=list, description="Prerequisite branch IDs")
 
 
+InputFieldKind = Literal[
+    "text",
+    "number",
+    "select",
+    "date",
+    "phone",
+    "email",
+    "password",
+    "otp",
+    "other",
+]
+
+
+class InputField(BaseModel):
+    """Structured field specification for multi-field user input requests."""
+    ref: str = Field(..., description="Stable DOM element ref")
+    label: Optional[str] = Field(default=None, description="Human-readable field label")
+    kind: InputFieldKind = Field(default="text", description="Field type: text, number, select, date, phone, email, password, otp, other")
+    sensitive: bool = Field(default=False, description="Whether field value is sensitive/secret")
+    pattern: Optional[str] = Field(default=None, description="Validation regex pattern")
+    maxlength: Optional[int] = Field(default=None, description="Maximum character length")
+    required: bool = Field(default=True, description="Whether input is mandatory")
+    options: List[str] = Field(default_factory=list, description="Selectable options for select kind")
+
+
 class UserInputRequest(BaseModel):
     kind: Literal["otp", "captcha", "choice", "missing_field", "credential"] = Field(..., description="Type of user input requested")
     prompt: str = Field(..., description="Human-readable explanation of needed input")
     field_ref: Optional[str] = Field(default=None, description="Associated DOM ref")
     options: List[str] = Field(default_factory=list, description="Selectable options if kind is choice")
     resumable: bool = Field(default=True, description="Whether goal can resume once supplied")
+    fields: List[InputField] = Field(default_factory=list, description="Structured input fields for multi-field user input requests")
 
 
 class GoalState(BaseModel):
@@ -247,10 +278,11 @@ class GoalStepRequest(BaseModel):
     goal_state: Optional[GoalState] = Field(default=None, description="Existing GoalState from prior hop, or None if initial")
     last_action_result: Optional[Dict[str, Any]] = Field(default=None, description="Feedback from executor for the previous step")
     user_response: Optional[str] = Field(default=None, max_length=1000, description="User response to confirmation prompt (e.g. 'yes', 'no')")
+    user_inputs: Optional[Dict[str, str]] = Field(default=None, description="Structured mapping of field ref -> value or secret-vault token")
     session_id: Optional[str] = Field(default=None, max_length=256, description="Session ID for tracking and correlation")
     api_key: Optional[str] = Field(default=None, max_length=256, description="Optional inline tenant API key")
     language: Optional[str] = Field(default=None, max_length=32, description="Preferred language locale e.g. 'ar-EG'")
-    contract_version: int = Field(default=2, description="Contract version: 1 (legacy), 2 (multi-tab aware)")
+    contract_version: int = Field(default=2, description="Contract version: 1 (legacy), 2 (multi-tab aware), 3 (exploration & input fields)")
     capabilities: List[str] = Field(
         default_factory=lambda: ["switch_tab", "tab_context", "assisted_click"],
         description="Client declared capabilities",
@@ -270,9 +302,8 @@ class GoalStepResponse(BaseModel):
     confirmation_options: Optional[List[str]] = Field(default_factory=lambda: ["Yes, proceed", "No, cancel"])
     pending_step: Optional[PlanStep] = Field(default=None, description="Consequential action awaiting confirmation")
     verifier_result: Optional[VerifierResult] = Field(default=None, description="Verification outcome from evaluating previous action")
-    contract_version: int = Field(default=2, description="Contract version: 1 (legacy), 2 (multi-tab aware)")
+    contract_version: int = Field(default=2, description="Contract version: 1 (legacy), 2 (multi-tab aware), 3 (exploration & input fields)")
     close_tab: Optional[bool] = Field(default=None, description="Directive to close child tab")
     switch_tab_id: Optional[int] = Field(default=None, description="Directive to switch active tab")
     requires_origin_confirmation: bool = Field(default=False, description="Gate for cross-origin confirmation")
     assisted_click: Optional[Dict[str, Any]] = Field(default=None, description="Assisted click prompt configuration")
-

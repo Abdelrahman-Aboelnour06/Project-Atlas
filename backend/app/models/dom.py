@@ -1,3 +1,4 @@
+from typing import Literal
 from pydantic import BaseModel
 
 
@@ -5,6 +6,12 @@ class SelectOption(BaseModel):
     value: str
     label: str
     selected: bool = False
+
+
+class MenuInfo(BaseModel):
+    haspopup: str | None = None
+    expanded: bool | None = None
+    controls: str | None = None
 
 
 class DomNode(BaseModel):
@@ -40,3 +47,10 @@ class DomNode(BaseModel):
     invalid:        bool | None = None
     error_text:     str | None = None
     section_label:  str | None = None
+
+    # v3 extensions (§9.3 / latent nodes)
+    visible:        bool | None = True
+    reveal_via:     str | None = None
+    menu:           MenuInfo | None = None
+    landmark:       Literal['header', 'nav', 'main', 'footer', 'aside'] | None = None
+    breadcrumb:     list[str] | None = None

@@ -8,7 +8,7 @@ the configured LLM provider (NVIDIA NIM or Ollama).
 
 import asyncio
 import logging
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Literal, Optional, Set
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -103,12 +103,21 @@ class ChatRequest(BaseModel):
     api_key: Optional[str] = Field(default=None, max_length=256)
     dom_map: Optional[List[Dict[str, Any]]] = None
     history: Optional[List[Dict[str, str]]] = None
+    language: Optional[str] = Field(default=None, max_length=32, description="Preferred language locale e.g. 'ar-EG'")
 
 
 class ChatResponse(BaseModel):
     status: str
     answer: str
     plan: Optional[AgenticPlan] = None
+    intent_route: Optional[Literal["direct", "question", "goal"]] = Field(
+        default=None,
+        description="Routing decision: direct (single immediate action), question (conversational answer), or goal (closed goal loop)",
+    )
+    goal_state: Optional[GoalState] = Field(
+        default=None,
+        description="Initial goal state seed for the client goal loop when intent_route is 'goal'",
+    )
 
 
 @router.post("/chat", response_model=ChatResponse)
