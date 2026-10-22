@@ -14,6 +14,7 @@ Adversarial Challenger M2.1 empirical test harness:
 """
 
 import subprocess
+from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
@@ -262,8 +263,10 @@ class TestSacredRailsAndUniversalCompliance:
 
     def test_verifier_rules_4_5_6_zero_diff_lines(self):
         """Rules 4, 5, 6 in verifier.py must have strictly 0 diff lines."""
+        repo_root = Path(__file__).resolve().parents[2]
         res = subprocess.run(
-            ["git", "diff", "backend/app/agent/verifier.py"],
+            ["git", "diff", "--", "backend/app/agent/verifier.py"],
+            cwd=str(repo_root),
             capture_output=True,
             text=True,
         )
@@ -272,6 +275,7 @@ class TestSacredRailsAndUniversalCompliance:
 
     def test_prime_directive_zero_domain_hardcoding(self):
         """Zero hardcoded domains in Milestone 2 production files."""
+        repo_root = Path(__file__).resolve().parents[2]
         res = subprocess.run(
             [
                 "git", "grep", "-i", "-E",
@@ -281,6 +285,7 @@ class TestSacredRailsAndUniversalCompliance:
                 "backend/app/models/action.py",
                 "backend/app/agent/sanitize.py",
             ],
+            cwd=str(repo_root),
             capture_output=True,
             text=True,
         )
