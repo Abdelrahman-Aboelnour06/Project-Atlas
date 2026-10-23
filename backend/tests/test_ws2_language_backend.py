@@ -118,9 +118,9 @@ def test_resolve_reply_language_matrix():
     assert resolve_reply_language("ar", "Hello world") == "ar-EG"
     assert resolve_reply_language("ar-SA", "Search for shoes") == "ar-EG"
 
-    # If selected is en-*, explicit English wins even if user text has Arabic script
-    assert resolve_reply_language("en-US", "عايز اشتري لابتوب") == "en-US"
-    assert resolve_reply_language("en-GB", "ابحث عن منتج") == "en-US"
+    # If selected is en-*, returns ar-EG if user text has Arabic script, else en-US
+    assert resolve_reply_language("en-US", "عايز اشتري لابتوب") == "ar-EG"
+    assert resolve_reply_language("en-GB", "ابحث عن منتج") == "ar-EG"
 
     # If selected is en-* and user text is Latin, English
     assert resolve_reply_language("en-US", "Hello world") == "en-US"
@@ -504,11 +504,15 @@ def test_goal_step_endpoint_arabic_limit_replies(api_client):
 # ── 7. Review Fix Regressions (User Review Directives) ──────────────────────
 
 def test_resolve_language_explicit_english_vs_arabic_user_text():
-    """Explicit English wins over Arabic user text; mirroring only when unset."""
-    # language="en-US" + Arabic user text → "en-US"
-    assert resolve_reply_language("en-US", "عايز اشتري لابتوب") == "en-US"
+    """When selected starts with en, user Arabic script still mirrors to ar-EG."""
+    # language="en-US" + Arabic user text → "ar-EG"
+    assert resolve_reply_language("en-US", "عايز اشتري لابتوب") == "ar-EG"
+    # language="en-US" + English text → "en-US"
+    assert resolve_reply_language("en-US", "Hello world") == "en-US"
     # language=None + Arabic user text → "ar-EG"
     assert resolve_reply_language(None, "عايز اشتري لابتوب") == "ar-EG"
+    # language=None + English text → "en-US"
+    assert resolve_reply_language(None, "Hello world") == "en-US"
 
 
 def test_summary_prompt_and_endpoint_en_us_with_arabic_page_text(api_client):

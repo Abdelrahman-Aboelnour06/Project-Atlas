@@ -212,22 +212,23 @@ def resolve_reply_language(selected: Optional[str], user_text: Optional[str]) ->
 
     Rule:
     - If `selected` starts with 'ar' (e.g. 'ar', 'ar-EG'), return 'ar-EG'.
-    - If `selected` starts with 'en' (e.g. 'en', 'en-US'), return 'en-US' (explicit English wins).
-    - Mirroring by user script ONLY when `selected` is None or empty:
+    - If `selected` starts with 'en' (e.g. 'en', 'en-US'):
+      - return 'ar-EG' if user_text contains Arabic letters ([\u0600-\u06FF]).
+      - otherwise 'en-US'.
+    - Mirroring by user script when `selected` is None or empty:
       - If user_text contains Arabic characters ([\u0600-\u06FF]), return 'ar-EG'.
       - Otherwise, return 'en-US'.
     """
+    has_arabic = bool(user_text and re.search(r"[\u0600-\u06FF]", str(user_text)))
+
     if selected:
         s = str(selected).strip().lower()
         if s.startswith("ar"):
             return "ar-EG"
         if s.startswith("en"):
-            return "en-US"
+            return "ar-EG" if has_arabic else "en-US"
 
-    if user_text and re.search(r"[\u0600-\u06FF]", str(user_text)):
-        return "ar-EG"
-
-    return "en-US"
+    return "ar-EG" if has_arabic else "en-US"
 
 
 def is_mostly_non_arabic(text: Optional[str]) -> bool:
