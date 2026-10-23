@@ -295,5 +295,8 @@ jobs:
       - name: Build Release Extension Package
         run: python tools/package_extension.py
 
+      - name: W2 stress suite (diagnostic output)
+        run: node client-script/test_w2_challenger_stress.js || true
+
       - name: Run CI Gatekeeper Quality Floor Self-Check
         run: python3 ci/verify_all_tests_run.py
