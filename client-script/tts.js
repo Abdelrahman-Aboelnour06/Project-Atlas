@@ -47,7 +47,67 @@
 
   const toggleMute = () => setMuted(!muted);
 
-  const speak = (text, { onStart, onEnd, onError } = {}) => {
+  const getVoiceForLanguage = (targetLang, voices = null) => {
+    const availableVoices =
+      Array.isArray(voices)
+        ? voices
+        : (typeof window !== "undefined" && window.speechSynthesis?.getVoices
+            ? window.speechSynthesis.getVoices()
+            : []);
+
+    if (!availableVoices || availableVoices.length === 0) {
+      return null;
+    }
+
+    const isAr = targetLang === "ar-EG" || (typeof targetLang === "string" && targetLang.startsWith("ar"));
+
+    if (isAr) {
+      // 1. Exact dialect match (ar-EG)
+      const exactMatch = availableVoices.find(
+        (v) => v.lang === "ar-EG" || v.lang === "ar_EG",
+      );
+      if (exactMatch) return exactMatch;
+
+      // 2. Any Arabic regional locale (ar-SA, ar-XA, ar-AE, etc.)
+      const regionalMatch = availableVoices.find(
+        (v) =>
+          v.lang &&
+          (v.lang.startsWith("ar-") ||
+            v.lang.startsWith("ar_") ||
+            v.lang.toLowerCase() === "ar"),
+      );
+      if (regionalMatch) return regionalMatch;
+
+      // 3. Match voice name mentioning Arabic or عربي
+      const nameMatch = availableVoices.find(
+        (v) => v.name && /arabic|عربي/i.test(v.name),
+      );
+      if (nameMatch) return nameMatch;
+
+      // 4. Fallback to null so browser engine defers to host default
+      return null;
+    }
+
+    // English / default resolution
+    const exactEn = availableVoices.find(
+      (v) => v.lang === "en-US" || v.lang === "en_US",
+    );
+    if (exactEn) return exactEn;
+
+    const regionalEn = availableVoices.find(
+      (v) =>
+        v.lang &&
+        (v.lang.startsWith("en-") ||
+          v.lang.startsWith("en_") ||
+          v.lang.toLowerCase() === "en"),
+    );
+    if (regionalEn) return regionalEn;
+
+    return null;
+  };
+
+  const speak = (text, options = {}) => {
+    const { onStart, onEnd, onError, lang, language } = options;
     if (!isSupported() || muted) {
       return;
     }
@@ -60,41 +120,36 @@
     try {
       const utterance = new SpeechSynthesisUtterance(sanitized);
 
-      // Detect language: Arabic Unicode block [\u0600-\u06FF]
-      const isArabic = /[\u0600-\u06FF]/.test(sanitized);
+      // Resolve target language:
+      // 1. Explicit option passed into speak
+      // 2. Arabic script detected in text
+      // 3. Global active language from AtlasSidebar or AtlasSpeech
+      const explicitLang = lang || language || null;
+      const hasArabicScript = /[\u0600-\u06FF]/.test(sanitized);
+      const globalLang =
+        (typeof window !== "undefined" &&
+          (window.AtlasSidebar?.getLanguage?.() ||
+            window.AtlasSpeech?.getLanguage?.())) ||
+        null;
+
+      const isArabic =
+        hasArabicScript ||
+        (explicitLang && (explicitLang === "ar-EG" || explicitLang.startsWith("ar"))) ||
+        (!explicitLang && globalLang && (globalLang === "ar-EG" || globalLang.startsWith("ar")));
+
       const targetLang = isArabic ? "ar-EG" : "en-US";
 
-      let matchedVoice = null;
       const voices =
         typeof window !== "undefined" && window.speechSynthesis?.getVoices
           ? window.speechSynthesis.getVoices()
           : [];
 
-      if (isArabic) {
-        matchedVoice =
-          voices.find((v) => v.lang === "ar-EG" || v.lang === "ar_EG") ||
-          voices.find(
-            (v) =>
-              v.lang &&
-              (v.lang.startsWith("ar-") ||
-                v.lang.startsWith("ar_") ||
-                v.lang.toLowerCase() === "ar"),
-          );
-        if (!matchedVoice) {
-          console.warn(
-            "AtlasTTS: No Arabic voice installed on host OS. Using default voice.",
-          );
-        }
-      } else {
-        matchedVoice =
-          voices.find((v) => v.lang === "en-US" || v.lang === "en_US") ||
-          voices.find(
-            (v) =>
-              v.lang &&
-              (v.lang.startsWith("en-") ||
-                v.lang.startsWith("en_") ||
-                v.lang.toLowerCase() === "en"),
-          );
+      const matchedVoice = getVoiceForLanguage(targetLang, voices);
+
+      if (isArabic && !matchedVoice) {
+        console.warn(
+          "AtlasTTS: No Arabic voice installed on host OS. Using default voice.",
+        );
       }
 
       utterance.lang = targetLang;
@@ -143,6 +198,7 @@
     toggleMute,
     detectLanguage,
     cleanSpeechText,
+    getVoiceForLanguage,
   };
 
   if (typeof window !== "undefined") {

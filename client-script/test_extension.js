@@ -295,15 +295,21 @@ assert(sidebarCss.includes('.atlas-lang-pill'), 'sidebar.css styles .atlas-lang-
 const sidebarModule = require('./sidebar.js');
 assert(typeof sidebarModule.getVoiceLanguage === 'function', 'sidebar.js exports getVoiceLanguage');
 assert(typeof sidebarModule.setVoiceLanguage === 'function', 'sidebar.js exports setVoiceLanguage');
+assert(typeof sidebarModule.getLanguage === 'function', 'sidebar.js exports getLanguage');
+assert(typeof sidebarModule.setLanguage === 'function', 'sidebar.js exports setLanguage');
+assert(typeof sidebarModule.toggleLanguage === 'function', 'sidebar.js exports toggleLanguage');
 assert(typeof sidebarModule.toggleVoiceLanguage === 'function', 'sidebar.js exports toggleVoiceLanguage');
 assert(typeof sidebarModule.handleSpeechTranscript === 'function', 'sidebar.js exports handleSpeechTranscript');
 
 sidebarModule.setVoiceLanguage('en-US');
 assert(sidebarModule.getVoiceLanguage() === 'en-US', 'sidebar.js voice language initializes to en-US');
+assert(sidebarModule.getLanguage() === 'en-US', 'sidebar.js getLanguage returns en-US');
 sidebarModule.toggleVoiceLanguage();
 assert(sidebarModule.getVoiceLanguage() === 'ar-EG', 'sidebar.js toggleVoiceLanguage switches to ar-EG');
+assert(sidebarModule.getLanguage() === 'ar-EG', 'sidebar.js getLanguage returns ar-EG');
 sidebarModule.toggleVoiceLanguage();
 assert(sidebarModule.getVoiceLanguage() === 'en-US', 'sidebar.js toggleVoiceLanguage switches back to en-US');
+assert(sidebarModule.getLanguage() === 'en-US', 'sidebar.js getLanguage returns en-US');
 
 // Auto-sticky Arabic heuristic execution test
 sidebarModule.setVoiceLanguage('en-US');
