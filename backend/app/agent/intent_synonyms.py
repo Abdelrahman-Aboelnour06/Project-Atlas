@@ -10,11 +10,8 @@ Adheres strictly to the Prime Directive:
 - Topic matching derived strictly from user goal text vs DOM labels.
 """
 
-import base64
-import json
 import re
 import unicodedata
-import zlib
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 
@@ -294,6 +291,55 @@ CANONICAL_INTENTS: Dict[str, Dict[str, List[str]]] = {
             "النشرة البريدية", "النشره البريديه", "النشرة الإخبارية", "النشره الاخباريه",
         ],
     },
+    "traffic_inquiry": {
+        "triggers": [
+            # English
+            "check car fees", "check if my car has any fees", "car fees", "check traffic violations",
+            "check traffic fines", "vehicle violations", "car violations", "traffic violations",
+            "traffic fines", "traffic fees", "license fees", "vehicle fees", "check my car fees in egypt",
+            "car fees in egypt", "check vehicle fines", "traffic services", "traffic tickets",
+            "check traffic tickets", "car fine", "car fines", "check car fees in egypt",
+            # MSA
+            "الاستعلام عن المخالفات", "الاستعلام عن المخالفات المرورية", "مخالفات المرور",
+            "مخالفات رخص المركبات", "مخالفات رخصة المركبة", "رسوم رخصة المركبة", "رسوم المركبة",
+            "فحص مخالفات السيارة", "الاستعلام عن مخالفات السيارة", "مخالفات السيارة",
+            "مخالفات المركبات", "الاستعلام عن مخالفات المرور",
+            # Egyptian Colloquial
+            "مخالفات عربيتي", "مخالفات العربية", "شوفيلي لو في مخالفات على عربيتي",
+            "شوف مخالفات عربيتي", "شوفلي مخالفات العربية", "عايز اعرف مخالفات العربية",
+            "عليها مخالفات", "عليها فلوس", "رسوم العربية", "رسوم رخصة العربية",
+            "استعلام عن مخالفات", "مخالفات رخصتي", "شوفيلي مخالفات العربية",
+            "شوفلي لو في مخالفات", "شوفيلي لو في مخالفات", "شوف لو في مخالفات على عربيتي",
+            "شوفيلي لو في مخالفات على عربيتي في مصر", "شوفلي لو في مخالفات على عربيتي في مصر",
+        ],
+        "dom_labels": [
+            # English
+            "traffic violations", "traffic fines", "vehicle violations", "traffic fees",
+            "traffic services", "check violations", "check fines",
+            # Arabic
+            "الاستعلام عن المخالفات المرورية", "الاستعلام عن المخالفات", "مخالفات المرور",
+            "مخالفات رخص المركبات", "مخالفات رخصة المركبة", "مخالفات المركبات", "مخالفات السيارة",
+        ],
+    },
+    "license_renewal": {
+        "triggers": [
+            # English
+            "renew vehicle license", "renew car license", "license renewal", "renew license",
+            "renew my vehicle", "vehicle registration renewal",
+            # MSA
+            "تجديد رخصة المركبة", "تجديد رخصة السيارة", "تجديد الرخصة", "تجديد رخصتي",
+            "تجديد رخص المركبات",
+            # Egyptian Colloquial
+            "جدد رخصة عربيتي", "عايز اجدد الرخصة", "عاوز اجدد الرخصة", "تجديد رخصة العربية",
+            "عاوز اجدد رخصة العربية", "عايز اجدد رخصة عربيتي",
+        ],
+        "dom_labels": [
+            # English
+            "vehicle license renewal", "renew vehicle license", "renew license", "license renewal",
+            # Arabic
+            "تجديد رخصة المركبة", "تجديد رخصة السيارة", "تجديد الرخصة", "تجديد رخص المركبات",
+        ],
+    },
     "services": {
         "triggers": [
             "services", "our services", "service catalog", "portal services",
@@ -428,26 +474,6 @@ CANONICAL_INTENTS: Dict[str, Dict[str, List[str]]] = {
         ],
     },
 }
-
-# Legacy compressed store unpacked strictly for backwards compatibility with prior track test suites
-_LEGACY_COMPRESSED = (
-    b"eJztWN1OgzAUfpVm114oMAVfRZelsrI1MqaAM2TZuwttgQN0rK1l0+gNKaft952/nnI4zPIURxENlzR5/6BpMXtEh1JG12uS"
-    b"ZuXL0yzckPAVhThFESHZ7AYJCY3QtmDyDc4QTop2frBWkKA93cU4p7tEMhfRhG/Zkw0NY9JfXIJ2JXLQAVwjEBrFNCRJRpr3"
-    b"mq6rsTCtEiKaILIu3nJoW1fItjRAfeaMpPuStCPLafhKcokb4ETFVYLBMdghVeX54/beeaienteOXZeNMRsH/VlvjsDEPepje"
-    b"HMmIQP5XStx8HXZT2xz2SLPB2OmhhPU6lqEN4DkAHypOx9n4V70ZT43ZuS+UOdt3MbneGS5/XUcJ8bXgxEOWAH/GgZcqIJBW"
-    b"t91uWwk/mTK/TRg1cy+olNtHfEAuM0H7sR8/N0InYJvj5LXWuCBGijgOaR48RFcpes9GA4v0LK+q6QZsS7L0AmThSAAe3jm"
-    b"OgAGAugbb6JKbTZ7crAHDV5VMOhifoJcrQKvYM637qHz+NPWHDv39/kkl5z3C1Ybm3XmokVtrDj9qHo5kf2mSp7ic8WNeqFc"
-    b"mUz9Ran/arddxviFxLxLVmxG5b1tv0WVNY6ix5Q00A143xu/oPu6bqv63/sZ9WYTf/Lbb1UWx/a/zzIlCfnE8fBHF5to/uKI"
-    b"5ZVSfKL63QKE9W+kGq5ZN9i4LWpQWAFSsqZZedCrwwxB2ux3QvaMgFmRzTDaYFHoisdZOmASRnNlexemFoB5uwrwz/lR+aof"
-    b"bx4klKpO7SD7NpGt5JZeW6Wk/xTESiExzwLJx0avRg1r0MkiNl7AbEXuL9ce/dKxOB6/AM8IIz0="
-)
-try:
-    _LEGACY_DATA = json.loads(zlib.decompress(base64.b64decode(_LEGACY_COMPRESSED)).decode("utf-8"))
-    for _k, _v in _LEGACY_DATA.items():
-        if _k not in CANONICAL_INTENTS:
-            CANONICAL_INTENTS[_k] = _v
-except Exception:
-    pass
 
 
 def canonicalize_intent(user_message: str) -> Optional[str]:

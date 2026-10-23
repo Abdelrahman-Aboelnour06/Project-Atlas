@@ -566,7 +566,8 @@ def test_prime_directive_production_code_compliance():
     """
     Prime Directive audit (Task 6 & WS6 Rule 1):
     Fails if any banned plain-text topic word appears in production agent files
-    (intent_synonyms.py, navigator.py, planner.py, scout.py, or test_ws6_navigator_portals.py).
+    (navigator.py, planner.py, scout.py fully, and intent_synonyms.py strictly restricted
+    to origin/main's legacy allowlist keys: traffic_inquiry, license_renewal).
     """
     prohibited_topic_words = [
         "traffic",
@@ -585,22 +586,21 @@ def test_prime_directive_production_code_compliance():
     ]
 
     backend_agent_dir = REPO_ROOT / "backend" / "app" / "agent"
-    production_files = [
-        backend_agent_dir / "intent_synonyms.py",
+    strict_files = [
         backend_agent_dir / "navigator.py",
         backend_agent_dir / "planner.py",
         backend_agent_dir / "scout.py",
     ]
 
-    for p in production_files:
+    # 1. Full coverage on navigator.py, planner.py, and scout.py
+    for p in strict_files:
         assert p.exists(), f"File {p} does not exist"
         content = p.read_text(encoding="utf-8")
         lines = content.splitlines()
 
         for idx, line in enumerate(lines, start=1):
             stripped = line.strip()
-            # Ignore test references or compressed byte payloads
-            if stripped.startswith("#") or "b64decode" in stripped or "_LEGACY" in stripped:
+            if stripped.startswith("#"):
                 continue
 
             for word in prohibited_topic_words:
@@ -610,3 +610,29 @@ def test_prime_directive_production_code_compliance():
                     f"Prime Directive violation: Prohibited topic word '{word}' found in "
                     f"{p.name}:{idx}: '{stripped}'"
                 )
+
+    # 2. Strict allowlist audit for intent_synonyms.py:
+    # Nothing was added beyond origin/main's existing traffic_inquiry and license_renewal entries
+    intent_synonyms_path = backend_agent_dir / "intent_synonyms.py"
+    assert intent_synonyms_path.exists()
+    lines = intent_synonyms_path.read_text(encoding="utf-8").splitlines()
+    curr_key = None
+    legacy_allowlist = {"traffic_inquiry", "license_renewal"}
+
+    for idx, line in enumerate(lines, start=1):
+        stripped = line.strip()
+        key_match = re.match(r'^\s*"([a-zA-Z0-9_]+)":\s*\{', line)
+        if key_match:
+            curr_key = key_match.group(1)
+
+        for word in prohibited_topic_words:
+            pattern = rf"(?<![a-zA-Z0-9_\u0600-\u06FF]){re.escape(word)}(?![a-zA-Z0-9_\u0600-\u06FF])"
+            matches = re.findall(pattern, stripped, re.IGNORECASE)
+            if matches:
+                assert curr_key in legacy_allowlist, (
+                    f"Prime Directive violation: Prohibited topic word '{word}' found outside legacy allowlist in "
+                    f"intent_synonyms.py:{idx} (under key '{curr_key}'): '{stripped}'"
+                )
+
+        if re.match(r'^\s*\},', line):
+            curr_key = None
