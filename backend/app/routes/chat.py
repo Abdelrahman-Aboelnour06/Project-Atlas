@@ -8,6 +8,7 @@ the configured LLM provider (NVIDIA NIM or Ollama).
 
 import asyncio
 import logging
+import re
 from typing import Any, Dict, List, Literal, Optional, Set
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
@@ -785,7 +786,7 @@ async def goal_step_endpoint(
         goal_state.awaiting = None
 
     # Handle confirmation response from user if state was paused for confirmation
-    if goal_state.requires_confirmation and payload.user_response:
+    if (goal_state.requires_confirmation or goal_state.status == "requires_confirmation" or goal_state.pending_step is not None) and payload.user_response:
         resp_clean = payload.user_response.strip().lower()
         if any(neg in resp_clean for neg in ("no", "cancel", "stop", "abort", "never mind", "لا", "الغي", "إلغاء", "وقف")):
             goal_state.requires_confirmation = False
@@ -987,16 +988,88 @@ async def goal_step_endpoint(
         goal_state.last_action_result = last_result
         goal_state.page_kind = scout_res.page_kind
 
+        # Check deterministic completion constraints (§D4)
+        last_act = (last_step.action or "").lower().strip() if last_step else ""
+        last_reason = (last_step.reason or "").lower().strip() if last_step else ""
+        is_intermediate_step = last_act in ("fill", "reveal") or last_reason in ("reveal_menu", "navigate", "fill")
+
+        form_fills_pending_submit = False
+        submit_executed = False
+        if goal_state.form_plan:
+            submit_ref_val = getattr(goal_state.form_plan, "submit_ref", None)
+            submit_executed = bool(
+                last_step is not None
+                and last_step.action == "click"
+                and (
+                    (submit_ref_val and str(last_step.element_id) == str(submit_ref_val))
+                    or "submit" in (last_step.description or "").lower()
+                )
+            )
+            if not submit_executed:
+                form_fills_pending_submit = True
+
+        prior_text = (goal_state.dom_state or {}).get("page_text", "")
+        curr_text = payload.page_text or ""
+
+        if is_intermediate_step or form_fills_pending_submit:
+            verifier_res.status = "in_progress"
+        elif submit_executed:
+            # After submit, completion requires visible change (new text, new region/table, or URL change)
+            has_visible_change = (
+                bool(prior_url and payload.current_url and prior_url.rstrip("/") != payload.current_url.rstrip("/"))
+                or any(
+                    str(getattr(n, "role", None) or (n.get("role") if isinstance(n, dict) else "")).lower() == "region"
+                    or str(getattr(n, "tag", None) or (n.get("tag") if isinstance(n, dict) else "")).lower() == "table"
+                    for n in (payload.dom_map or [])
+                    if str(getattr(n, "id", None) or getattr(n, "ref", None) or (n.get("id") if isinstance(n, dict) else n.get("ref"))) not in prior_dom_ids
+                )
+                or (curr_text and prior_text and curr_text != prior_text)
+                or (curr_text and len(curr_text) > 20)
+            )
+            if has_visible_change:
+                verifier_res.status = "goal_complete"
+            else:
+                verifier_res.status = "in_progress"
+
         if verifier_res.status == "goal_complete":
             goal_state.status = "goal_complete"
             active_milestone.status = "completed"
             goal_state.current_url = payload.current_url
             goal_state.advance_hop()
+
+            # Generic result extraction from new page text diff or summary
+            completion_reply = t("goal_completed_success", reply_lang)
+            if submit_executed and curr_text:
+                chunks = [c.strip() for c in re.split(r"[\n\r|•\t]+", curr_text) if c.strip()]
+                prior_chunks = {c.strip() for c in re.split(r"[\n\r|•\t]+", prior_text) if c.strip()}
+                new_chunks = [c for c in chunks if c not in prior_chunks]
+                if not new_chunks:
+                    new_chunks = chunks
+
+                result_summary = ""
+                for c in new_chunks:
+                    if any(k in c.lower() for k in ("إجمالي", "اجمالي", "total", "نتيجة", "مبلغ", "الرصيد", "balance", "amount", "summary")):
+                        result_summary = c
+                        break
+                if not result_summary:
+                    for c in chunks:
+                        if any(k in c.lower() for k in ("إجمالي", "اجمالي", "total", "نتيجة", "مبلغ", "الرصيد", "balance", "amount", "summary")):
+                            result_summary = c
+                            break
+                if not result_summary and new_chunks:
+                    result_summary = " ".join(new_chunks[:2])
+                elif not result_summary and chunks:
+                    result_summary = " ".join(chunks[:2])
+                if result_summary:
+                    # Defense in depth: sensitive digits must never be echoed in user replies
+                    result_summary = re.sub(r"\b\d{10,}\b", "••••••••", result_summary)
+                    completion_reply = t("goal_completed_result", reply_lang, result=result_summary)
+
             return _apply_capability_and_tab_gating(
                 GoalStepResponse(
                     status="goal_complete",
                     goal_state=goal_state,
-                    reply=t("goal_completed_success", reply_lang, reason=verifier_res.reason),
+                    reply=completion_reply,
                     steps=[],
                     requires_confirmation=False,
                     verifier_result=verifier_res,
@@ -1413,25 +1486,32 @@ async def goal_step_endpoint(
                         )
                         filled_refs.add(field.ref)
 
-        # Identify submit button
+        # Identify submit button generically
         submit_ref = form_plan.submit_ref if form_plan else None
         submit_label = "Submit"
         if not submit_ref and payload.dom_map:
+            buttons_in_form = []
             for node in payload.dom_map:
-                nid = getattr(node, "id", None) or getattr(node, "ref", None)
-                tag = (getattr(node, "tag", None) or "").lower()
-                ntype = (getattr(node, "type", None) or "").lower()
-                lbl = (getattr(node, "resolved_label", None) or getattr(node, "inner_text", None) or "").lower()
-                if ntype == "submit" or (tag == "button" and any(k in lbl for k in ("submit", "register", "complete", "استعلام", "إرسال", "ارسال", "عرض", "تسجيل"))):
+                nid = getattr(node, "id", None) or getattr(node, "ref", None) or (node.get("id") if isinstance(node, dict) else node.get("ref"))
+                tag = (getattr(node, "tag", None) or (node.get("tag") if isinstance(node, dict) else "") or "").lower()
+                ntype = (getattr(node, "type", None) or (node.get("type") if isinstance(node, dict) else "") or "").lower()
+                lbl = getattr(node, "resolved_label", None) or getattr(node, "inner_text", None) or (node.get("resolved_label") if isinstance(node, dict) else (node.get("inner_text") if isinstance(node, dict) else "Submit"))
+                if ntype == "submit":
                     submit_ref = str(nid)
-                    submit_label = getattr(node, "resolved_label", None) or getattr(node, "inner_text", None) or "Submit"
+                    submit_label = lbl
                     break
+                if tag == "button":
+                    buttons_in_form.append((str(nid), lbl))
+            if not submit_ref and len(buttons_in_form) == 1:
+                submit_ref, submit_label = buttons_in_form[0]
         elif submit_ref and payload.dom_map:
             for node in payload.dom_map:
-                nid = getattr(node, "id", None) or getattr(node, "ref", None)
+                nid = getattr(node, "id", None) or getattr(node, "ref", None) or (node.get("id") if isinstance(node, dict) else node.get("ref"))
                 if str(nid) == str(submit_ref):
-                    submit_label = getattr(node, "resolved_label", None) or getattr(node, "inner_text", None) or "Submit"
+                    submit_label = getattr(node, "resolved_label", None) or getattr(node, "inner_text", None) or (node.get("resolved_label") if isinstance(node, dict) else (node.get("inner_text") if isinstance(node, dict) else "Submit"))
                     break
+        if submit_ref and form_plan:
+            form_plan.submit_ref = submit_ref
 
         # If no fill steps are needed (e.g. form is already filled) but submit is present:
         if not form_steps and submit_ref:
@@ -1470,7 +1550,8 @@ async def goal_step_endpoint(
         goal_state.plan_steps.extend(form_steps)
         goal_state.current_url = payload.current_url
         goal_state.dom_state = {
-            "ids": [str(getattr(node, "id", None) or getattr(node, "ref", None)) for node in payload.dom_map if getattr(node, "id", None) or getattr(node, "ref", None)]
+            "ids": [str(getattr(node, "id", None) or getattr(node, "ref", None) or (node.get("id") if isinstance(node, dict) else node.get("ref"))) for node in payload.dom_map if getattr(node, "id", None) or getattr(node, "ref", None) or (isinstance(node, dict) and (node.get("id") or node.get("ref")))],
+            "page_text": payload.page_text or "",
         }
         goal_state.status = "in_progress"
         goal_state.advance_hop()
@@ -1517,8 +1598,10 @@ async def goal_step_endpoint(
 
     # Update persistent DOM and URL tracking
     goal_state.current_url = payload.current_url
+    page_text_clean = re.sub(r"\b\d{10,}\b", "••••••••", payload.page_text or "")
     goal_state.dom_state = {
-        "ids": [str(getattr(node, "id", None) or getattr(node, "ref", None)) for node in payload.dom_map if getattr(node, "id", None) or getattr(node, "ref", None)]
+        "ids": [str(getattr(node, "id", None) or getattr(node, "ref", None) or (node.get("id") if isinstance(node, dict) else node.get("ref"))) for node in payload.dom_map if getattr(node, "id", None) or getattr(node, "ref", None) or (isinstance(node, dict) and (node.get("id") or node.get("ref")))],
+        "page_text": page_text_clean,
     }
 
     # Handle confirmation pause

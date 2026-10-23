@@ -141,13 +141,54 @@ COMMON_STOPWORDS: Set[str] = {
     "عن", "من", "في", "على", "علي", "الى", "إلى", "الي", "مع", "هذا", "هذه", "ذلك", "تلك", "هو", "هي", "عبر", "كل", "جميع",
 }
 
+# Generic request and inquiry action verbs across languages
+GENERIC_REQUEST_VERBS: Set[str] = {
+    "inquiry", "inquire", "check", "query", "lookup", "find", "search", "view", "get", "request", "want", "ask",
+    "استفسار", "استعلام", "استفسر", "استعلم", "فحص", "كشف", "معرفة", "طلب", "اريد", "عايز", "عاوز", "بحث", "عرض",
+}
+
+# Universal site structure vocabulary
+STRUCTURAL_WORDS: Set[str] = {
+    "page", "site", "portal", "website", "menu", "list", "guide", "section", "service", "services", "home",
+    "صفحة", "موقع", "بوابة", "دليل", "قائمة", "قسم", "خدمة", "خدمات", "رئيسية", "الكترونية",
+}
+
+_GENERIC_VERB_STEMS: Set[str] = {_stem_word(w) for w in GENERIC_REQUEST_VERBS} | {w for w in GENERIC_REQUEST_VERBS}
+_STRUCTURAL_STEMS: Set[str] = {_stem_word(w) for w in STRUCTURAL_WORDS} | {w for w in STRUCTURAL_WORDS}
+
+
+def _is_generic_request_verb(token: str) -> bool:
+    """Checks if token belongs to generic request/inquiry verb class."""
+    st = _stem_word(token)
+    norm = _normalize_text(token)
+    return st in _GENERIC_VERB_STEMS or norm in _GENERIC_VERB_STEMS
+
+
+def _is_structural_word(token: str) -> bool:
+    """Checks if token belongs to structural navigation vocabulary."""
+    st = _stem_word(token)
+    norm = _normalize_text(token)
+    return st in _STRUCTURAL_STEMS or norm in _STRUCTURAL_STEMS
+
+
+def _token_match_weight(token: str) -> float:
+    """
+    Assigns higher weight to content nouns than to generic verbs or structural words.
+    A content noun is any token that is NOT a generic verb, stopword, or structural word.
+    """
+    if _is_generic_request_verb(token) or _is_structural_word(token):
+        return 1.0
+    return 2.0
+
 
 def score_text_similarity(query: str, candidate: str) -> float:
     """
     Universal lexical matching between user query/milestone and DOM candidate label:
     - Normalizes with _normalize_text
     - Strips grammatical prefixes (ال/و/ب/ل) and folds plurals (ات/ين/ون) and suffixes
-    - Evaluates token intersection over query tokens and candidate tokens.
+    - Treats generic request verbs as a unified intent class
+    - Prioritizes content nouns over generic request verbs and structural words
+    - Evaluates weighted token intersection over query tokens and candidate tokens.
     """
     if not query or not candidate:
         return 0.0
@@ -183,19 +224,38 @@ def score_text_similarity(query: str, candidate: str) -> float:
 
     c_token_set = set(c_tokens)
 
-    # Count matching stemmed tokens
-    matched_count = 0.0
+    # Weighted match over query tokens
+    matched_q_weight = 0.0
+    total_q_weight = sum(_token_match_weight(qt) for qt in q_tokens)
+
     for qt in q_tokens:
+        w = _token_match_weight(qt)
         if qt in c_token_set:
-            matched_count += 1.0
+            matched_q_weight += w
+        elif _is_generic_request_verb(qt) and any(_is_generic_request_verb(ct) for ct in c_token_set):
+            matched_q_weight += min(w, 0.8)
         elif any((len(qt) >= 4 and (qt in ct or ct in qt)) for ct in c_token_set):
-            matched_count += 0.85
+            matched_q_weight += w * 0.85
 
-    score_q = matched_count / len(q_tokens)
-    score_c = (matched_count / len(c_tokens)) * 0.90 if c_tokens else 0.0
-    score = max(score_q, score_c)
+    score_q = matched_q_weight / total_q_weight if total_q_weight else 0.0
 
-    return min(1.0, score)
+    # Weighted match over candidate tokens (coverage)
+    matched_c_weight = 0.0
+    total_c_weight = sum(_token_match_weight(ct) for ct in c_tokens)
+    q_token_set = set(q_tokens)
+
+    for ct in c_tokens:
+        w = _token_match_weight(ct)
+        if ct in q_token_set:
+            matched_c_weight += w
+        elif _is_generic_request_verb(ct) and any(_is_generic_request_verb(qt) for qt in q_tokens):
+            matched_c_weight += min(w, 0.8)
+        elif any((len(ct) >= 4 and (ct in qt or qt in ct)) for qt in q_tokens):
+            matched_c_weight += w * 0.85
+
+    score_c = (matched_c_weight / total_c_weight) * 0.90 if total_c_weight else 0.0
+
+    return min(1.0, max(score_q, score_c))
 
 
 # Core Canonical Intents mapping English, MSA, and Egyptian Colloquial Arabic

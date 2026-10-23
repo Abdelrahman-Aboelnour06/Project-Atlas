@@ -118,6 +118,16 @@ const isSensitiveField = (el, label = "") => {
   const aria = el.getAttribute?.("aria-label") || "";
   const placeholder = el.getAttribute?.("placeholder") || el.placeholder || "";
   if (SENSITIVE_KEYWORD_REGEX.test(`${name} ${id} ${aria} ${placeholder}`)) return true;
+
+  // D6: 10+ digits run (normalizing Arabic-Indic digits) without token is sensitive
+  const val = el.value != null && el.value !== "" ? String(el.value) : (el.getAttribute?.("value") || "");
+  if (val && !el.hasAttribute?.("data-atlas-token")) {
+    const normalizedDigits = val
+      .replace(/[٠-٩]/g, (d) => "٠١٢٣٤٥٦٧٨٩".indexOf(d))
+      .replace(/[۰-۹]/g, (d) => "۰۱۲۳۴۵۶۷۸۹".indexOf(d));
+    if (/\d{10,}/.test(normalizedDigits)) return true;
+  }
+
   return isIdentityField(el, label);
 };
 
@@ -963,7 +973,19 @@ const NOISE_TEXT_PATTERNS = [
       }
 
       const atlasToken = el.getAttribute?.("data-atlas-token") || null;
-      const sensitive = Boolean(atlasToken || isSensitiveField(el, label));
+      let sensitive = Boolean(atlasToken || isSensitiveField(el, label));
+
+      // D6: If a field's value contains a run of 10 or more digits (normalise Arabic-Indic digits first)
+      // and has no data-atlas-token, emit current_value null and sensitive true.
+      const rawVal = el.value != null && el.value !== "" ? String(el.value) : "";
+      if (rawVal && !atlasToken) {
+        const normalizedDigits = rawVal
+          .replace(/[٠-٩]/g, (d) => "٠١٢٣٤٥٦٧٨٩".indexOf(d))
+          .replace(/[۰-۹]/g, (d) => "۰۱۲۳۴۵۶۷۸۹".indexOf(d));
+        if (/\d{10,}/.test(normalizedDigits)) {
+          sensitive = true;
+        }
+      }
       const groupLabel = detectGroupLabel(el);
       const sectionLabel = detectSectionLabel(el);
       const tag = el.tagName.toLowerCase();
@@ -1085,28 +1107,13 @@ const NOISE_TEXT_PATTERNS = [
             let depth = 0;
             while (curr && curr !== document.body && curr !== document.documentElement && depth < 12) {
               depth++;
-              if (
-                curr.getAttribute?.("aria-hidden") === "true" ||
-                (curr.tagName === "DIALOG" && !curr.open && !curr.hasAttribute("open")) ||
-                curr.hasAttribute?.("inert") ||
-                curr.id === "atlas-sidebar-host" ||
-                curr.id === "atlas-sidebar-root"
-              ) {
-                isBlocked = true;
-                break;
-              }
 
               const cTag = (curr.tagName || "").toLowerCase();
               const cRole = (curr.getAttribute?.("role") || "").toLowerCase();
               const cClass = (curr.getAttribute?.("class") || "").toLowerCase();
               const cId = curr.id || "";
 
-              if (cTag === "form" && !formId) {
-                formId = curr.id || curr.getAttribute?.("name") || curr.getAttribute?.(ATLAS_ID_ATTR) || "form_0";
-              }
-
-              // Container validation: nav, header, menu, menubar, navigation, details:not([open]), aside, drawer, controlsMap
-              if (
+              const isControlledOrValidContainer =
                 cTag === "nav" ||
                 cTag === "header" ||
                 cTag === "aside" ||
@@ -1116,8 +1123,24 @@ const NOISE_TEXT_PATTERNS = [
                 cRole === "navigation" ||
                 cClass.includes("drawer") ||
                 cId.includes("drawer") ||
-                (cId && controlsMap.has(cId))
+                Boolean(cId && controlsMap.has(cId));
+
+              if (
+                (curr.getAttribute?.("aria-hidden") === "true" && !isControlledOrValidContainer) ||
+                (curr.tagName === "DIALOG" && !curr.open && !curr.hasAttribute("open")) ||
+                curr.hasAttribute?.("inert") ||
+                curr.id === "atlas-sidebar-host" ||
+                curr.id === "atlas-sidebar-root"
               ) {
+                isBlocked = true;
+                break;
+              }
+
+              if (cTag === "form" && !formId) {
+                formId = curr.id || curr.getAttribute?.("name") || curr.getAttribute?.(ATLAS_ID_ATTR) || "form_0";
+              }
+
+              if (isControlledOrValidContainer) {
                 validContainer = true;
               }
 

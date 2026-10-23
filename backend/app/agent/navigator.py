@@ -263,6 +263,11 @@ def _score_dom_candidate(
     if is_latent and base_score >= 0.40:
         base_score += 0.15
 
+    # 7. Same-page hash-only links penalty (rank below links to other pages and menus)
+    href = str(node.get("href") or "").strip()
+    if href.startswith("#") or (href and "#" in href and not href.startswith("http") and not href.startswith("/")):
+        base_score -= 0.25
+
     return min(1.0, max(0.0, base_score))
 
 
@@ -641,11 +646,13 @@ JSON RESPONSE:"""
     is_mock_dummy = (
         llm_client._get_current_provider() == "mock"
         and not getattr(llm_client, "_mock_canned_queue", None)
-        and thought.startswith("Interacting with element ")
     )
     fallback_mock_steps: List[PlanStep] = list(validated_steps) if is_mock_dummy else []
     if is_mock_dummy:
         validated_steps = []
+        validated_pending = None
+        llm_requires_confirmation = False
+        llm_confirmation_prompt = None
 
     # Universal Exploration Hierarchy (Order of priority §Task 2 & WS6 Rule 6)
     # 1. Visible match >= 0.65 first
@@ -662,7 +669,12 @@ JSON RESPONSE:"""
         best_lat_score: float = -1.0
 
         excluded_ids: Set[str] = set()
-        if is_repeated_state and last_executed_step:
+        for item in nav_state.get("tried", []):
+            if isinstance(item, str):
+                if ":" in item:
+                    excluded_ids.add(item.split(":")[-1])
+                excluded_ids.add(item)
+        if last_executed_step:
             excluded_ids.add(last_executed_step.split(":")[-1])
 
         for node, sc in scored_candidates:
@@ -917,11 +929,14 @@ JSON RESPONSE:"""
 
     # Record tried steps and last action in navigation state
     if validated_steps:
+        for act in validated_steps:
+            sig = f"{act.action}:{act.element_id}"
+            if sig not in nav_state["tried"]:
+                nav_state["tried"].append(sig)
+            if act.element_id and str(act.element_id) not in nav_state["tried"]:
+                nav_state["tried"].append(str(act.element_id))
         first_act = validated_steps[0]
         nav_state["last_action"] = f"{first_act.action}:{first_act.element_id}"
-        desc = first_act.description or f"{first_act.action} on {first_act.element_id}"
-        if desc not in nav_state["tried"]:
-            nav_state["tried"].append(desc)
 
     _save_navigation_state(goal_state, milestone, nav_state)
 
@@ -961,19 +976,13 @@ JSON RESPONSE:"""
         if sensitive_step_idx is not None:
             requires_confirmation = True
             final_pending = validated_steps.pop(sensitive_step_idx)
-            confirmation_prompt = (
-                llm_confirmation_prompt
-                or t("nav_confirm_sensitive", reply_lang, desc=final_pending.description or 'perform a sensitive operation')
-            )
+            confirmation_prompt = t("nav_confirm_sensitive", reply_lang, desc=final_pending.description or 'perform a sensitive operation')
         elif llm_requires_confirmation and final_pending is not None:
             requires_confirmation = True
-            confirmation_prompt = llm_confirmation_prompt or t("nav_confirm_generic", reply_lang)
+            confirmation_prompt = t("nav_confirm_generic", reply_lang)
         elif goal_consequential and final_pending is not None:
             requires_confirmation = True
-            confirmation_prompt = (
-                llm_confirmation_prompt
-                or t("nav_confirm_desc", reply_lang, desc=final_pending.description or goal)
-            )
+            confirmation_prompt = t("nav_confirm_desc", reply_lang, desc=final_pending.description or goal)
 
     plan_type = "confirmation" if requires_confirmation else ("plan" if validated_steps else "conversation")
 
