@@ -104,6 +104,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "batch_form_fill_prepared": "Prepared batch form fill for {count} fields.",
         "form_missing_fields_prompt": "Please provide {fields} to proceed.",
         "form_validation_error_reask": "Please check and re-enter a valid {field}.",
+        "form_validation_failed_max_attempts": "Failed to validate {field} after multiple attempts. Stopping goal execution.",
         "form_confirm_submit": "Ready to submit the form. Do you want to proceed?",
 
         # Navigator
@@ -116,6 +117,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
 
         # Exploration & Navigation (WS6)
         "nav_max_hops_tried": "I couldn't reach the requested service within the step limit. Here is what I tried: {tried}",
+        "nav_exploration_exhausted": "I reviewed the available options, but couldn't find the requested service. Here is what I tried: {tried}",
         "nav_deadend_backtrack": "Reached a dead-end on this page. Backtracking to explore other navigation options.",
         "nav_exploring_menu": "Opening menu '{toggle}' to check for {target}.",
         "nav_search_query": "Searching the site for '{query}'.",
@@ -211,6 +213,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "batch_form_fill_prepared": "تم تجهيز ملء {count} حقول في النموذج.",
         "form_missing_fields_prompt": "محتاج {fields} للمتابعة.",
         "form_validation_error_reask": "يرجى التأكد من صحة {field} وإعادة إدخاله.",
+        "form_validation_failed_max_attempts": "تعذر التحقق من صحة {field} بعد عدة محاولات. تم إيقاف تنفيذ الهدف.",
         "form_confirm_submit": "جاهز لإرسال النموذج. تحب تكمل؟",
 
         # Navigator
@@ -223,6 +226,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
 
         # Exploration & Navigation (WS6)
         "nav_max_hops_tried": "معرفتش أوصل للخدمة المطلوبة خلال الحد الأقصى للخطوات. وده اللي جربت أعمله: {tried}",
+        "nav_exploration_exhausted": "معرفتش ألاقي الخدمة المطلوبة في الموقع ده. وده اللي جربت أعمله: {tried}",
         "nav_deadend_backtrack": "وصلت لطريق مسدود في الصفحة دي. برجع علشان أجرب خيارات تانية.",
         "nav_exploring_menu": "بفتح قائمة '{toggle}' علشان أشوف {target}.",
         "nav_search_query": "ببحث في الموقع عن '{query}'.",

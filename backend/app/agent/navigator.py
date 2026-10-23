@@ -139,7 +139,7 @@ def _compute_state_fingerprint(url: str, safe_dom: List[Dict[str, Any]]) -> str:
 
 
 def _get_navigation_state(goal_state: Optional[GoalState], milestone: Milestone) -> Dict[str, Any]:
-    """Retrieves visited, frontier, and tried arrays (each capped at 30) from goal_state or milestone."""
+    """Retrieves visited, frontier, tried, and tried_labels arrays (each capped at 30) from goal_state or milestone."""
     state_dict: Dict[str, Any] = {}
     if goal_state and isinstance(goal_state.dom_state, dict):
         state_dict = goal_state.dom_state
@@ -152,12 +152,14 @@ def _get_navigation_state(goal_state: Optional[GoalState], milestone: Milestone)
     visited = list(state_dict.get("visited", []))[-30:]
     frontier = list(state_dict.get("frontier", []))[-30:]
     tried = list(state_dict.get("tried", []))[-30:]
+    tried_labels = list(state_dict.get("tried_labels", []))[-30:]
     last_action = state_dict.get("last_action")
 
     return {
         "visited": visited,
         "frontier": frontier,
         "tried": tried,
+        "tried_labels": tried_labels,
         "last_action": last_action,
     }
 
@@ -167,11 +169,12 @@ def _save_navigation_state(
     milestone: Milestone,
     nav_state: Dict[str, Any],
 ) -> None:
-    """Persists visited, frontier, and tried back to goal_state.dom_state and milestone.notes (max 30 each)."""
+    """Persists visited, frontier, tried, and tried_labels back to goal_state.dom_state and milestone.notes (max 30 each)."""
     caps = {
         "visited": list(nav_state.get("visited", []))[-30:],
         "frontier": list(nav_state.get("frontier", []))[-30:],
         "tried": list(nav_state.get("tried", []))[-30:],
+        "tried_labels": list(nav_state.get("tried_labels", []))[-30:],
         "last_action": nav_state.get("last_action"),
     }
     if goal_state:
@@ -182,6 +185,23 @@ def _save_navigation_state(
         milestone.notes = json.dumps(caps, ensure_ascii=False)
     except Exception:
         pass
+
+
+def _build_tried_summary(nav_state: Dict[str, Any], fallback_goal: str) -> str:
+    """Builds a human-readable list of tried labels for localized messages."""
+    tried_labels = nav_state.get("tried_labels") or []
+    if tried_labels:
+        return "، ".join(f"'{l}'" for l in tried_labels[-4:])
+    tried = nav_state.get("tried") or []
+    if tried:
+        clean = []
+        for item in tried[-4:]:
+            sig = item.split(":")[-1]
+            if sig:
+                clean.append(f"'{sig}'")
+        if clean:
+            return "، ".join(clean)
+    return f"'{fallback_goal}'"
 
 
 def _score_dom_candidate(
@@ -369,7 +389,7 @@ async def plan_milestone_step(
     max_hops_limit = goal_state.max_hops if (goal_state and goal_state.max_hops) else 15
     current_hop_count = goal_state.hop_count if goal_state else 0
     if current_hop_count >= max_hops_limit:
-        tried_summary = ", ".join(nav_state["tried"][-4:]) if nav_state["tried"] else goal
+        tried_summary = _build_tried_summary(nav_state, goal)
         _save_navigation_state(goal_state, milestone, nav_state)
         return AgenticPlan(
             type="conversation",
@@ -898,6 +918,9 @@ JSON RESPONSE:"""
                 for node in safe_dom:
                     if node.get("visible") is False:
                         continue
+                    node_id = str(node.get("id") or node.get("ref") or "")
+                    if f"backtrack:{node_id}" in nav_state["tried"]:
+                        continue
                     lbl = str(node.get("resolved_label") or node.get("inner_text") or "").strip()
                     tag = str(node.get("tag", "")).lower()
                     landmark = str(node.get("landmark", "")).lower()
@@ -927,14 +950,36 @@ JSON RESPONSE:"""
                     thought = "Dead-end reached with no frontier options: backtracking to home link"
                     step_chosen = True
 
+        if not step_chosen:
+            # Exploration exhausted or no actionable steps
+            tried_summary = _build_tried_summary(nav_state, goal)
+            reply = t("nav_exploration_exhausted", reply_lang, tried=tried_summary)
+            thought = "Exploration exhausted with no viable navigation paths remaining."
+
     # Record tried steps and last action in navigation state
     if validated_steps:
         for act in validated_steps:
             sig = f"{act.action}:{act.element_id}"
             if sig not in nav_state["tried"]:
                 nav_state["tried"].append(sig)
+            if act.reason and f"{act.reason}:{act.element_id}" not in nav_state["tried"]:
+                nav_state["tried"].append(f"{act.reason}:{act.element_id}")
             if act.element_id and str(act.element_id) not in nav_state["tried"]:
                 nav_state["tried"].append(str(act.element_id))
+            step_lbl = None
+            step_node = id_to_node.get(act.element_id or "")
+            if step_node:
+                step_lbl = step_node.get("resolved_label") or step_node.get("inner_text")
+            if not step_lbl and act.description:
+                m = re.search(r"['\"]([^'\"]+)['\"]", act.description)
+                if m:
+                    step_lbl = m.group(1)
+            if step_lbl:
+                lbl_clean = str(step_lbl).strip()
+                if "tried_labels" not in nav_state:
+                    nav_state["tried_labels"] = []
+                if lbl_clean and lbl_clean not in nav_state["tried_labels"]:
+                    nav_state["tried_labels"].append(lbl_clean)
         first_act = validated_steps[0]
         nav_state["last_action"] = f"{first_act.action}:{first_act.element_id}"
 

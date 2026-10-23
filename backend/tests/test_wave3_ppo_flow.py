@@ -279,3 +279,272 @@ def test_d3_link_never_chosen_again_and_hash_penalty():
     # Target inquiry link must NOT be chosen because it's in tried
     chosen_ids = [s.element_id for s in plan.steps]
     assert "el_22e044911af8a88b" not in chosen_ids, f"Tried element was re-selected: {chosen_ids}"
+
+
+def test_wave3_ppo_flow_deadend_portal_fails_cleanly():
+    """
+    Fix 1: On portal-deadend.html the goal must never end goal_complete after backtrack.
+    Only reason='act' can lead to goal_complete. When exploration runs out, status is goal_failed
+    with a localized Arabic reply explaining what was tried.
+    """
+    client = TestClient(app)
+    headers = {"X-Atlas-Key": DEMO_KEY}
+
+    deadend_dom = load_snapshot("portal_deadend_snapshot.json")
+    user_goal = "اريد الاستفسار عن مخالفات المركبات"
+
+    # Step 1: POST /v1/chat on portal-deadend.html
+    res1 = client.post(
+        "/v1/chat",
+        json={
+            "question": user_goal,
+            "url": "http://127.0.0.1:8000/portal-deadend.html",
+            "dom_map": deadend_dom,
+            "language": "ar-EG",
+            "contract_version": 3,
+        },
+        headers=headers,
+    )
+    assert res1.status_code == 200, res1.text
+    d1 = res1.json()
+    assert d1.get("intent_route") == "goal"
+    goal_state = d1["goal_state"]
+
+    # Step 2: Hop 0 - Exploration on portal-deadend.html (dead end: tries backtrack or halts)
+    res2 = client.post(
+        "/v1/chat/goal_step",
+        json={
+            "goal": user_goal,
+            "goal_state": goal_state,
+            "dom_map": deadend_dom,
+            "current_url": "http://127.0.0.1:8000/portal-deadend.html",
+            "page_text": "بوابة الخدمات الثقافية والمناخية التجريبية\nدليل الأنشطة والمناخ المحلي",
+            "language": "ar-EG",
+            "contract_version": 3,
+        },
+        headers=headers,
+    )
+    assert res2.status_code == 200, res2.text
+    d2 = res2.json()
+
+    # Must NOT be goal_complete
+    assert d2["status"] != "goal_complete", f"Hop 0 must not be goal_complete on dead-end: {d2}"
+
+    if d2["status"] == "in_progress":
+        # Atlas chose backtrack step
+        assert len(d2["steps"]) > 0
+        backtrack_step = d2["steps"][0]
+        assert backtrack_step["reason"] in ("backtrack", "navigate")
+
+        # Step 3: Hop 1 - Executed backtrack and lands back on portal-deadend.html
+        goal_state = d2["goal_state"]
+        res3 = client.post(
+            "/v1/chat/goal_step",
+            json={
+                "goal": user_goal,
+                "goal_state": goal_state,
+                "dom_map": deadend_dom,
+                "current_url": "http://127.0.0.1:8000/portal-deadend.html",
+                "page_text": "بوابة الخدمات الثقافية والمناخية التجريبية\nدليل الأنشطة والمناخ المحلي",
+                "language": "ar-EG",
+                "contract_version": 3,
+                "last_action_result": {"ok": True, "action": backtrack_step["action"], "element_id": backtrack_step["element_id"]},
+            },
+            headers=headers,
+        )
+        assert res3.status_code == 200, res3.text
+        d3 = res3.json()
+
+        # Must NOT be goal_complete because reveal/navigate/backtrack cannot lead to goal_complete
+        assert d3["status"] != "goal_complete", "Goal must not complete after backtrack or navigation!"
+
+        if d3["status"] == "in_progress":
+            # Atlas chose backtrack step
+            assert len(d3["steps"]) > 0
+            bt_step = d3["steps"][0]
+            assert bt_step["reason"] in ("backtrack", "navigate")
+
+            # Step 4: Hop 2 - Executed backtrack and lands back on portal-deadend.html
+            res4 = client.post(
+                "/v1/chat/goal_step",
+                json={
+                    "goal": user_goal,
+                    "goal_state": d3["goal_state"],
+                    "dom_map": deadend_dom,
+                    "current_url": "http://127.0.0.1:8000/portal-deadend.html",
+                    "page_text": "بوابة الخدمات الثقافية والمناخية التجريبية\nدليل الأنشطة والمناخ المحلي",
+                    "language": "ar-EG",
+                    "contract_version": 3,
+                    "last_action_result": {"ok": True, "action": bt_step["action"], "element_id": bt_step["element_id"]},
+                },
+                headers=headers,
+            )
+            assert res4.status_code == 200, res4.text
+            d4 = res4.json()
+            assert d4["status"] == "goal_failed", f"Expected goal_failed on dead-end exhaustion, got: {d4['status']}"
+            reply = d4.get("reply", "")
+            # Arabic assertions
+            assert re.search(r"[\u0600-\u06FF]", reply), f"Failure reply must be Arabic: {reply}"
+            # Assert no English sentences (Latin only in quotes)
+            unquoted = re.sub(r"['\"«»“”][^'\"«»“”]*['\"«»“”]", "", reply)
+            assert not re.search(r"[a-zA-Z]", unquoted), f"Leaked Latin letters in deadend failure reply: {reply}"
+        else:
+            assert d3["status"] == "goal_failed", f"Expected goal_failed on dead-end exhaustion, got: {d3['status']}"
+            reply = d3.get("reply", "")
+            # Arabic assertions
+            assert re.search(r"[\u0600-\u06FF]", reply), f"Failure reply must be Arabic: {reply}"
+            unquoted = re.sub(r"['\"«»“”][^'\"«»“”]*['\"«»“”]", "", reply)
+            assert not re.search(r"[a-zA-Z]", unquoted), f"Leaked Latin letters in deadend failure reply: {reply}"
+    else:
+        assert d2["status"] == "goal_failed", f"Expected goal_failed, got {d2['status']}"
+        reply = d2.get("reply", "")
+        assert re.search(r"[\u0600-\u06FF]", reply)
+
+
+def test_wave3_ppo_flow_field_validation_fails_3_times_stops_goal():
+    """
+    Fix 4: When a field fails validation, after 3 failed tries for the same field,
+    stop with a localized goal_failed message.
+    """
+    client = TestClient(app)
+    headers = {"X-Atlas-Key": DEMO_KEY}
+
+    inquiry_dom = load_snapshot("portal_inquiry_snapshot.json")
+    user_goal = "اريد الاستفسار عن مخالفات المركبات"
+
+    # Step 1: Hop 1 lands on inquiry page and requests missing fields
+    res1 = client.post(
+        "/v1/chat/goal_step",
+        json={
+            "goal": user_goal,
+            "goal_state": {
+                "goal": user_goal,
+                "hop_count": 1,
+                "max_hops": 8,
+                "status": "in_progress",
+                "current_url": "http://127.0.0.1:8000/portal-inquiry.html",
+                "language": "ar-EG",
+            },
+            "dom_map": inquiry_dom,
+            "current_url": "http://127.0.0.1:8000/portal-inquiry.html",
+            "page_text": "استعلام مخالفات المرور",
+            "language": "ar-EG",
+            "contract_version": 3,
+        },
+        headers=headers,
+    )
+    assert res1.status_code == 200
+    d1 = res1.json()
+    assert d1["status"] == "awaiting_user_input"
+    awaiting = d1.get("awaiting") or (d1.get("goal_state") or {}).get("awaiting", {})
+    awaiting_fields = awaiting.get("fields", [])
+    nid_field = next(f for f in awaiting_fields if f.get("sensitive"))
+    nid_ref = nid_field["ref"]
+    goal_state = d1["goal_state"]
+
+    # Attempt 1: Submit invalid value (raw plaintext digits for sensitive national_id, not a token)
+    bad_inputs = {f["ref"]: "123" for f in awaiting_fields}
+    bad_inputs[nid_ref] = "12345678901234"  # raw digits, fails TOKEN_REGEX
+    res_try1 = client.post(
+        "/v1/chat/goal_step",
+        json={
+            "goal": user_goal,
+            "goal_state": goal_state,
+            "dom_map": inquiry_dom,
+            "current_url": "http://127.0.0.1:8000/portal-inquiry.html",
+            "user_inputs": bad_inputs,
+            "language": "ar-EG",
+            "contract_version": 3,
+        },
+        headers=headers,
+    )
+    assert res_try1.status_code == 200
+    d_try1 = res_try1.json()
+    assert d_try1["status"] == "awaiting_user_input", f"Attempt 1 should re-ask: {d_try1['status']}"
+    assert "field_validation_failures" in d_try1["goal_state"]["dom_state"]
+    assert d_try1["goal_state"]["dom_state"]["field_validation_failures"][nid_ref] == 1
+    goal_state = d_try1["goal_state"]
+
+    # Attempt 2: Submit invalid value again
+    bad_inputs[nid_ref] = "bad_token_format"
+    res_try2 = client.post(
+        "/v1/chat/goal_step",
+        json={
+            "goal": user_goal,
+            "goal_state": goal_state,
+            "dom_map": inquiry_dom,
+            "current_url": "http://127.0.0.1:8000/portal-inquiry.html",
+            "user_inputs": bad_inputs,
+            "language": "ar-EG",
+            "contract_version": 3,
+        },
+        headers=headers,
+    )
+    assert res_try2.status_code == 200
+    d_try2 = res_try2.json()
+    assert d_try2["status"] == "awaiting_user_input", f"Attempt 2 should re-ask: {d_try2['status']}"
+    assert d_try2["goal_state"]["dom_state"]["field_validation_failures"][nid_ref] == 2
+    goal_state = d_try2["goal_state"]
+
+    # Attempt 3: Submit invalid value a 3rd time -> MUST stop with goal_failed
+    bad_inputs[nid_ref] = "bad_token_again"
+    res_try3 = client.post(
+        "/v1/chat/goal_step",
+        json={
+            "goal": user_goal,
+            "goal_state": goal_state,
+            "dom_map": inquiry_dom,
+            "current_url": "http://127.0.0.1:8000/portal-inquiry.html",
+            "user_inputs": bad_inputs,
+            "language": "ar-EG",
+            "contract_version": 3,
+        },
+        headers=headers,
+    )
+    assert res_try3.status_code == 200
+    d_try3 = res_try3.json()
+    assert d_try3["status"] == "goal_failed", f"Attempt 3 must fail goal, got: {d_try3['status']}"
+    reply = d_try3.get("reply", "")
+    assert re.search(r"[\u0600-\u06FF]", reply), f"Failure reply must be Arabic: {reply}"
+    assert "تعذر التحقق" in reply or "محاولات" in reply, f"Expected validation failure message, got: {reply}"
+
+
+def test_d3_verifier_demotion_never_demotes_goal_failed():
+    """
+    Fix 3: When verifier returns goal_failed, D4 override must NEVER demote it to in_progress.
+    """
+    from app.models.goal import VerifierResult
+    client = TestClient(app)
+    headers = {"X-Atlas-Key": DEMO_KEY}
+
+    inquiry_dom = load_snapshot("portal_inquiry_snapshot.json")
+    user_goal = "اريد الاستفسار عن مخالفات المركبات"
+
+    # We mock or simulate a state where verifier explicitly detected terminal failure
+    # and pass it through goal_step
+    res = client.post(
+        "/v1/chat/goal_step",
+        json={
+            "goal": user_goal,
+            "goal_state": {
+                "goal": user_goal,
+                "hop_count": 1,
+                "max_hops": 8,
+                "status": "in_progress",
+                "current_url": "http://127.0.0.1:8000/portal-inquiry.html",
+                "language": "ar-EG",
+                "last_action_result": {"ok": False, "error": "Fatal element detached"},
+            },
+            "dom_map": inquiry_dom,
+            "current_url": "http://127.0.0.1:8000/portal-inquiry.html",
+            "page_text": "Error 404: Service unavailable",
+            "language": "ar-EG",
+            "contract_version": 3,
+        },
+        headers=headers,
+    )
+    assert res.status_code == 200
+    # Verifier will evaluate the error indicator on page and return goal_failed
+    d = res.json()
+    if d.get("verifier_result") and d["verifier_result"]["status"] == "goal_failed":
+        assert d["status"] == "goal_failed", f"goal_failed verifier result must remain goal_failed, got {d['status']}"

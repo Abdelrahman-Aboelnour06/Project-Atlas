@@ -606,6 +606,246 @@ async function runScenario(scenarioName, startPage, { browser, backendPort, fixt
   await context.close();
 }
 
+async function runDeadendScenario(scenarioName, startPage, { browser, backendPort, fixturePort, scripts }) {
+  console.log(`\n--- Running Dead-End Scenario: ${scenarioName} (${startPage}) ---`);
+  const baseUrl = `http://127.0.0.1:${fixturePort}`;
+  const context = await browser.newContext();
+  const page = await context.newPage();
+
+  const interceptedChatResponses = [];
+  const interceptedGoalStepResponses = [];
+
+  // Setup chrome shim
+  await page.addInitScript(({ backendUrl, demoKey }) => {
+    const store = {
+      atlas_backend_url: backendUrl,
+      atlas_tenant_key: demoKey,
+      atlas_llm_provider: "mock",
+      atlas_language: "ar-EG",
+      atlas_active_tab_only: false,
+      atlas_multitab_enabled: true,
+      atlas_max_hops: 8,
+    };
+
+    const listeners = [];
+    window.chrome = {
+      runtime: {
+        id: "project-atlas-mock-ext",
+        onMessage: {
+          addListener: (fn) => { listeners.push(fn); },
+          removeListener: (fn) => {
+            const idx = listeners.indexOf(fn);
+            if (idx !== -1) listeners.splice(idx, 1);
+          },
+        },
+        _dispatch: (msg, cb) => {
+          listeners.forEach((fn) => {
+            try { fn(msg, {}, cb || (() => {})); } catch (e) { console.error(e); }
+          });
+        },
+        sendMessage: (msg, callback) => {
+          if (msg.type === "ATLAS_GOAL_RESUME") {
+            listeners.forEach((fn) => {
+              try { fn(msg, {}, callback || (() => {})); } catch (e) { console.error(e); }
+            });
+            return true;
+          }
+          if (msg.type === "ATLAS_CHAT") {
+            fetch(`${backendUrl}/v1/chat`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Atlas-Key": demoKey,
+              },
+              body: JSON.stringify(msg.payload || {}),
+            })
+              .then((r) => r.json())
+              .then((data) => {
+                window.__lastChatResponse = data;
+                callback && callback({ ok: true, data });
+              })
+              .catch((err) => callback && callback({ ok: false, error: err.message }));
+            return true;
+          }
+          if (msg.type === "ATLAS_GOAL_STEP") {
+            window.__lastGoalStepPayload = msg.payload;
+            fetch(`${backendUrl}/v1/chat/goal_step`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Atlas-Key": demoKey,
+              },
+              body: JSON.stringify(msg.payload || {}),
+            })
+              .then((r) => r.json())
+              .then((data) => {
+                window.__lastGoalStepResponse = data;
+                callback && callback({ ok: true, data });
+              })
+              .catch((err) => callback && callback({ ok: false, error: err.message }));
+            return true;
+          }
+          if (msg.type === "ATLAS_GOAL_STORE_PUT") {
+            window.__atlasGlobalGoalStore = msg.goalState;
+            sessionStorage.setItem("__atlas_goal_store", JSON.stringify(msg.goalState));
+            callback && callback({ ok: true });
+            return true;
+          }
+          if (msg.type === "ATLAS_GOAL_STORE_GET") {
+            const s = window.__atlasGlobalGoalStore || JSON.parse(sessionStorage.getItem("__atlas_goal_store") || "null");
+            callback && callback({ ok: true, state: s });
+            return true;
+          }
+          if (msg.type === "ATLAS_GOAL_STORE_CLEAR") {
+            window.__atlasGlobalGoalStore = null;
+            sessionStorage.removeItem("__atlas_goal_store");
+            callback && callback({ ok: true });
+            return true;
+          }
+          if (callback) callback({ ok: true });
+        },
+      },
+      storage: {
+        sync: {
+          get: (keys, cb) => {
+            if (typeof keys === "string") return cb({ [keys]: store[keys] });
+            if (Array.isArray(keys)) {
+              const res = {};
+              keys.forEach((k) => { res[k] = store[k]; });
+              return cb(res);
+            }
+            cb(store);
+          },
+        },
+        local: {
+          get: (keys, cb) => {
+            if (!keys) {
+              const all = {};
+              for (let i = 0; i < sessionStorage.length; i++) {
+                const k = sessionStorage.key(i);
+                all[k] = sessionStorage.getItem(k);
+              }
+              return cb ? cb(all) : Promise.resolve(all);
+            }
+            const res = {};
+            const arr = Array.isArray(keys) ? keys : [keys];
+            arr.forEach((k) => {
+              const v = sessionStorage.getItem(k);
+              if (v !== null) {
+                try { res[k] = JSON.parse(v); } catch (_) { res[k] = v; }
+              }
+            });
+            return cb ? cb(res) : Promise.resolve(res);
+          },
+          set: (items, cb) => {
+            Object.entries(items).forEach(([k, v]) => {
+              sessionStorage.setItem(k, typeof v === "string" ? v : JSON.stringify(v));
+            });
+            return cb ? cb() : Promise.resolve();
+          },
+          remove: (keys, cb) => {
+            const arr = Array.isArray(keys) ? keys : [keys];
+            arr.forEach((k) => sessionStorage.removeItem(k));
+            return cb ? cb() : Promise.resolve();
+          },
+        },
+      },
+      tabs: {
+        query: (q, cb) => cb([{ id: 1, active: true, url: window.location.href }]),
+        sendMessage: (id, msg, cb) => {
+          window.chrome.runtime._dispatch(msg, cb);
+        },
+      },
+    };
+  }, { backendUrl: `http://127.0.0.1:${backendPort}`, demoKey: DEMO_KEY });
+
+  async function injectAtlasStack() {
+    await page.addStyleTag({ content: scripts.sidebarCss });
+    await page.evaluate(scripts.secretVaultJs);
+    await page.evaluate(scripts.serializerJs);
+    await page.evaluate(scripts.executorJs);
+    await page.evaluate(scripts.sidebarJs);
+    await page.evaluate(scripts.contentJs);
+  }
+
+  page.on("response", async (res) => {
+    const url = res.url();
+    if (url.includes("/v1/chat") && res.status() === 200) {
+      try {
+        const json = await res.json();
+        if (url.endsWith("/goal_step")) {
+          interceptedGoalStepResponses.push(json);
+        } else {
+          interceptedChatResponses.push(json);
+        }
+      } catch (_) {}
+    }
+  });
+
+  await page.goto(`${baseUrl}/${startPage}`, { waitUntil: "domcontentloaded" });
+  await injectAtlasStack();
+
+  await page.evaluate(async () => {
+    await window.AtlasMultiTabOrchestration?.activate?.();
+    window.AtlasSidebar?.expand?.();
+  });
+
+  // User types goal in Arabic
+  const userGoal = "اريد الاستفسار عن مخالفات المركبات";
+  await page.evaluate((goal) => {
+    const handler = window.AtlasMultiTabOrchestration?.handleChatInput;
+    if (handler) {
+      handler(goal);
+    }
+  }, userGoal);
+
+  // Wait for goal to reach terminal state (or wait for navigation / reload)
+  const deadendStart = Date.now();
+  let finalStatus = null;
+  let finalReply = "";
+
+  while (Date.now() - deadendStart < 20000) {
+    const lastRes = interceptedGoalStepResponses[interceptedGoalStepResponses.length - 1];
+    if (lastRes && (lastRes.status === "goal_failed" || lastRes.status === "goal_complete")) {
+      finalStatus = lastRes.status;
+      finalReply = lastRes.reply || "";
+      break;
+    }
+
+    // If backtrack clicked and page reloaded, re-inject if needed
+    const isClientPresent = await page.evaluate(() => Boolean(window.AtlasMultiTabOrchestration)).catch(() => false);
+    if (!isClientPresent) {
+      try {
+        await injectAtlasStack();
+        await page.evaluate(async () => {
+          await window.AtlasMultiTabOrchestration?.activate?.();
+          window.AtlasSidebar?.expand?.();
+          const s = window.__atlasGlobalGoalStore || JSON.parse(sessionStorage.getItem("__atlas_goal_store") || "null");
+          if (s) {
+            window.chrome.runtime.sendMessage({ type: "ATLAS_GOAL_RESUME", goalState: s });
+          }
+        });
+      } catch (_) {}
+    }
+
+    await new Promise((r) => setTimeout(r, 300));
+  }
+
+  record(`[${scenarioName}] a. Status ends as 'goal_failed'`, finalStatus === "goal_failed", `Got: ${finalStatus}`);
+  record(`[${scenarioName}] b. Completed within 6 hops without endless loop`, interceptedGoalStepResponses.length <= 6 && interceptedGoalStepResponses.length > 0);
+  record(`[${scenarioName}] c. Final reply is in Arabic`, /[\u0600-\u06FF]/.test(finalReply), `Got: "${finalReply}"`);
+
+  // Assert no English sentences leaked (Latin only inside quoted labels)
+  const unquoted = finalReply
+    .replace(/'[^']*'/g, "")
+    .replace(/"[^"]*"/g, "")
+    .replace(/«[^»]*»/g, "")
+    .replace(/[“”][^“”]*[“”]/g, "");
+  record(`[${scenarioName}] d. Zero English sentences across dead-end failure reply`, !/[a-zA-Z]/.test(unquoted), `Got: "${finalReply}"`);
+
+  await context.close();
+}
+
 async function runSuite() {
   console.log("================================================================");
   console.log("   Playwright E2E WS10 Wave 3 Full PPO Integration Suite");
@@ -719,6 +959,14 @@ async function runSuite() {
 
     // 3. portal-drawer.html
     await runScenario("Portal Off-canvas Drawer", "portal-drawer.html", {
+      browser,
+      backendPort,
+      fixturePort,
+      scripts,
+    });
+
+    // 4. portal-deadend.html (Dead-end exploration bound & failure halting)
+    await runDeadendScenario("Portal Dead-end", "portal-deadend.html", {
       browser,
       backendPort,
       fixturePort,
