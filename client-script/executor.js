@@ -848,27 +848,23 @@ const execute = async (actionResponse, options = {}) => {
             if (toggle) {
                 const revealRes = await doReveal(toggle, elementId);
                 if (!revealRes.ok) {
-                    const href = el.getAttribute?.('href') || el.href;
-                    const tag = (el.tagName || el.nodeName || '').toUpperCase();
-                    if (tag === 'A' && href && !href.startsWith('#') && !href.startsWith('javascript:')) {
-                        let isSameOrigin = true;
-                        try {
-                            if (typeof window !== 'undefined' && window.location) {
-                                const parsed = new URL(href, window.location.href);
-                                isSameOrigin = parsed.origin === window.location.origin;
-                            }
-                        } catch (e) {
-                            isSameOrigin = !href.includes('://');
-                        }
-                        if (isSameOrigin) {
+                    // Self-healing fallback for pure CSS hover menus:
+                    // If reveal fails, action is click/open, and target is a same-origin <a href>, click directly
+                    if (['click', 'open'].includes(action)) {
+                        const tag = (el.tagName || '').toUpperCase();
+                        const rawHref = (el.getAttribute?.('href') || el.href || '').trim();
+                        const isSpecial = /^#|^javascript:|^mailto:|^tel:/i.test(rawHref);
+                        const currentLoc = (typeof location !== 'undefined') ? location : (typeof window !== 'undefined' ? window.location : null);
+                        if (tag === 'A' && rawHref && !isSpecial && currentLoc && currentLoc.origin && currentLoc.href) {
                             try {
-                                if (typeof el.click === 'function') {
-                                    el.click();
-                                    return { ok: true, message: `Navigated to ${href} via fallback link click after reveal timed out` };
+                                const targetUrl = new URL(rawHref, currentLoc.href);
+                                if (targetUrl.origin === currentLoc.origin) {
+                                    el.click?.();
+                                    return { ok: true, message: `Navigated to ${targetUrl.href}` };
                                 }
-                            } catch (clickErr) {
-                                // fall through to failure message
-                            }
+                            } catch (_) {}
+                        }
+                    }
                         }
                     }
                     return { ok: false, message: `Could not reveal menu: ${revealRes.message}` };

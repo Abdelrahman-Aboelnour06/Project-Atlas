@@ -1,16 +1,18 @@
 """
-Bilingual Intent Canonicalization Module (§Track N2a)
+Bilingual Intent Canonicalization & Generic Site Structure Module
 backend/app/agent/intent_synonyms.py
 
 Provides semantic canonicalization of high-frequency user actions across
 English, Modern Standard Arabic (MSA), and Egyptian Colloquial Arabic (العامية المصرية).
-Maps diverse natural language phrasings into universal canonical intent keys
-and resolves them against interactive DOM elements without website-specific hacks.
+Adheres strictly to the Prime Directive:
+- Zero site names, zero domain hardcoding, zero per-site selectors.
+- Universal site structure and interaction intent vocabulary only.
+- Topic matching derived strictly from user goal text vs DOM labels.
 """
 
 import re
 import unicodedata
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 
 # Arabic character mapping tables for Unicode normalization and folding (§Track N1)
@@ -50,7 +52,154 @@ def _normalize_text(s: str) -> str:
     return re.sub(r"[^a-z0-9\u0621-\u064A]", "", norm)
 
 
-# 4 Core Canonical Intents mapping English, MSA, and Egyptian Colloquial Arabic
+def _strip_arabic_prefixes(token: str) -> str:
+    """
+    Universal stripping of Arabic grammatical prefixes (ال, و, ف, ب, ك, ل) without domain hacks.
+    Iteratively strips prefixes while remaining stem is sufficiently long (>= 3 chars).
+    """
+    if not token or len(token) <= 3:
+        return token
+    changed = True
+    curr = token
+    while changed and len(curr) > 3:
+        changed = False
+        if curr.startswith("ال") and len(curr) > 4:
+            curr = curr[2:]
+            changed = True
+        elif curr[0] in ("و", "ف", "ب", "ك", "ل") and len(curr) > 3:
+            curr = curr[1:]
+            changed = True
+            if curr.startswith("ال") and len(curr) > 4:
+                curr = curr[2:]
+    return curr
+
+
+def _fold_arabic_plurals(token: str) -> str:
+    """
+    Universal folding of Arabic regular plural suffixes (ات, ين, ون) to base stem.
+    """
+    if not token or len(token) <= 4:
+        return token
+    for suffix in ("ات", "ين", "ون"):
+        if token.endswith(suffix):
+            return token[:-len(suffix)]
+    return token
+
+
+def _stem_word(word: str) -> str:
+    """
+    Universal lightweight Arabic and English stemming.
+    """
+    w = _normalize_text(word)
+    if not w:
+        return ""
+    # Arabic prefix stripping & plural folding
+    w = _fold_arabic_plurals(_strip_arabic_prefixes(w))
+    # Fold trailing feminine/attached marker
+    if len(w) >= 4 and w.endswith("ه"):
+        w = w[:-1]
+    # English suffix folding
+    if len(w) > 4:
+        for suffix in ("ing", "tion", "sion", "ment", "ies", "es", "ed", "s", "y", "e"):
+            if w.endswith(suffix) and len(w) - len(suffix) >= 3:
+                w = w[:-len(suffix)]
+                break
+    return w
+
+
+def extract_search_keywords(user_goal: str) -> str:
+    """
+    Universal extraction of search query keywords from natural language user goal:
+    - Drops conversational filler ("i want to", "please", "can you", "find", "اريد", "عاوز", "عايز", "من فضلك", etc.)
+    - Drops {vault:...} tokens
+    - Drops any 6+ digit runs (e.g. IDs, phone numbers)
+    - Returns at most 5 words.
+    """
+    if not user_goal or not isinstance(user_goal, str):
+        return ""
+    text = re.sub(r"\{vault:[^}]+\}", "", user_goal)
+    text = re.sub(r"\b\d{6,}\b", "", text)
+    fillers = {
+        "i", "want", "to", "please", "can", "you", "find", "search", "for", "look", "up",
+        "open", "show", "me", "get", "check", "need", "like", "the", "a", "an", "on", "in",
+        "اريد", "عاوز", "عايز", "ابحث", "عن", "لو", "سمحت", "من", "فضلك", "ممكن",
+        "وريني", "هاتلي", "افتح", "شوفلي", "وديني", "في", "على", "علي", "الى", "إلى", "عبر",
+    }
+    tokens = re.findall(r"[\w]+", text)
+    clean_words = []
+    for tok in tokens:
+        norm = _normalize_text(tok)
+        if norm and norm not in fillers and len(tok) > 1:
+            clean_words.append(tok)
+            if len(clean_words) >= 5:
+                break
+    return " ".join(clean_words) if clean_words else " ".join(tokens[:5])
+
+
+COMMON_STOPWORDS: Set[str] = {
+    "the", "a", "an", "on", "in", "of", "to", "for", "at", "by", "with", "from",
+    "عن", "من", "في", "على", "علي", "الى", "إلى", "الي", "مع", "هذا", "هذه", "ذلك", "تلك", "هو", "هي", "عبر", "كل", "جميع",
+}
+
+
+def score_text_similarity(query: str, candidate: str) -> float:
+    """
+    Universal lexical matching between user query/milestone and DOM candidate label:
+    - Normalizes with _normalize_text
+    - Strips grammatical prefixes (ال/و/ب/ل) and folds plurals (ات/ين/ون) and suffixes
+    - Evaluates token intersection over query tokens and candidate tokens.
+    """
+    if not query or not candidate:
+        return 0.0
+
+    q_norm = _normalize_text(query)
+    c_norm = _normalize_text(candidate)
+
+    if not q_norm or not c_norm:
+        return 0.0
+
+    if q_norm == c_norm:
+        return 1.0
+    if len(q_norm) >= 3 and (q_norm in c_norm or c_norm in q_norm):
+        return 0.90
+
+    raw_q_words = re.findall(r"[\w]+", query)
+    raw_c_words = re.findall(r"[\w]+", candidate)
+
+    # Filter out stopwords
+    q_tokens = [_stem_word(t) for t in raw_q_words if _normalize_text(t) not in COMMON_STOPWORDS]
+    q_tokens = [t for t in q_tokens if t and len(t) > 1]
+    if not q_tokens:
+        q_tokens = [_stem_word(t) for t in raw_q_words if t and len(t) > 1]
+    if not q_tokens:
+        return 0.0
+
+    c_tokens = [_stem_word(t) for t in raw_c_words if _normalize_text(t) not in COMMON_STOPWORDS]
+    c_tokens = [t for t in c_tokens if t and len(t) > 1]
+    if not c_tokens:
+        c_tokens = [_stem_word(t) for t in raw_c_words if t and len(t) > 1]
+    if not c_tokens:
+        return 0.0
+
+    c_token_set = set(c_tokens)
+
+    # Count matching stemmed tokens
+    matched_count = 0.0
+    for qt in q_tokens:
+        if qt in c_token_set:
+            matched_count += 1.0
+        elif any((len(qt) >= 4 and (qt in ct or ct in qt)) for ct in c_token_set):
+            matched_count += 0.85
+
+    score_q = matched_count / len(q_tokens)
+    score_c = (matched_count / len(c_tokens)) * 0.90 if c_tokens else 0.0
+    score = max(score_q, score_c)
+
+    return min(1.0, score)
+
+
+# Core Canonical Intents mapping English, MSA, and Egyptian Colloquial Arabic
+# Universal site structure & interaction intents ONLY (Prime Directive compliant)
 CANONICAL_INTENTS: Dict[str, Dict[str, List[str]]] = {
     "add_to_cart": {
         "triggers": [
@@ -191,6 +340,78 @@ CANONICAL_INTENTS: Dict[str, Dict[str, List[str]]] = {
             "تجديد رخصة المركبة", "تجديد رخصة السيارة", "تجديد الرخصة", "تجديد رخص المركبات",
         ],
     },
+    "services": {
+        "triggers": [
+            "services", "our services", "service catalog", "portal services",
+            "خدمات", "الخدمات", "خدماتنا", "دليل الخدمات",
+        ],
+        "dom_labels": [
+            "services", "our services", "خدمات", "الخدمات", "خدماتنا",
+        ],
+    },
+    "e_services": {
+        "triggers": [
+            "e-services", "eservices", "electronic services", "online services",
+            "الخدمات الإلكترونية", "خدمات إلكترونية", "خدمات الكترونية", "الخدمات الالكترونية",
+        ],
+        "dom_labels": [
+            "e-services", "eservices", "الخدمات الإلكترونية", "الخدمات الالكترونية",
+        ],
+    },
+    "all_services": {
+        "triggers": [
+            "all services", "view all services", "browse all services", "more services",
+            "كل الخدمات", "جميع الخدمات", "كافة الخدمات", "عرض كل الخدمات",
+        ],
+        "dom_labels": [
+            "all services", "كل الخدمات", "جميع الخدمات", "دليل المعاملات والخدمات الموحدة",
+        ],
+    },
+    "sitemap": {
+        "triggers": [
+            "sitemap", "site map", "site index", "directory",
+            "خريطة الموقع", "خريطه الموقع", "دليل الموقع",
+        ],
+        "dom_labels": [
+            "sitemap", "site map", "خريطة الموقع", "خريطه الموقع",
+        ],
+    },
+    "inquiry": {
+        "triggers": [
+            "inquiry", "inquire", "check status", "lookup", "query",
+            "استعلام", "استفسار", "فحص", "كشف", "استعلم",
+        ],
+        "dom_labels": [
+            "inquiry", "inquire", "status", "استعلام", "استفسار",
+        ],
+    },
+    "pay": {
+        "triggers": [
+            "pay", "payment", "pay now", "make payment", "checkout and pay",
+            "دفع", "سداد", "ادفع", "سداد المبلغ", "دفع الآن",
+        ],
+        "dom_labels": [
+            "pay", "payment", "دفع", "سداد",
+        ],
+    },
+    "apply": {
+        "triggers": [
+            "apply", "apply now", "submit application", "new application",
+            "تقديم", "طلب جديد", "قدم الآن", "تسجيل طلب",
+        ],
+        "dom_labels": [
+            "apply", "تقديم", "طلب جديد",
+        ],
+    },
+    "renew": {
+        "triggers": [
+            "renew", "renewal", "renew now",
+            "تجديد", "جدد", "طلب تجديد",
+        ],
+        "dom_labels": [
+            "renew", "renewal", "تجديد",
+        ],
+    },
     "view_cart": {
         "triggers": [
             "view cart", "view my cart", "open cart", "open my cart", "show cart", "show my cart",
@@ -258,7 +479,7 @@ CANONICAL_INTENTS: Dict[str, Dict[str, List[str]]] = {
 def canonicalize_intent(user_message: str) -> Optional[str]:
     """
     Map raw natural language user messages (English, MSA, or Egyptian colloquial)
-    to a canonical intent key: 'add_to_cart', 'search', 'go_home', or 'subscribe'.
+    to a canonical intent key without website-specific hacks.
 
     Returns:
         str: Canonical intent key if matched, or None if no match.
@@ -298,7 +519,7 @@ def match_canonical_intent(
     Universally inspects accessible labels and attributes without site-specific selectors.
 
     Args:
-        intent_key: One of the 4 canonical keys ('add_to_cart', 'search', 'go_home', 'subscribe')
+        intent_key: Canonical key (e.g. 'add_to_cart', 'search', 'go_home', 'services', etc.)
         concise_dom: List of serialized interactive DOM elements (dicts or DomNode instances)
 
     Returns:
@@ -317,13 +538,28 @@ def match_canonical_intent(
         if raw_node is None:
             continue
 
-        # Extract label and id supporting both dict and object/Pydantic schemas
         if isinstance(raw_node, dict):
-            raw_lbl = raw_node.get("label") or raw_node.get("aria_label") or raw_node.get("text") or ""
+            raw_lbl = (
+                raw_node.get("resolved_label")
+                or raw_node.get("aria_label")
+                or raw_node.get("inner_text")
+                or raw_node.get("label")
+                or raw_node.get("text")
+                or ""
+            )
             node_dict = raw_node
         else:
-            raw_lbl = getattr(raw_node, "label", None) or getattr(raw_node, "resolved_label", None) or getattr(raw_node, "text", "") or ""
-            node_dict = raw_node if isinstance(raw_node, dict) else (raw_node.dict() if hasattr(raw_node, "dict") else raw_node)
+            raw_lbl = (
+                getattr(raw_node, "resolved_label", None)
+                or getattr(raw_node, "aria_label", None)
+                or getattr(raw_node, "inner_text", None)
+                or getattr(raw_node, "label", None)
+                or getattr(raw_node, "text", "")
+                or ""
+            )
+            node_dict = raw_node.model_dump() if hasattr(raw_node, "model_dump") else (
+                raw_node.dict() if hasattr(raw_node, "dict") else vars(raw_node)
+            )
 
         if not isinstance(raw_lbl, str) or not raw_lbl:
             continue
