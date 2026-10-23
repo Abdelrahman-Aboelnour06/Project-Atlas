@@ -141,6 +141,7 @@
   let currentItems = [];
   let groupOpenState = {};
   let currentMode = "chat"; // 'chat' | 'voice'
+  let currentLang = "en-US"; // 'ar-EG' | 'en-US'
   let currentVoiceLang = "en-US";
   let isCollapsed = false;
 
@@ -984,7 +985,7 @@
         </button>
         <input class="atlas-chat-input" type="text"
           placeholder="Ask anything or give a command..." />
-        <button class="atlas-lang-pill" id="atlas-lang-toggle" aria-label="EN — Voice input language: English (click to switch to Arabic)" title="Voice Language: English (click for Arabic)">EN</button>
+        <button class="atlas-lang-pill" id="atlas-lang-toggle" aria-label="EN — Atlas language: English (click to switch to Arabic)" title="Atlas language: English (click for Arabic)">EN</button>
         <div class="atlas-voice-meter" id="atlas-voice-meter" aria-hidden="true">
           <span class="atlas-meter-bar atlas-meter-bar-1"></span>
           <span class="atlas-meter-bar atlas-meter-bar-2"></span>
@@ -1106,23 +1107,33 @@
 
     // Wire language toggle pill (EN / AR)
     langPill?.addEventListener("click", () => {
-      toggleVoiceLanguage();
+      toggleLanguage();
     });
 
-    // Sync initial voice input language with storage or AtlasSpeech
+    // Sync initial language with storage or AtlasSpeech (migrating atlas_voice_lang if present)
     if (typeof chrome !== "undefined" && chrome.storage?.local?.get) {
       try {
-        chrome.storage.local.get(["atlas_voice_lang"], (res) => {
-          const stored = res?.atlas_voice_lang;
+        chrome.storage.local.get(["atlas_lang", "atlas_voice_lang"], (res) => {
+          let stored = res?.atlas_lang;
+          if (!stored && res?.atlas_voice_lang) {
+            stored = res.atlas_voice_lang;
+            try {
+              chrome.storage.local.set({ atlas_lang: stored });
+            } catch (_) {}
+          }
           if (stored) {
-            setVoiceLanguage(stored);
+            setLanguage(stored, false);
           } else if (window.AtlasSpeech?.getLanguage) {
-            updateLangPillUI(window.AtlasSpeech.getLanguage());
+            setLanguage(window.AtlasSpeech.getLanguage(), false);
+          } else {
+            setLanguage("en-US", false);
           }
         });
       } catch (_) {}
     } else if (window.AtlasSpeech?.getLanguage) {
-      updateLangPillUI(window.AtlasSpeech.getLanguage());
+      setLanguage(window.AtlasSpeech.getLanguage(), false);
+    } else {
+      setLanguage("en-US", false);
     }
 
     const headerEl = rootEl.querySelector(".atlas-header");
@@ -1269,8 +1280,8 @@
         .map((act, idx) => {
           const rawLabel = typeof act === "string" ? act : (act.label || "");
           const label = escapeHtml(rawLabel);
-          const isConfirm = /yes|proceed|place|confirm|ok/i.test(rawLabel);
-          const isCancel = /no|cancel|stop/i.test(rawLabel);
+          const isConfirm = /yes|proceed|place|confirm|ok|نعم|تأكيد|موافق|استمرار|متابعة/i.test(rawLabel);
+          const isCancel = /no|cancel|stop|لا|إلغاء|الغاء|توقف/i.test(rawLabel);
           const extraClass = isConfirm ? "atlas-chip-confirm" : (isCancel ? "atlas-chip-cancel" : "");
           return `<button class="atlas-chip-btn ${extraClass}" data-chip-idx="${idx}">${label}</button>`;
         })
@@ -1284,6 +1295,16 @@
     textNode.className = "atlas-msg-text";
     textNode.setAttribute("dir", "auto");
     textNode.textContent = text;
+
+    const arabicChars = (typeof text === "string" ? text.match(/[\u0600-\u06FF]/g) : null) || [];
+    const latinChars = (typeof text === "string" ? text.match(/[A-Za-z]/g) : null) || [];
+    if (arabicChars.length > 0 && arabicChars.length > latinChars.length) {
+      bubble.setAttribute("lang", "ar");
+      textNode.setAttribute("lang", "ar");
+    } else if (latinChars.length > 0 && latinChars.length > arabicChars.length) {
+      bubble.setAttribute("lang", "en");
+      textNode.setAttribute("lang", "en");
+    }
     bubble.appendChild(textNode);
     if (actionsEl) {
       bubble.appendChild(actionsEl);
@@ -1356,8 +1377,10 @@
   // ── Skeleton loader ───────────────────────────────────────────────────────────
   const setLoading = (isLoading) => {
     if (!listEl || !isLoading) return;
+    const isAr = currentLang === "ar-EG";
+    const label = isAr ? "جارٍ قراءة عناصر الصفحة..." : "Reading page elements...";
     listEl.innerHTML = `
-      <div class="atlas-skeleton-label">Reading page elements...</div>
+      <div class="atlas-skeleton-label">${label}</div>
       ${Array.from({ length: 3 })
         .map(
           () => `
@@ -1550,11 +1573,34 @@
     isCollapsed = false;
   };
 
+  const SIDEBAR_OWN_STATUS_MAP = {
+    "Ready.": "جاهز.",
+    "Connecting...": "جارٍ الاتصال...",
+    "Page & Elements refreshed.": "تم تحديث الصفحة والعناصر.",
+    "Refreshing page & elements...": "جارٍ تحديث الصفحة والعناصر...",
+    "Refresh failed.": "فشل التحديث.",
+    "Offline — click to retry": "غير متصل — اضغط لإعادة المحاولة",
+    "Awaiting manual click (popup blocked)": "في انتظار النقر اليدوي (تم حظر النافذة المنبثقة)",
+    "Awaiting browser credential...": "في انتظار بيانات اعتماد المتصفح...",
+    "Browser credential verified": "تم التحقق من بيانات الاعتماد.",
+  };
+
   const setStatus = (text, kind = "info", options = {}) => {
+    let displayText = text;
+    const isAr = currentLang === "ar-EG";
+    if (isAr && typeof text === "string" && SIDEBAR_OWN_STATUS_MAP[text]) {
+      displayText = SIDEBAR_OWN_STATUS_MAP[text];
+    } else if (isAr && typeof text === "string") {
+      const retryMatch = text.match(/^Disconnected — retrying in (\d+)s$/);
+      if (retryMatch) {
+        displayText = `انقطع الاتصال — إعادة المحاولة خلال ${retryMatch[1]} ث`;
+      }
+    }
+
     if (statusTextEl) {
-      statusTextEl.textContent = text;
+      statusTextEl.textContent = displayText;
     } else if (statusEl) {
-      statusEl.textContent = text;
+      statusEl.textContent = displayText;
     }
     if (statusEl) {
       statusEl.className = `atlas-status atlas-status-${kind}`;
@@ -1563,7 +1609,7 @@
       badgeStatusDot.className = `atlas-badge-status-dot atlas-badge-status-${kind}`;
     }
     if (badgeEl) {
-      badgeEl.setAttribute("title", `Atlas (${text}) — Click to expand, drag to move`);
+      badgeEl.setAttribute("title", isAr ? `أطلس (${displayText}) — اضغط للتوسيع، اسحب للتحريك` : `Atlas (${text}) — Click to expand, drag to move`);
     }
 
     if (retryBtnEl) {
@@ -1738,58 +1784,187 @@
     currentMode = mode;
     if (!modeBtn) return;
     const isVoice = mode === "voice";
+    const isAr = currentLang === "ar-EG";
     modeBtn.classList.toggle("atlas-mode-voice", isVoice);
     const icon = modeBtn.querySelector(".atlas-mode-icon");
     const text = modeBtn.querySelector(".atlas-mode-text");
     if (icon) icon.innerHTML = isVoice ? VOICE_MODE_SVG : CHAT_MODE_SVG;
-    if (text) text.textContent = isVoice ? "Voice" : "Chat";
+    if (text) text.textContent = isVoice ? (isAr ? "صوت" : "Voice") : (isAr ? "محادثة" : "Chat");
     modeBtn.setAttribute(
       "aria-label",
       isVoice
-        ? "Voice Mode active — reads responses aloud (click for Chat Mode)"
-        : "Chat Mode active — silent text responses (click for Voice Mode)",
+        ? (isAr ? "وضع الصوت مفعّل — يقرأ الردود بصوت عالٍ (اضغط لوضع المحادثة)" : "Voice Mode active — reads responses aloud (click for Chat Mode)")
+        : (isAr ? "وضع المحادثة مفعّل — ردود نصية صامتة (اضغط لوضع الصوت)" : "Chat Mode active — silent text responses (click for Voice Mode)"),
     );
   };
 
-  // ── Dual-Language Voice Input & Auto-Sticky Heuristic (Track V1) ──────────────
+  // ── Unified Atlas Language Management (WS3) ──────────────────────────────────
   const updateLangPillUI = (lang) => {
-    currentVoiceLang = (lang === "ar-EG" || (typeof lang === "string" && lang.startsWith("ar"))) ? "ar-EG" : "en-US";
+    currentLang = (lang === "ar-EG" || (typeof lang === "string" && lang.startsWith("ar"))) ? "ar-EG" : "en-US";
+    currentVoiceLang = currentLang;
     if (!langPill) return;
-    const isAr = currentVoiceLang === "ar-EG";
+    const isAr = currentLang === "ar-EG";
     langPill.textContent = isAr ? "AR" : "EN";
     langPill.classList.toggle("atlas-lang-ar", isAr);
     langPill.setAttribute(
       "aria-label",
       isAr
-        ? "Voice input language: Arabic (click to switch to English)"
-        : "Voice input language: English (click to switch to Arabic)"
+        ? "AR — Atlas language: Arabic — لغة أطلس: العربية (اضغط للتحويل إلى الإنجليزية)"
+        : "EN — Atlas language: English (click to switch to Arabic)"
     );
-    langPill.title = isAr ? "Voice Language: Arabic (click for English)" : "Voice Language: English (click for Arabic)";
+    langPill.title = isAr ? "Atlas language: Arabic (انقر للتبديل للإنجليزية)" : "Atlas language: English (click for Arabic)";
   };
 
-  const setVoiceLanguage = (lang) => {
+  const applyChromeLocalization = (lang) => {
+    if (!rootEl) return;
+    const isAr = lang === "ar-EG" || (typeof lang === "string" && lang.startsWith("ar"));
+
+    // Mode button
+    updateModeUI(currentMode);
+
+    // Tabs
+    const chatTab = rootEl.querySelector('.atlas-tab[data-tab="chat"]');
+    if (chatTab) chatTab.textContent = isAr ? "محادثة" : "Chat";
+    const elementsTab = rootEl.querySelector('.atlas-tab[data-tab="elements"]');
+    if (elementsTab) elementsTab.textContent = isAr ? "العناصر" : "Elements";
+
+    // Stop button
+    if (stopBtnEl) {
+      const stopLbl = stopBtnEl.querySelector(".atlas-stop-label");
+      if (stopLbl) stopLbl.textContent = isAr ? "إيقاف" : "Stop";
+      stopBtnEl.setAttribute("aria-label", isAr ? "إيقاف تنفيذ الهدف (يوقف الوكيل فوراً)" : "Stop goal execution (Halts agent mid-hop)");
+      stopBtnEl.title = isAr ? "إيقاف تنفيذ الهدف (يوقف الوكيل فوراً)" : "Stop goal execution (Halts agent mid-hop)";
+    }
+    if (headerStopBtnEl) {
+      const headerStopLbl = headerStopBtnEl.querySelector(".atlas-stop-header-label");
+      if (headerStopLbl) headerStopLbl.textContent = isAr ? "إيقاف" : "Stop";
+      headerStopBtnEl.setAttribute("aria-label", isAr ? "إيقاف التنفيذ" : "Stop execution");
+      headerStopBtnEl.title = isAr ? "إيقاف التنفيذ" : "Stop execution";
+    }
+
+    // Goal badge
+    const badge = rootEl.querySelector(".atlas-progress-badge");
+    if (badge) badge.textContent = isAr ? "الهدف" : "GOAL";
+
+    // Text scale button
+    const textScaleBtn = rootEl.querySelector("#atlas-header-text-scale");
+    if (textScaleBtn) {
+      textScaleBtn.setAttribute("aria-label", isAr ? "تغيير حجم النص (عادي، كبير، كبير جداً)" : "Adjust text scaling (Normal, Large, XL)");
+      textScaleBtn.title = isAr ? "تغيير حجم النص" : "Adjust text scaling";
+    }
+
+    // TTS toggle button
+    const ttsBtn = rootEl.querySelector("#atlas-header-tts");
+    if (ttsBtn) {
+      ttsBtn.setAttribute("aria-label", isAr ? "تشغيل/كتم الصوت" : "Toggle voice output");
+      ttsBtn.title = isAr ? "تشغيل/كتم الصوت" : "Toggle voice output";
+    }
+
+    // Refresh button
+    const refreshBtn = rootEl.querySelector("#atlas-header-refresh");
+    if (refreshBtn) {
+      refreshBtn.setAttribute("aria-label", isAr ? "إعادة تحميل تحليل الصفحة" : "Reload page analysis");
+      refreshBtn.title = isAr ? "إعادة تحميل عناصر الصفحة والملخص" : "Reload Page Elements & Summary";
+    }
+
+    // Tour trigger button
+    if (tourTriggerBtnEl) {
+      tourTriggerBtnEl.setAttribute("aria-label", isAr ? "بدء الجولة الإرشادية" : "Start guided tour");
+      tourTriggerBtnEl.title = isAr ? "جولة تعريفية في أطلس (الجولة الإرشادية)" : "Take a tour of Atlas (Guided Tour)";
+    }
+
+    // Collapse button
+    const collapseBtn = rootEl.querySelector("#atlas-header-collapse");
+    if (collapseBtn) {
+      collapseBtn.setAttribute("aria-label", isAr ? "تصغير أطلس" : "Collapse Atlas");
+      collapseBtn.title = isAr ? "تصغير" : "Collapse";
+    }
+
+    // Close button
+    const closeBtn = rootEl.querySelector("#atlas-header-close");
+    if (closeBtn) {
+      closeBtn.setAttribute("aria-label", isAr ? "إغلاق مساعد أطلس" : "Close Atlas Assistant");
+      closeBtn.title = isAr ? "إغلاق مساعد أطلس" : "Close Atlas Assistant";
+    }
+
+    // Chat input placeholder
+    if (chatInputEl) {
+      chatInputEl.placeholder = isAr ? "اسأل أي شيء أو أعطِ أمراً..." : "Ask anything or give a command...";
+    }
+
+    // Mic button
+    if (micBtn) {
+      micBtn.setAttribute("aria-label", isAr ? "تحدث بأمر صوتي" : "Speak a command");
+      micBtn.title = isAr ? "أمر صوتي" : "Voice command";
+    }
+
+    // Elements search input placeholder
+    if (searchEl) {
+      searchEl.placeholder = isAr ? "بحث في الأزرار، الحقول، الروابط..." : "Search buttons, inputs, links...";
+    }
+
+    // Retry button
+    if (retryBtnEl) {
+      const retryText = retryBtnEl.querySelector("span");
+      if (retryText) retryText.textContent = isAr ? "إعادة المحاولة الآن" : "Retry connection now";
+      retryBtnEl.setAttribute("aria-label", isAr ? "إعادة محاولة الاتصال الآن" : "Retry connection now");
+    }
+
+    // Resume button
+    if (resumeBtnEl) {
+      const resumeLbl = resumeBtnEl.querySelector(".atlas-resume-label");
+      if (resumeLbl) resumeLbl.textContent = isAr ? "استئناف" : "Resume";
+      resumeBtnEl.setAttribute("aria-label", isAr ? "استئناف التنفيذ" : "Resume execution");
+    }
+
+    // Assisted open button
+    if (assistedOpenBtnEl) {
+      const openLbl = assistedOpenBtnEl.querySelector(".atlas-assisted-open-label");
+      if (openLbl) openLbl.textContent = isAr ? "فتح النافذة" : "Open Popup";
+      assistedOpenBtnEl.setAttribute("aria-label", isAr ? "فتح النافذة المنبثقة المحظورة" : "Open blocked popup window");
+    }
+
+    // Initial status text if showing ready state
+    if (statusTextEl && (statusTextEl.textContent === "Ready." || statusTextEl.textContent === "جاهز.")) {
+      statusTextEl.textContent = isAr ? "جاهز." : "Ready.";
+    }
+  };
+
+  const setLanguage = (lang, syncStorage = true) => {
     const targetLang = (lang === "ar-EG" || (typeof lang === "string" && lang.startsWith("ar"))) ? "ar-EG" : "en-US";
+    currentLang = targetLang;
     currentVoiceLang = targetLang;
     updateLangPillUI(targetLang);
+
+    // Keep window.AtlasSpeech.getLanguage() in sync at all times
     if (typeof window !== "undefined" && window.AtlasSpeech?.setLanguage) {
-      window.AtlasSpeech.setLanguage(targetLang);
-    }
-    if (typeof chrome !== "undefined" && chrome.storage?.local?.set) {
       try {
-        chrome.storage.local.set({ atlas_voice_lang: targetLang });
+        window.AtlasSpeech.setLanguage(targetLang, false);
       } catch (_) {}
     }
+
+    if (syncStorage && typeof chrome !== "undefined" && chrome.storage?.local?.set) {
+      try {
+        chrome.storage.local.set({ atlas_lang: targetLang, atlas_voice_lang: targetLang });
+      } catch (_) {}
+    }
+
+    applyChromeLocalization(targetLang);
     return targetLang;
   };
 
-  const toggleVoiceLanguage = () => {
-    const next = currentVoiceLang === "ar-EG" ? "en-US" : "ar-EG";
-    return setVoiceLanguage(next);
+  const setVoiceLanguage = (lang) => setLanguage(lang);
+
+  const toggleLanguage = () => {
+    const next = currentLang === "ar-EG" ? "en-US" : "ar-EG";
+    return setLanguage(next);
   };
+
+  const toggleVoiceLanguage = () => toggleLanguage();
 
   const handleSpeechTranscript = (transcript) => {
     if (typeof transcript === "string" && /[\u0600-\u06FF]/.test(transcript)) {
-      setVoiceLanguage("ar-EG");
+      setLanguage("ar-EG");
       return true;
     }
     return false;
@@ -1798,8 +1973,12 @@
   if (typeof chrome !== "undefined" && chrome.storage?.onChanged?.addListener) {
     try {
       chrome.storage.onChanged.addListener((changes, area) => {
-        if (area === "local" && changes.atlas_voice_lang) {
-          updateLangPillUI(changes.atlas_voice_lang.newValue);
+        if (area === "local") {
+          if (changes.atlas_lang && changes.atlas_lang.newValue) {
+            setLanguage(changes.atlas_lang.newValue, false);
+          } else if (changes.atlas_voice_lang && changes.atlas_voice_lang.newValue) {
+            setLanguage(changes.atlas_voice_lang.newValue, false);
+          }
         }
       });
     } catch (_) {}
@@ -1833,18 +2012,46 @@
     },
   ];
 
+  const AR_TOUR_STEPS = [
+    {
+      step: 1,
+      title: "افتح أطلس من أي مكان",
+      desc: "استدعِ أطلس على أي صفحة ويب باستخدام Alt+A أو بالنقر على أيقونة الإضافة. يمكنك أيضاً سحب النافذة أو تصغيرها إلى شارة عائمة في أي وقت.",
+      shortcut: "Alt + A",
+      badgeLabel: "اختصار عام",
+      highlightTarget: ".atlas-header",
+    },
+    {
+      step: 2,
+      title: "الأوامر النصية والصوتية",
+      desc: "اطرح أسئلة حول هذه الصفحة أو اذكر ما تريد القيام به بلغة طبيعية. اكتب في المحادثة أو انقر فوق الميكروفون للتحكم الصوتي (بالإنجليزية والعربية).",
+      shortcut: "🎤 صوت / 💬 محادثة",
+      badgeLabel: "إدخال ثنائي اللغة",
+      highlightTarget: ".atlas-chat-input-bar",
+    },
+    {
+      step: 3,
+      title: "شاهد أطلس يتنقل",
+      desc: "يخطط أطلس للإجراءات، ويتتبع المراحل في الوقت الفعلي، ويتوقف مؤقتاً عند التأكيدات الحساسة. اضغط على زر الإيقاف الأحمر في أي وقت لإيقاف التنفيذ فوراً.",
+      shortcut: "■ إيقاف طوارئ",
+      badgeLabel: "تحكم ذاتي آمن",
+      highlightTarget: "#atlas-progress-strip",
+    },
+  ];
+
   const renderTourStep = (stepIdx) => {
     if (!tourOverlayEl || !rootEl) return;
+    const isAr = currentLang === "ar-EG";
     currentTourStep = Math.max(0, Math.min(stepIdx, TOUR_STEPS.length - 1));
-    const step = TOUR_STEPS[currentTourStep];
+    const step = isAr ? AR_TOUR_STEPS[currentTourStep] : TOUR_STEPS[currentTourStep];
     const isFirst = currentTourStep === 0;
     const isLast = currentTourStep === TOUR_STEPS.length - 1;
 
     tourOverlayEl.innerHTML = `
-      <div class="atlas-tour-card" role="document">
+      <div class="atlas-tour-card" role="document" dir="${isAr ? "rtl" : "ltr"}" lang="${isAr ? "ar" : "en"}">
         <div class="atlas-tour-header">
-          <span class="atlas-tour-badge" aria-live="polite">Step ${step.step} of ${TOUR_STEPS.length}</span>
-          <button class="atlas-tour-close-btn" id="atlas-tour-close" type="button" aria-label="Close guided tour" title="Close tour (Esc)">✕</button>
+          <span class="atlas-tour-badge" aria-live="polite">${isAr ? `الخطوة ${step.step} من ${TOUR_STEPS.length}` : `Step ${step.step} of ${TOUR_STEPS.length}`}</span>
+          <button class="atlas-tour-close-btn" id="atlas-tour-close" type="button" aria-label="${isAr ? "إغلاق الجولة الإرشادية" : "Close guided tour"}" title="${isAr ? "إغلاق الجولة (Esc)" : "Close tour (Esc)"}">✕</button>
         </div>
 
         <div class="atlas-tour-body">
@@ -1869,18 +2076,18 @@
         <div class="atlas-tour-footer">
           <label class="atlas-tour-checkbox-label" for="atlas-tour-dont-show">
             <input type="checkbox" id="atlas-tour-dont-show" class="atlas-tour-checkbox" />
-            <span>Don't show again</span>
+            <span>${isAr ? "عدم الإظهار مرة أخرى" : "Don't show again"}</span>
           </label>
 
           <div class="atlas-tour-actions">
             <button type="button" class="atlas-tour-btn atlas-tour-btn-secondary atlas-tour-prev-btn" 
                     id="atlas-tour-prev" ${isFirst ? 'disabled aria-disabled="true"' : ''} 
-                    aria-label="Back to previous step">← Back</button>
+                    aria-label="${isAr ? "الرجوع للخطوة السابقة" : "Back to previous step"}">${isAr ? "← السابق" : "← Back"}</button>
             
             <button type="button" class="atlas-tour-btn atlas-tour-btn-primary atlas-tour-next-btn" 
                     id="atlas-tour-next" 
-                    aria-label="${isLast ? 'Finish Tour' : 'Next step'}">
-              ${isLast ? 'Finish Tour ✓' : 'Next →'}
+                    aria-label="${isLast ? (isAr ? 'إنهاء الجولة' : 'Finish Tour') : (isAr ? 'الخطوة التالية' : 'Next step')}">
+              ${isLast ? (isAr ? 'إنهاء الجولة ✓' : 'Finish Tour ✓') : (isAr ? 'التالي ←' : 'Next →')}
             </button>
           </div>
         </div>
@@ -2054,7 +2261,10 @@
     removeThinking,
     getMode: () => currentMode,
     setMode: updateModeUI,
-    getVoiceLanguage: () => currentVoiceLang,
+    getLanguage: () => currentLang,
+    setLanguage,
+    toggleLanguage,
+    getVoiceLanguage: () => currentLang,
     setVoiceLanguage,
     toggleVoiceLanguage,
     handleSpeechTranscript,
