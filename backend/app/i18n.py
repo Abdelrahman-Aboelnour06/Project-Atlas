@@ -211,13 +211,18 @@ def resolve_reply_language(selected: Optional[str], user_text: Optional[str]) ->
     Resolves target reply language locale ('ar-EG' | 'en-US').
 
     Rule:
-    - If `selected` is provided and starts with 'ar' (e.g. 'ar', 'ar-EG'), return 'ar-EG'.
-    - Else (None or 'en-*'): mirror user's script:
+    - If `selected` starts with 'ar' (e.g. 'ar', 'ar-EG'), return 'ar-EG'.
+    - If `selected` starts with 'en' (e.g. 'en', 'en-US'), return 'en-US' (explicit English wins).
+    - Mirroring by user script ONLY when `selected` is None or empty:
       - If user_text contains Arabic characters ([\u0600-\u06FF]), return 'ar-EG'.
       - Otherwise, return 'en-US'.
     """
-    if selected and str(selected).strip().lower().startswith("ar"):
-        return "ar-EG"
+    if selected:
+        s = str(selected).strip().lower()
+        if s.startswith("ar"):
+            return "ar-EG"
+        if s.startswith("en"):
+            return "en-US"
 
     if user_text and re.search(r"[\u0600-\u06FF]", str(user_text)):
         return "ar-EG"

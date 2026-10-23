@@ -79,7 +79,7 @@ async def summary_endpoint(
             detail="Rate limit exceeded — please slow down and try again shortly.",
         )
 
-    reply_lang = resolve_reply_language(payload.language, payload.page_text or "")
+    reply_lang = resolve_reply_language(payload.language, None)
     prompt = summary_prompt.build_summary_prompt(
         page_text=payload.page_text or "",
         url=payload.url,
@@ -365,7 +365,7 @@ async def goal_step_endpoint(
     if payload.language and not goal_state.language:
         goal_state.language = payload.language
 
-    reply_lang = resolve_reply_language(goal_state.language or payload.language, payload.user_response or goal_state.goal)
+    reply_lang = resolve_reply_language(goal_state.language or payload.language, goal_state.goal)
 
     # Track scout result if classified during initial milestone planning (§Track L1-full)
     scout_res: Optional[ScoutResult] = None

@@ -153,7 +153,7 @@ async def plan_milestone_step(
         AgenticPlan: Fully validated agentic plan with zero hallucinated element IDs
             and human-in-the-loop gating for consequential actions.
     """
-    reply_lang = resolve_reply_language(language, user_response or milestone.description or goal)
+    reply_lang = resolve_reply_language(language, goal)
     raw_nodes = _convert_dom_nodes_to_dicts(dom_map)
     safe_dom = strip_pii_from_dom(raw_nodes)
 

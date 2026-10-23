@@ -331,7 +331,7 @@ async def verify_step_outcome(
                 )
 
     # ── Rule 6: Fallback to LLM Evaluation ───────────────────────────────────────
-    reply_lang = resolve_reply_language(language, milestone.description or goal)
+    reply_lang = resolve_reply_language(language, goal)
     user_body = f"""USER GOAL:
 "{goal}"
 
@@ -423,7 +423,7 @@ async def _verify_with_llm(
         if getattr(node, "id", None) and str(node.id) not in prior_ids
     ] if prior_ids else []
 
-    reply_lang = resolve_reply_language(language, milestone.description or goal)
+    reply_lang = resolve_reply_language(language, goal)
     user_body = f"""USER GOAL:
 "{goal}"
 

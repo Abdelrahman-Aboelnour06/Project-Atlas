@@ -16,7 +16,7 @@ LANGUAGE_MIRRORING_DIRECTIVE = (
 
 
 def build_summary_prompt(page_text: str, url: str, language: str | None = None) -> str:
-    reply_lang = resolve_reply_language(language, page_text)
+    reply_lang = resolve_reply_language(language, None)
     system = (
         "You are Atlas, a friendly accessibility assistant. A user has just "
         "opened a webpage and needs to understand what it is and what they "

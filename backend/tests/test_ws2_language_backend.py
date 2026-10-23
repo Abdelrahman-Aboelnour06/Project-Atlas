@@ -118,9 +118,9 @@ def test_resolve_reply_language_matrix():
     assert resolve_reply_language("ar", "Hello world") == "ar-EG"
     assert resolve_reply_language("ar-SA", "Search for shoes") == "ar-EG"
 
-    # If selected is en-* but user text has Arabic script, mirror Arabic
-    assert resolve_reply_language("en-US", "عايز اشتري لابتوب") == "ar-EG"
-    assert resolve_reply_language("en-GB", "ابحث عن منتج") == "ar-EG"
+    # If selected is en-*, explicit English wins even if user text has Arabic script
+    assert resolve_reply_language("en-US", "عايز اشتري لابتوب") == "en-US"
+    assert resolve_reply_language("en-GB", "ابحث عن منتج") == "en-US"
 
     # If selected is en-* and user text is Latin, English
     assert resolve_reply_language("en-US", "Hello world") == "en-US"
@@ -499,3 +499,71 @@ def test_goal_step_endpoint_arabic_limit_replies(api_client):
     data = res.json()
     assert data["status"] == "goal_failed"
     assert re.search(r"[\u0600-\u06FF]", data["goal_state"]["error_message"])
+
+
+# ── 7. Review Fix Regressions (User Review Directives) ──────────────────────
+
+def test_resolve_language_explicit_english_vs_arabic_user_text():
+    """Explicit English wins over Arabic user text; mirroring only when unset."""
+    # language="en-US" + Arabic user text → "en-US"
+    assert resolve_reply_language("en-US", "عايز اشتري لابتوب") == "en-US"
+    # language=None + Arabic user text → "ar-EG"
+    assert resolve_reply_language(None, "عايز اشتري لابتوب") == "ar-EG"
+
+
+def test_summary_prompt_and_endpoint_en_us_with_arabic_page_text(api_client):
+    """language='en-US' + Arabic page_text → summary prompt says REPLY LANGUAGE: en-US and no Arabic retry happens."""
+    arabic_page = "أهلا بكم في متجرنا الإلكتروني. نوفر أحدث الهواتف الذكية والأجهزة المنزلية."
+
+    # Prompt check
+    prompt = summary_prompt.build_summary_prompt(page_text=arabic_page, url="https://example.com/ar", language="en-US")
+    assert "REPLY LANGUAGE: en-US" in prompt
+    assert "REPLY LANGUAGE: ar-EG" not in prompt
+
+    # Endpoint check: no Arabic retry happens, single call
+    payload = {
+        "url": "https://example.com/ar",
+        "page_text": arabic_page,
+        "api_key": DEMO_API_KEY,
+        "language": "en-US",
+    }
+    with patch("app.agent.llm_client.call_llm", new=AsyncMock(return_value="This is an online store for smartphones and home appliances.")) as mock_llm:
+        res = api_client.post("/v1/summary", json=payload)
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "ok"
+        assert mock_llm.call_count == 1
+        assert "online store" in data["summary"]
+
+
+@pytest.mark.asyncio
+async def test_navigator_english_goal_arabic_milestone_gives_english_reply():
+    """navigator with an English goal and Arabic milestone label → English reply."""
+    milestone = Milestone(
+        id="m-1",
+        description="الضغط على زر تسجيل الدخول",
+    )
+    dom_nodes = [
+        {"id": "btn-login", "tag": "button", "resolved_label": "Login"},
+    ]
+
+    async def mock_call_llm(*args, **kwargs):
+        captured_prompt = kwargs.get("user_prompt") or (args[0] if args else "")
+        # Prompt resolved to en-US because user's goal is English
+        assert "REPLY LANGUAGE: en-US" in captured_prompt
+        return json.dumps({
+            "status": "in_progress",
+            "steps": [{"action": "click", "element_id": "btn-login"}],
+            "reply": "Clicking login button for you now.",
+        })
+
+    with patch("app.agent.llm_client.call_llm", new=mock_call_llm):
+        plan = await navigator.plan_milestone_step(
+            goal="Sign in to my account",
+            milestone=milestone,
+            dom_map=dom_nodes,
+            current_url="https://example.com",
+            language=None,
+        )
+        assert not re.search(r"[\u0600-\u06FF]", plan.reply)
+        assert "Clicking login" in plan.reply
