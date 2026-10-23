@@ -1,5 +1,5 @@
 # WS7 Slots and Forms
-Branch: feat/slot-filling   Last commit: 903da99   Model used: Gemini 3.8 Flash
+Branch: feat/slot-filling   Last commit: 421de1f   Model used: Gemini 3.8 Flash
 Status: done
 Done:
 - client-script/secret-vault.js:17: Updated TOKEN_REGEX to support vault tokens ({vault:...}) and national_id identically with executor.js.
