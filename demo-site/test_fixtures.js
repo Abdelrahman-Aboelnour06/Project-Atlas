@@ -366,6 +366,14 @@ testAsync('portal-overlay-form.html: negative controls, Pattern A and Pattern B 
   assert.strictEqual(elements['pattern-b-card'].style.display, 'block', 'Pattern B card opened with block display');
 });
 
+test('portal-hero-fixed-bg.html: contains fixed background, hero section, and search card', () => {
+  const content = fs.readFileSync(path.join(DEMO_DIR, 'portal-hero-fixed-bg.html'), 'utf8');
+  assert(content.includes('id="fixed-bg-layer"'), 'Fixed bg layer must exist');
+  assert(content.includes('class="hero-search-card"'), 'Hero search card must exist');
+  assert(content.includes('id="hero-search-input"'), 'Hero search input must exist');
+  assert(content.includes('id="nav-services-link"'), 'Nav links must exist');
+});
+
 (async () => {
   for (const t of asyncQueue) {
     await t();

@@ -748,13 +748,7 @@ const NOISE_TEXT_PATTERNS = [
         if (el.closest?.('#atlas-sidebar-host') || el.closest?.('#atlas-sidebar-root')) continue;
         stack.push(el);
       }
-      if (stack.length === 0) {
-        // Fallback for mock environments (e.g. test_dom_serializer_v2.js without full layout engine)
-        if (typeof window !== 'undefined' && window.__mockModalOverlay) {
-          return { element: window.__mockModalOverlay, isRealModal: false };
-        }
-        return null;
-      }
+      if (stack.length === 0) return null;
 
       const hasFormInput = (container) => {
         return Boolean(container.querySelector?.('input:not([type="hidden"]), select, textarea'));
@@ -774,58 +768,70 @@ const NOISE_TEXT_PATTERNS = [
       };
 
       // Pattern (a): A fixed wrapper that covers >= 60% of viewport and contains a centred form card (Bootstrap .modal)
-      for (let i = 0; i < Math.min(stack.length, 5); i++) {
-        let curr = stack[i];
-        while (curr && curr !== document.body && curr !== document.documentElement) {
-          if (curr.id === 'atlas-sidebar-host' || curr.id === 'atlas-sidebar-root') break;
-          const pos = getPos(curr);
-          if (pos === 'fixed' && coversThreshold(curr)) {
-            if (hasFormInput(curr)) {
-              return { element: curr, isRealModal: false };
-            }
+      // The fixed wrapper must be the topmost non-Atlas element chain at the centre point (B6).
+      let currA = stack[0];
+      let wrapperA = null;
+      while (currA && currA !== document.body && currA !== document.documentElement) {
+        if (currA.id === 'atlas-sidebar-host' || currA.id === 'atlas-sidebar-root') break;
+        const pos = getPos(currA);
+        if (pos === 'fixed' && coversThreshold(currA)) {
+          if (hasFormInput(currA)) {
+            wrapperA = currA;
+            break;
           }
-          curr = curr.parentElement;
+        }
+        currA = currA.parentElement;
+      }
+
+      if (wrapperA) {
+        const wrapperIdx = stack.indexOf(wrapperA);
+        const limit = wrapperIdx === -1 ? stack.length : wrapperIdx;
+        let allBelongToWrapper = true;
+        for (let i = 0; i < limit; i++) {
+          if (stack[i] !== wrapperA && !wrapperA.contains(stack[i])) {
+            allBelongToWrapper = false;
+            break;
+          }
+        }
+        if (allBelongToWrapper) {
+          return { element: wrapperA, isRealModal: false };
         }
       }
 
       // Pattern (b): A fixed or absolute card smaller than 60% of viewport, centred,
       // sitting above a SEPARATE sibling backdrop element that is fixed and covers >= 60% of viewport.
-      // The card is the modal, and the backdrop does not need to contain inputs.
-      let backdropIndex = -1;
-      for (let i = 0; i < stack.length; i++) {
-        const el = stack[i];
-        const pos = getPos(el);
-        if (pos === 'fixed' && coversThreshold(el)) {
-          backdropIndex = i;
-          break;
-        }
-      }
-
-      if (backdropIndex > 0) {
-        const backdropEl = stack[backdropIndex];
-        // The card sits above the backdrop in the stack (index < backdropIndex).
-        // Walk up from stack[0] to find the card container.
-        let curr = stack[0];
-        let candidateCard = null;
-        while (curr && curr !== document.body && curr !== document.documentElement && curr !== backdropEl) {
-          if (curr.id === 'atlas-sidebar-host' || curr.id === 'atlas-sidebar-root') break;
-          const pos = getPos(curr);
-          if (pos === 'fixed' || pos === 'absolute') {
-            candidateCard = curr;
+      // B6 rule: Everything above the backdrop in the elementsFromPoint stack must belong to the card.
+      // If any non-card page element sits between the card and the backdrop, there is no modal.
+      for (let bIdx = 1; bIdx < stack.length; bIdx++) {
+        const backdropCandidate = stack[bIdx];
+        const pos = getPos(backdropCandidate);
+        if (pos === 'fixed' && coversThreshold(backdropCandidate)) {
+          // Find candidate card from stack[0]
+          let currB = stack[0];
+          let candidateCard = null;
+          while (currB && currB !== document.body && currB !== document.documentElement && currB !== backdropCandidate) {
+            if (currB.id === 'atlas-sidebar-host' || currB.id === 'atlas-sidebar-root') break;
+            const cPos = getPos(currB);
+            if (cPos === 'fixed' || cPos === 'absolute') {
+              candidateCard = currB;
+            }
+            currB = currB.parentElement;
           }
-          curr = curr.parentElement;
-        }
 
-        if (candidateCard && !candidateCard.contains(backdropEl)) {
-          if (hasFormInput(candidateCard)) {
-            return { element: candidateCard, isRealModal: false };
+          if (candidateCard && !candidateCard.contains(backdropCandidate) && hasFormInput(candidateCard)) {
+            // Verify that EVERY element before bIdx belongs to candidateCard
+            let allBelongToCard = true;
+            for (let i = 0; i < bIdx; i++) {
+              if (stack[i] !== candidateCard && !candidateCard.contains(stack[i])) {
+                allBelongToCard = false;
+                break;
+              }
+            }
+            if (allBelongToCard) {
+              return { element: candidateCard, isRealModal: false };
+            }
           }
         }
-      }
-
-      // Fallback for mock environments
-      if (typeof window !== 'undefined' && window.__mockModalOverlay) {
-        return { element: window.__mockModalOverlay, isRealModal: false };
       }
     } catch (_) {}
     return null;

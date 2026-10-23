@@ -282,6 +282,7 @@ function setupMockDom() {
       return all.find((el) => el.id === id) || null;
     },
     elementFromPoint: (x, y) => null,
+    elementsFromPoint: (x, y) => [],
   };
   global.CSS = { escape: (s) => s };
   global.MutationObserver = class {
@@ -384,7 +385,8 @@ test('L7: Heuristic fixed overlay covering viewport with inputs is recognized wi
   overlay.appendChild(overlayBtn);
   body.appendChild(overlay);
 
-  global.document.elementFromPoint = (x, y) => overlay;
+  global.document.elementFromPoint = (x, y) => overlayInput;
+  global.document.elementsFromPoint = (x, y) => [overlayInput, overlay];
 
   const nodes = AtlasSerializer.serialize();
   assert(nodes.length >= 3, 'Must serialize both overlay and background nodes (overlay does not hide page)');

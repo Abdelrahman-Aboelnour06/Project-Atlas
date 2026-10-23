@@ -344,6 +344,48 @@ async function runSuite() {
     const sidebarHostEmitted = sidebarNodes.some((n) => n.id === 'atlas-sidebar-host' || (n.resolved_label || '').includes('atlas-sidebar'));
     record('Atlas sidebar host node is strictly excluded from serialization', sidebarHostEmitted === false);
 
+    // ────────────────────────────────────────────────────────────────────────
+    // TEST 6: B6 False Modal Prevention on Home Page with Fixed Background
+    // ────────────────────────────────────────────────────────────────────────
+    console.log('\n[Test 6] Testing false modal prevention on page with fixed background & hero card...');
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto(`${baseUrl}/portal-hero-fixed-bg.html`, { waitUntil: 'domcontentloaded' });
+    await page.addScriptTag({ path: path.join(ROOT_DIR, 'client-script/dom-serializer.js') });
+
+    // 6.1 Test with background z-index: 0
+    console.log('  [6.1] Background with z-index: 0...');
+    const bgZeroResult = await page.evaluate(() => {
+      document.getElementById('fixed-bg-layer').style.zIndex = '0';
+      const modalInfo = window.AtlasSerializer.getActiveModalInfo();
+      const nodes = window.AtlasSerializer.serialize();
+      return { modalInfo, nodes };
+    });
+
+    record('z-index: 0: getActiveModalInfo returns null (no modal detected)', bgZeroResult.modalInfo === null);
+    const heroInputZero = bgZeroResult.nodes.find((n) => (n.placeholder || '').includes('Type a service'));
+    record('z-index: 0: Hero search input has in_modal: false', heroInputZero && heroInputZero.in_modal === false);
+    const anyBlockedZero = bgZeroResult.nodes.some((n) => n.blocked_by_modal);
+    record('z-index: 0: No element has blocked_by_modal: true', anyBlockedZero === false);
+    const navServicesZero = bgZeroResult.nodes.find((n) => (n.resolved_label || '').includes('Services'));
+    record('z-index: 0: Navigation links are not blocked', navServicesZero && navServicesZero.blocked_by_modal === false);
+
+    // 6.2 Test with background z-index: -1
+    console.log('  [6.2] Background with z-index: -1...');
+    const bgMinusOneResult = await page.evaluate(() => {
+      document.getElementById('fixed-bg-layer').style.zIndex = '-1';
+      const modalInfo = window.AtlasSerializer.getActiveModalInfo();
+      const nodes = window.AtlasSerializer.serialize();
+      return { modalInfo, nodes };
+    });
+
+    record('z-index: -1: getActiveModalInfo returns null (no modal detected)', bgMinusOneResult.modalInfo === null);
+    const heroInputMinusOne = bgMinusOneResult.nodes.find((n) => (n.placeholder || '').includes('Type a service'));
+    record('z-index: -1: Hero search input has in_modal: false', heroInputMinusOne && heroInputMinusOne.in_modal === false);
+    const anyBlockedMinusOne = bgMinusOneResult.nodes.some((n) => n.blocked_by_modal);
+    record('z-index: -1: No element has blocked_by_modal: true', anyBlockedMinusOne === false);
+    const navServicesMinusOne = bgMinusOneResult.nodes.find((n) => (n.resolved_label || '').includes('Services'));
+    record('z-index: -1: Navigation links are not blocked', navServicesMinusOne && navServicesMinusOne.blocked_by_modal === false);
+
   } finally {
     if (browser) await browser.close();
     server.close();
