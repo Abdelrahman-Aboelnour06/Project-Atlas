@@ -265,7 +265,7 @@ class TestGoalStepLanguageIntegration:
 
     def test_synthetic_milestone_inserted_when_languages_differ(self, api_client):
         payload = {
-            "goal": "Order a laptop",
+            "goal": "Switch page to Arabic and order a laptop",
             "current_url": "https://example.com/store",
             "language": "ar-EG",
             "dom_map": [
@@ -293,6 +293,70 @@ class TestGoalStepLanguageIntegration:
             milestones = data["goal_state"]["milestones"]
             assert len(milestones) >= 1
             # First milestone should be the synthetic language switch milestone
+            assert "Switch the page language to ar-EG" in milestones[0]["description"]
+            assert milestones[0]["satisfied_by_navigation"] is False
+            assert milestones[0]["status"] == "active"
+
+    def test_no_synthetic_milestone_when_no_explicit_switch_request(self, api_client):
+        """User has language='ar-EG' on an English page but did NOT explicitly ask to switch language."""
+        payload = {
+            "goal": "Order a laptop",
+            "current_url": "https://example.com/store",
+            "language": "ar-EG",
+            "dom_map": [
+                {"id": "btn-laptop", "tag": "button", "resolved_label": "Laptops"},
+            ],
+            "page_text": "Welcome to our electronics store.",
+            "api_key": DEMO_API_KEY,
+        }
+
+        scout_mock = ScoutResult(
+            page_kind="other",
+            blockers=[],
+            form_inventory=[],
+            primary_cta=None,
+            summary="Electronics store",
+            detected_language="en",
+        )
+
+        with patch("app.routes.chat.classify_page", new=AsyncMock(return_value=scout_mock)):
+            res = api_client.post("/v1/chat/goal_step", json=payload)
+            assert res.status_code == 200
+            data = res.json()
+
+            milestones = data["goal_state"]["milestones"]
+            # No synthetic language switch milestone should be inserted
+            assert not any("Switch the page language" in m["description"] for m in milestones)
+
+    def test_synthetic_milestone_inserted_for_arabic_explicit_request(self, api_client):
+        """Arabic explicit request like 'حوّل الصفحة للعربي' DOES insert the switch milestone."""
+        payload = {
+            "goal": "حوّل الصفحة للعربي واشتري لابتوب",
+            "current_url": "https://example.com/store",
+            "language": "ar-EG",
+            "dom_map": [
+                {"id": "btn-laptop", "tag": "button", "resolved_label": "Laptops"},
+            ],
+            "page_text": "Welcome to our electronics store.",
+            "api_key": DEMO_API_KEY,
+        }
+
+        scout_mock = ScoutResult(
+            page_kind="other",
+            blockers=[],
+            form_inventory=[],
+            primary_cta=None,
+            summary="Electronics store",
+            detected_language="en",
+        )
+
+        with patch("app.routes.chat.classify_page", new=AsyncMock(return_value=scout_mock)):
+            res = api_client.post("/v1/chat/goal_step", json=payload)
+            assert res.status_code == 200
+            data = res.json()
+
+            milestones = data["goal_state"]["milestones"]
+            assert len(milestones) >= 1
             assert "Switch the page language to ar-EG" in milestones[0]["description"]
             assert milestones[0]["satisfied_by_navigation"] is False
             assert milestones[0]["status"] == "active"

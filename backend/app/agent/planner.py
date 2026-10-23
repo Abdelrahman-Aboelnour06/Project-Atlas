@@ -14,6 +14,7 @@ import secrets
 from typing import List, Optional
 
 from app.agent import llm_client
+from app.i18n import resolve_reply_language
 from app.models.goal import Milestone
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,43 @@ def _clean_json_str(raw: str) -> str:
         text = "\n".join(lines[start:end])
     match = re.search(r"\{[\s\S]*\}", text)
     return match.group(0) if match else text.strip()
+
+
+def _is_explicit_language_switch_request(goal: str) -> bool:
+    """
+    Detects if the user explicitly requested to switch, change, or translate the page/site language.
+    Universal across all websites (Prime Directive: zero domain or site checks).
+    """
+    if not goal:
+        return False
+    g = goal.lower()
+    # Normalize Arabic diacritics / letter variants
+    g_ar = re.sub(r"[\u064B-\u065F\u0670]", "", g)
+    g_ar = re.sub(r"[إأآا]", "ا", g_ar)
+    g_ar = re.sub(r"[ىي]", "ي", g_ar)
+
+    # English patterns: switch/change/translate + page/site/language
+    en_patterns = [
+        r"\b(?:switch|change|translate|convert|set)\s+(?:the\s+)?(?:page\s+|site\s+|website\s+)?language\b",
+        r"\b(?:switch|change|translate)\s+(?:the\s+)?(?:page|site|website)\s+(?:to\s+)?(?:arabic|english|french|spanish|german)\b",
+        r"\b(?:switch|change)\s+to\s+(?:arabic|english|french|spanish|german)\b",
+        r"\btranslate\s+(?:the\s+)?(?:page|site|website)\b",
+        r"\b(?:view|show)\s+(?:page\s+|site\s+)?in\s+(?:arabic|english)\b",
+    ]
+    # Arabic patterns (MSA and Egyptian): حول/غير/ترجم + الصفحة/الموقع/اللغة
+    ar_patterns = [
+        r"(?:غير|تغيير|بدل|تبديل|حول|تحويل|ترجم|ترجمة|خلي|خللي)\s+(?:لغة\s+)?(?:الصفحة|الموقع|الويب)",
+        r"(?:الصفحة|الموقع)\s+(?:بالعربي|بالإنجليزي|بالانجليزي|بالعربية|بالانجليزية)",
+        r"(?:غير|حول|ترجم|خللي|خلي)\s+(?:ل|إلى|الي)\s*(?:العربي|العربية|الانجليزي|الانجليزية)",
+        r"(?:غير|حول|ترجم)\s+اللغة",
+    ]
+    for pat in en_patterns:
+        if re.search(pat, g):
+            return True
+    for pat in ar_patterns:
+        if re.search(pat, g_ar):
+            return True
+    return False
 
 
 LANGUAGE_MIRRORING_DIRECTIVE = (
@@ -72,6 +110,7 @@ async def plan_goal(
     page_text: Optional[str] = None,
     language: Optional[str] = None,
     detected_language: Optional[str] = None,
+    explicit_only: bool = False,
 ) -> List[Milestone]:
     """
     Decomposes a user goal into an ordered list of Milestones.
@@ -89,11 +128,13 @@ async def plan_goal(
         ]
 
     summary_nonce = secrets.token_hex(6)
+    reply_lang = resolve_reply_language(language, cleaned_goal)
 
     lang_context = f"\nREQUESTED USER LANGUAGE: {language}" if language else ""
 
     user_body = f"""PAGE CONTEXT:
 URL: {current_url or "Unknown"}{lang_context}
+REPLY LANGUAGE: {reply_lang}
 --- BEGIN UNTRUSTED WEBPAGE SUMMARY (BOUNDARY_ID: {summary_nonce}) ---
 {(page_text or "").strip()[:250] if page_text else "No page summary available"}
 --- END UNTRUSTED WEBPAGE SUMMARY (BOUNDARY_ID: {summary_nonce}) ---
@@ -140,8 +181,13 @@ JSON RESPONSE:"""
             if not any(m.is_final for m in milestones):
                 milestones[-1].is_final = True
 
-            # If requested language differs from page detected language, insert synthetic switch milestone
-            if language and detected_language and language.split("-")[0].lower() != detected_language.split("-")[0].lower():
+            # If requested language differs from page detected language AND user explicitly asked to change page language, insert synthetic switch milestone
+            if (
+                language
+                and detected_language
+                and language.split("-")[0].lower() != detected_language.split("-")[0].lower()
+                and (_is_explicit_language_switch_request(cleaned_goal) or not explicit_only)
+            ):
                 switch_milestone = Milestone(
                     id="m-0",
                     description=f"Switch the page language to {language}",
@@ -171,7 +217,12 @@ JSON RESPONSE:"""
             branch_id="b-0",
         )
     ]
-    if language and detected_language and language.split("-")[0].lower() != detected_language.split("-")[0].lower():
+    if (
+        language
+        and detected_language
+        and language.split("-")[0].lower() != detected_language.split("-")[0].lower()
+        and (_is_explicit_language_switch_request(cleaned_goal) or not explicit_only)
+    ):
         fallback_milestones[0].id = "m-1"
         fallback_milestones.insert(0, Milestone(
             id="m-0",

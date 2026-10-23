@@ -15,6 +15,7 @@ import secrets
 from typing import Any, Dict, List, Optional, Set, Union
 
 from app.agent import llm_client
+from app.i18n import resolve_reply_language
 from app.models.dom import DomNode
 from app.models.goal import FieldPlan, FormPlan
 
@@ -168,10 +169,12 @@ async def plan_form_fill(
     inventory_json = json.dumps(form_inventory, indent=2)
     nonce = secrets.token_hex(8)
 
+    reply_lang = resolve_reply_language(language, goal)
     lang_context = f"\nREQUESTED USER LANGUAGE: {language}" if language else ""
 
     user_body = f"""USER GOAL:
 "{goal}"{lang_context}
+REPLY LANGUAGE: {reply_lang}
 
 TARGET FORM ID:
 "{form_id}"

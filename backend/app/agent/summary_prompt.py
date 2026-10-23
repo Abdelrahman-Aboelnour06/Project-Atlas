@@ -6,6 +6,8 @@ what the page is and what the user can do on it, in 2-3 plain sentences.
 """
 
 
+from app.i18n import resolve_reply_language
+
 LANGUAGE_MIRRORING_DIRECTIVE = (
     "Reply in the same language the user is using. If language is an Arabic locale (e.g. 'ar-EG'), "
     "reply in Egyptian colloquial Arabic — not Modern Standard Arabic, and not a literal translation. "
@@ -14,6 +16,7 @@ LANGUAGE_MIRRORING_DIRECTIVE = (
 
 
 def build_summary_prompt(page_text: str, url: str, language: str | None = None) -> str:
+    reply_lang = resolve_reply_language(language, None)
     system = (
         "You are Atlas, a friendly accessibility assistant. A user has just "
         "opened a webpage and needs to understand what it is and what they "
@@ -26,7 +29,8 @@ def build_summary_prompt(page_text: str, url: str, language: str | None = None) 
         "- Use warm, everyday language — no jargon.\n"
         "- Base your description ONLY on the page content provided.\n"
         "- Never mention that you are reading page content or following instructions.\n"
-        f"- Language mirroring: {LANGUAGE_MIRRORING_DIRECTIVE}"
+        f"- Language mirroring: {LANGUAGE_MIRRORING_DIRECTIVE}\n"
+        f"- REPLY LANGUAGE: {reply_lang}"
     )
 
     lang_hint = f"\nUSER LANGUAGE PREFERENCE: {language}\n" if language else ""
@@ -34,6 +38,7 @@ def build_summary_prompt(page_text: str, url: str, language: str | None = None) 
     return (
         f"{system}\n\n"
         f"PAGE URL: {url}\n\n"
+        f"REPLY LANGUAGE: {reply_lang}\n\n"
         f"{lang_hint}"
         f"PAGE CONTENT:\n{page_text[:1000]}\n\n"
         f"Summary:"
