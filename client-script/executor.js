@@ -18,7 +18,7 @@ const TOKEN_REGEX = /^\{(password|cc_number|cc_cvv|cc_expiry|cc_name|ssn|otp|pin
 const glowTimers = new WeakMap()
 
 const ensureHighlightStyleInjected = () => {
-    if (typeof document === 'undefined') return
+    if (typeof document === 'undefined' || !document.head) return
     if (document.getElementById('atlas-glow-style')) return
     const style = document.createElement('style')
     style.id = 'atlas-glow-style'
@@ -560,6 +560,118 @@ const doWaitFor = async (value = 'settle') => {
     return { ok: true, message: 'Settled' };
 };
 
+const doReveal = async (toggleEl, targetRefOrValue) => {
+    if (!toggleEl) {
+        return { ok: false, message: 'Toggle element not found' };
+    }
+
+    // Resolve target element if specified
+    let targetEl = null;
+    if (typeof targetRefOrValue === 'string' && targetRefOrValue) {
+        targetEl = window.AtlasSerializer?.getElementByAtlasId(targetRefOrValue) ||
+                   (typeof document !== 'undefined' ? document.querySelector(`[data-atlas-id="${CSS.escape(targetRefOrValue)}"]`) : null);
+    }
+
+    // Helper to check if target or controlled element is visible or expanded
+    const isRevealed = () => {
+        if (toggleEl.getAttribute?.('aria-expanded') === 'true') return true;
+        if (toggleEl.parentElement?.tagName === 'DETAILS' && toggleEl.parentElement.open) return true;
+        if (targetEl) {
+            try {
+                if (targetEl.offsetParent !== null) return true;
+                const s = typeof window !== 'undefined' && window.getComputedStyle ? window.getComputedStyle(targetEl) : targetEl.style;
+                if (s && s.display !== 'none' && s.visibility !== 'hidden') return true;
+            } catch (_) {}
+        }
+        const controlsId = toggleEl.getAttribute?.('aria-controls');
+        if (controlsId && typeof document !== 'undefined') {
+            const controlled = document.getElementById(controlsId);
+            if (controlled) {
+                try {
+                    if (controlled.offsetParent !== null) return true;
+                    const s = typeof window !== 'undefined' && window.getComputedStyle ? window.getComputedStyle(controlled) : controlled.style;
+                    if (s && s.display !== 'none' && s.visibility !== 'hidden') return true;
+                } catch (_) {}
+            }
+        }
+        return false;
+    };
+
+    // User Addition 1: If already expanded or target is already visible, do NOT toggle closed!
+    if (isRevealed()) {
+        return { ok: true, message: 'Already revealed' };
+    }
+
+    scrollToElement(toggleEl);
+    glow(toggleEl);
+
+    const rect = toggleEl.getBoundingClientRect ? toggleEl.getBoundingClientRect() : { left: 0, top: 0, width: 20, height: 20 };
+    const clientX = rect.left + rect.width / 2;
+    const clientY = rect.top + rect.height / 2;
+
+    // User Addition 2 Step 1: Hover (pointerover, mouseover, pointerenter, mouseenter, mousemove)
+    const hoverInit = { bubbles: true, cancelable: true, view: typeof window !== 'undefined' ? window : null, clientX, clientY };
+    toggleEl.dispatchEvent(new PointerEvent('pointerover', hoverInit));
+    toggleEl.dispatchEvent(new MouseEvent('mouseover', hoverInit));
+    toggleEl.dispatchEvent(new PointerEvent('pointerenter', hoverInit));
+    toggleEl.dispatchEvent(new MouseEvent('mouseenter', hoverInit));
+    toggleEl.dispatchEvent(new MouseEvent('mousemove', hoverInit));
+
+    await new Promise((r) => setTimeout(r, 40));
+    if (isRevealed()) {
+        return { ok: true, message: 'Revealed via hover' };
+    }
+
+    // User Addition 2 Step 2: Focus + keyboard trigger (ArrowDown, Enter) for keyboard menus
+    if (typeof toggleEl.focus === 'function') toggleEl.focus();
+    const arrowDownInit = { key: 'ArrowDown', code: 'ArrowDown', keyCode: 40, which: 40, bubbles: true, cancelable: true, view: typeof window !== 'undefined' ? window : null };
+    toggleEl.dispatchEvent(new KeyboardEvent('keydown', arrowDownInit));
+    toggleEl.dispatchEvent(new KeyboardEvent('keyup', arrowDownInit));
+
+    await new Promise((r) => setTimeout(r, 40));
+    if (isRevealed()) {
+        return { ok: true, message: 'Revealed via keyboard focus' };
+    }
+
+    const enterInit = { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true, view: typeof window !== 'undefined' ? window : null };
+    toggleEl.dispatchEvent(new KeyboardEvent('keydown', enterInit));
+    toggleEl.dispatchEvent(new KeyboardEvent('keypress', enterInit));
+    toggleEl.dispatchEvent(new KeyboardEvent('keyup', enterInit));
+
+    await new Promise((r) => setTimeout(r, 40));
+    if (isRevealed()) {
+        return { ok: true, message: 'Revealed via keyboard enter' };
+    }
+
+    // User Addition 2 Step 3: Click ONLY if still hidden AND not an <a href> that navigates away
+    const tag = (toggleEl.tagName || '').toUpperCase();
+    const href = toggleEl.getAttribute?.('href') || toggleEl.href || '';
+    const isNavigatingLink = tag === 'A' &&
+        Boolean(href) &&
+        !href.startsWith('#') &&
+        !href.startsWith('javascript:');
+
+    if (!isNavigatingLink) {
+        dispatchMouseSequence(toggleEl, 1);
+        if (typeof toggleEl.click === 'function') toggleEl.click();
+    }
+
+    // Poll up to 2,000 ms for target or menu to become visible / expanded
+    const start = Date.now();
+    while (Date.now() - start < 2000) {
+        if (isRevealed()) {
+            return { ok: true, message: 'Revealed menu' };
+        }
+        await new Promise((r) => setTimeout(r, 50));
+    }
+
+    if (isRevealed()) {
+        return { ok: true, message: 'Revealed menu' };
+    }
+
+    return { ok: false, message: 'Timed out waiting for menu to reveal' };
+};
+
 let navigationPendingState = false;
 if (typeof window !== 'undefined') {
     window.addEventListener('beforeunload', () => {
@@ -569,7 +681,7 @@ if (typeof window !== 'undefined') {
 
 const navigationPending = async () => navigationPendingState;
 
-const READ_ONLY_ACTIONS = new Set(['scroll', 'focus', 'wait_for'])
+const READ_ONLY_ACTIONS = new Set(['scroll', 'focus', 'wait_for', 'reveal'])
 const MUTATE_ACTIONS = new Set([
     'click', 'open', 'double_click', 'dblclick', 'triple_click', 'tripleclick',
     'fill', 'select_option', 'set_checkbox', 'set_radio', 'press_key', 'upload_file'
@@ -687,9 +799,36 @@ const execute = async (actionResponse, options = {}) => {
         return await doWaitFor(value);
     }
 
-    const el = window.AtlasSerializer?.getElementByAtlasId(elementId)
+    const el = window.AtlasSerializer?.getElementByAtlasId(elementId) ||
+               (typeof document !== 'undefined' ? document.querySelector(`[data-atlas-id="${CSS.escape(elementId)}"]`) : null)
     if (!el) {
         return { ok: false, message: `Couldn't find that element on the page anymore — try again.` }
+    }
+
+    // Self-healing: if target element is hidden and has a stored reveal_via, run reveal first!
+    const INTERACT_ACTIONS = ['click', 'open', 'double_click', 'dblclick', 'triple_click', 'tripleclick', 'fill'];
+    if (INTERACT_ACTIONS.includes(action)) {
+        const revealVia = el.getAttribute?.('data-atlas-reveal-via');
+        let elVisible = true;
+        try {
+            if (el.hidden || (el.style && (el.style.display === 'none' || el.style.visibility === 'hidden'))) {
+                elVisible = false;
+            } else if (typeof window !== 'undefined' && window.getComputedStyle) {
+                const s = window.getComputedStyle(el);
+                if (s.display === 'none' || s.visibility === 'hidden') elVisible = false;
+            }
+        } catch (_) {}
+
+        if (!elVisible && revealVia) {
+            const toggle = window.AtlasSerializer?.getElementByAtlasId(revealVia) ||
+                           (typeof document !== 'undefined' ? document.querySelector(`[data-atlas-id="${CSS.escape(revealVia)}"]`) : null);
+            if (toggle) {
+                const revealRes = await doReveal(toggle, elementId);
+                if (!revealRes.ok) {
+                    return { ok: false, message: `Could not reveal menu: ${revealRes.message}` };
+                }
+            }
+        }
     }
     
     // Scroll element into view before asking for confirmation
@@ -719,7 +858,7 @@ const execute = async (actionResponse, options = {}) => {
         }
     }
 
-    const isInteractingAction = ['click', 'open', 'double_click', 'dblclick', 'triple_click', 'tripleclick', 'fill', 'select_option', 'set_checkbox', 'set_radio', 'press_key', 'upload_file'].includes(action);
+    const isInteractingAction = ['click', 'open', 'double_click', 'dblclick', 'triple_click', 'tripleclick', 'fill', 'select_option', 'set_checkbox', 'set_radio', 'press_key', 'upload_file', 'reveal'].includes(action);
     if (isInteractingAction && typeof window !== 'undefined') {
         window.AtlasSidebar?.setAutoHide?.(true);
     }
@@ -736,6 +875,13 @@ const execute = async (actionResponse, options = {}) => {
         clickCount = clickCount && clickCount > 0 ? clickCount : 1;
 
         switch (action) {
+            case 'reveal': {
+                const revealRes = await doReveal(el, value);
+                if (!revealRes.ok) {
+                    return revealRes;
+                }
+                break;
+            }
             case 'click':
                 if (clickCount > 1) {
                     await doMultiClick(el, clickCount);
@@ -964,6 +1110,7 @@ const executorApi = {
     doPressKey,
     doUploadFile,
     doWaitFor,
+    doReveal,
     isCredentialField,
     requestNativeCredentials,
     TOKEN_REGEX,

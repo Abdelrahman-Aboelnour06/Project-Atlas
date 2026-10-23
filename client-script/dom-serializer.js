@@ -2,11 +2,13 @@
   // dom-serializer.js
 
   const ATLAS_ID_ATTR = "data-atlas-id";
+  const ATLAS_REVEAL_VIA_ATTR = "data-atlas-reveal-via";
   const DEBOUNCE_MS = 800;
 
   // ── Selectors ─────────────────────────────────────────────────────────────────
   const INTERACTIVE_SELECTOR = [
     "button",
+    "summary",
     "a[href]",
     'input:not([type="hidden"])',
     "select",
@@ -291,6 +293,8 @@ const NOISE_TEXT_PATTERNS = [
   const isVisible = (el) => {
     if (el.hidden) return false;
     if (el.closest('[aria-hidden="true"]')) return false;
+    if (el.closest('dialog:not([open])')) return false;
+    if (el.closest('details:not([open])') && (el.tagName || "").toLowerCase() !== "summary") return false;
     const style = window.getComputedStyle(el);
     if (style.display === "none" || style.visibility === "hidden") return false;
     if (parseFloat(style.opacity) < 0.1) return false;
@@ -614,27 +618,256 @@ const NOISE_TEXT_PATTERNS = [
     return null;
   };
 
-  // ── Two-Phase Layout-Safe Serializer (Feature 16 + v2) ─────────────────────────
-  // Phase 1: Read all DOM & layout properties without modifying the DOM.
-  // Phase 2: Batch-write data-atlas-id attributes to newly identified elements.
-  // Phase 3: Construct the final clean payload array.
+  // ── Landmark detection ───────────────────────────────────────────────────────
+  const detectLandmark = (el) => {
+    if (!el || !el.closest) return null;
+    try {
+      const match = el.closest(
+        'header, nav, main, footer, aside, [role="banner"], [role="navigation"], [role="main"], [role="contentinfo"], [role="complementary"]'
+      );
+      if (!match) return null;
+      const tag = (match.tagName || "").toLowerCase();
+      const role = (match.getAttribute?.("role") || "").toLowerCase();
+      if (tag === "header" || role === "banner") return "header";
+      if (tag === "nav" || role === "navigation") return "nav";
+      if (tag === "main" || role === "main") return "main";
+      if (tag === "footer" || role === "contentinfo") return "footer";
+      if (tag === "aside" || role === "complementary") return "aside";
+    } catch (_) {}
+    return null;
+  };
+
+  // ── Menu toggle detection ────────────────────────────────────────────────────
+  const detectMenu = (el) => {
+    if (!el) return null;
+    const tag = (el.tagName || "").toLowerCase();
+    const hasPopupAttr = el.getAttribute?.("aria-haspopup");
+    const hasExpandedAttr = el.hasAttribute?.("aria-expanded");
+    let expandedVal = hasExpandedAttr ? el.getAttribute("aria-expanded") === "true" : null;
+    let controlsId = el.getAttribute?.("aria-controls") || null;
+    let hasPopupVal = hasPopupAttr || null;
+
+    // 1. Native disclosure widget: <summary> inside <details>
+    if (tag === "summary" && el.parentElement && (el.parentElement.tagName || "").toLowerCase() === "details") {
+      const details = el.parentElement;
+      const isOpen = Boolean(details.open || details.hasAttribute("open"));
+      return {
+        haspopup: hasPopupAttr || "true",
+        expanded: isOpen,
+        controls: controlsId || details.id || null,
+      };
+    }
+
+    // Check sibling or controlled element to infer missing controls/expanded
+    if (!controlsId || expandedVal === null) {
+      if (controlsId) {
+        try {
+          const target = document.getElementById(controlsId);
+          if (target && expandedVal === null) {
+            expandedVal = isVisible(target);
+          }
+        } catch (_) {}
+      } else if (tag === "button" || tag === "a" || el.getAttribute?.("role") === "button") {
+        let sib = el.nextElementSibling;
+        while (sib && sib.nodeType === 1) {
+          const sTag = (sib.tagName || "").toLowerCase();
+          const sRole = (sib.getAttribute?.("role") || "").toLowerCase();
+          if (sTag === "ul" || sTag === "ol" || sTag === "nav" || sRole === "menu" || sRole === "menubar") {
+            if (!controlsId) controlsId = sib.id || null;
+            if (expandedVal === null) expandedVal = isVisible(sib);
+            if (!hasPopupVal) hasPopupVal = "true";
+          }
+          break;
+        }
+      }
+    }
+
+    if (hasPopupVal || hasExpandedAttr || controlsId) {
+      return {
+        haspopup: hasPopupVal || (expandedVal !== null || controlsId ? "true" : null),
+        expanded: expandedVal,
+        controls: controlsId,
+      };
+    }
+
+    return null;
+  };
+
+  // ── Hierarchical menu breadcrumb ─────────────────────────────────────────────
+  const detectBreadcrumb = (el, controlsMap) => {
+    if (!el || !el.parentElement) return null;
+    const breadcrumbLabels = [];
+    let curr = el.parentElement;
+    let depth = 0;
+
+    while (curr && curr !== document.body && curr !== document.documentElement && depth < 10) {
+      depth++;
+      const tag = (curr.tagName || "").toLowerCase();
+      const role = (curr.getAttribute?.("role") || "").toLowerCase();
+
+      // Case A: <details> ancestor -> <summary>
+      if (tag === "details") {
+        const summary = curr.firstElementChild && (curr.firstElementChild.tagName || "").toLowerCase() === "summary"
+          ? curr.firstElementChild
+          : (curr.querySelector ? curr.querySelector("summary") : null);
+        if (summary && summary !== el) {
+          const lbl = resolveLabel(summary);
+          if (lbl && !breadcrumbLabels.includes(lbl)) {
+            breadcrumbLabels.push(lbl);
+          }
+        }
+      }
+
+      // Case B: ul/ol/nav/menu container with preceding toggle button/link
+      if (tag === "ul" || tag === "ol" || tag === "nav" || role === "menu" || role === "menubar") {
+        const prev = curr.previousElementSibling;
+        if (prev && prev !== el) {
+          const pTag = (prev.tagName || "").toLowerCase();
+          const pRole = (prev.getAttribute?.("role") || "").toLowerCase();
+          if (pTag === "button" || pTag === "a" || pRole === "button" || pRole === "menuitem") {
+            const lbl = resolveLabel(prev);
+            if (lbl && !breadcrumbLabels.includes(lbl)) {
+              breadcrumbLabels.push(lbl);
+            }
+          }
+        } else if (curr.parentElement && (curr.parentElement.tagName || "").toLowerCase() === "li") {
+          const trigger = curr.parentElement.querySelector("button, a, [role='button'], [role='menuitem']");
+          if (trigger && trigger !== el && !curr.contains(trigger)) {
+            const lbl = resolveLabel(trigger);
+            if (lbl && !breadcrumbLabels.includes(lbl)) {
+              breadcrumbLabels.push(lbl);
+            }
+          }
+        }
+      }
+
+      // Case C: Container referenced by aria-controls
+      if (curr.id && controlsMap && controlsMap.has(curr.id)) {
+        const ctrlToggle = controlsMap.get(curr.id);
+        if (ctrlToggle && ctrlToggle !== el && !curr.contains(ctrlToggle)) {
+          const lbl = resolveLabel(ctrlToggle);
+          if (lbl && !breadcrumbLabels.includes(lbl)) {
+            breadcrumbLabels.push(lbl);
+          }
+        }
+      }
+
+      curr = curr.parentElement;
+    }
+
+    if (breadcrumbLabels.length === 0) return null;
+    // Walk was leaf-to-root; reverse so breadcrumb is root-to-leaf, capped at 3
+    return breadcrumbLabels.reverse().slice(-3);
+  };
+
+  // ── Find nearest toggle for reveal_via ─────────────────────────────────────────
+  const findNearestToggle = (el, controlsMap) => {
+    if (!el || !el.parentElement) return null;
+    let curr = el.parentElement;
+    let depth = 0;
+
+    while (curr && curr !== document.body && curr !== document.documentElement && depth < 12) {
+      depth++;
+      const tag = (curr.tagName || "").toLowerCase();
+      const role = (curr.getAttribute?.("role") || "").toLowerCase();
+
+      // 1. <details> ancestor -> <summary>
+      if (tag === "details") {
+        const summary = curr.firstElementChild && (curr.firstElementChild.tagName || "").toLowerCase() === "summary"
+          ? curr.firstElementChild
+          : (curr.querySelector ? curr.querySelector("summary") : null);
+        if (summary && summary !== el) return summary;
+      }
+
+      // 2. Container ID mapped in controlsMap
+      if (curr.id && controlsMap && controlsMap.has(curr.id)) {
+        const ctrl = controlsMap.get(curr.id);
+        if (ctrl && ctrl !== el) return ctrl;
+      }
+
+      // 3. ul/ol/nav/menu preceding sibling or parent <li> trigger
+      if (
+        tag === "ul" ||
+        tag === "ol" ||
+        tag === "nav" ||
+        role === "menu" ||
+        role === "menubar" ||
+        (curr.className && /menu|dropdown|drawer/i.test(curr.className))
+      ) {
+        const prev = curr.previousElementSibling;
+        if (prev && prev !== el) {
+          const pTag = (prev.tagName || "").toLowerCase();
+          const pRole = (prev.getAttribute?.("role") || "").toLowerCase();
+          if (pTag === "button" || pTag === "a" || pRole === "button" || pRole === "menuitem") {
+            return prev;
+          }
+        }
+        if (curr.parentElement && (curr.parentElement.tagName || "").toLowerCase() === "li") {
+          const trigger = curr.parentElement.querySelector("button, a, [role='button'], [role='menuitem']");
+          if (trigger && trigger !== el && !curr.contains(trigger)) {
+            return trigger;
+          }
+        }
+      }
+
+      curr = curr.parentElement;
+    }
+    return null;
+  };
+
+  // ── Two-Phase Layout-Safe Serializer (Feature 16 + v2 + v3) ────────────────────
+  // Phase 1: Read all DOM & layout properties without modifying the DOM (Visible pass).
+  // Phase 1b: Latent pass — discover hidden menu & drawer items.
+  // Phase 2: Batch-write data-atlas-id & data-atlas-reveal-via attributes.
+  // Phase 3: Construct the final clean payload array (visible followed by latent).
+  let lastLatentDurationMs = 0;
+  const getLastLatentDuration = () => lastLatentDurationMs;
+
   const serialize = () => {
     seenLabels.clear(); // reset duplicate tracker on each scan
     const ordinalCounter = new Map();
+    const latentOrdinalCounter = new Map();
 
     // Check for active modal focus trap per W3C APG
     const activeModal = getActiveModalDialog();
 
-    // Phase 1: All DOM Reads (piercing open shadow roots)
+    // Pre-build aria-controls index for O(1) toggle resolution
+    const controlsMap = new Map();
+    try {
+      const controlledEls = document.querySelectorAll("[aria-controls]");
+      for (let i = 0; i < controlledEls.length; i++) {
+        const toggle = controlledEls[i];
+        const ctrl = toggle.getAttribute("aria-controls");
+        if (ctrl) {
+          const ids = ctrl.trim().split(/\s+/);
+          for (let j = 0; j < ids.length; j++) {
+            const id = ids[j];
+            if (id && !controlsMap.has(id)) {
+              controlsMap.set(id, toggle);
+            }
+          }
+        }
+      }
+    } catch (_) {}
+
+    // Phase 1: All DOM Reads (piercing open shadow roots) — VISIBLE PASS
     const candidates = collectInteractiveElements(document);
     const passedElements = [];
+    const visibleElementsSet = new Set();
+    const hiddenCandidates = [];
 
     for (let i = 0; i < candidates.length; i++) {
       const el = candidates[i];
       // When a modal dialog is active, elements outside it are inert and occluded
       if (activeModal && !activeModal.contains(el) && !el.closest("#atlas-sidebar-root") && !el.closest("#atlas-sidebar-host")) continue;
       // Note: do NOT skip el.disabled; emit disabled: true (§11.2)
-      if (!isVisible(el)) continue;
+      if (!isVisible(el)) {
+        const t = (el.tagName || "").toLowerCase();
+        if (t !== "input" && t !== "select" && t !== "textarea") {
+          hiddenCandidates.push(el);
+        }
+        continue;
+      }
       if (isStructuralNoise(el)) continue;
       if (isMachineLabel(el)) continue;
       if (isBareIconButton(el)) continue;
@@ -646,6 +879,11 @@ const NOISE_TEXT_PATTERNS = [
 
       const formId = detectFormId(el);
       if (isDuplicate(label, formId)) continue;
+
+      // Clean up stale reveal-via attribute if element is now visible (User Addition 3)
+      if (el.hasAttribute(ATLAS_REVEAL_VIA_ATTR)) {
+        el.removeAttribute(ATLAS_REVEAL_VIA_ATTR);
+      }
 
       const sensitive = isSensitiveField(el);
       const groupLabel = detectGroupLabel(el);
@@ -681,6 +919,15 @@ const NOISE_TEXT_PATTERNS = [
 
       const ref = computeRef(el, label, formId, ordinal);
 
+      // v3 metadata (§9.3)
+      const menu = detectMenu(el);
+      const landmark = detectLandmark(el);
+      const breadcrumb = detectBreadcrumb(el, controlsMap);
+
+      visibleElementsSet.add(el);
+
+      el.__atlas_id = existingAtlasId || ref;
+      el.__atlas_lbl = label;
       passedElements.push({
         el,
         existingAtlasId,
@@ -709,10 +956,273 @@ const NOISE_TEXT_PATTERNS = [
         autocomplete,
         invalid,
         error_text: errorText,
+        visible: true,
+        reveal_via: null,
+        menu,
+        landmark,
+        breadcrumb,
       });
     }
 
-    // Phase 2: DOM Writes (Batch data-atlas-id writes only)
+    // Phase 1b: LATENT PASS (Appended strictly after visible pass)
+    const latentStartTime = (typeof performance !== "undefined" && performance.now) ? performance.now() : 0;
+    const passedLatentElements = [];
+    let isGlobalHidden = false;
+    try {
+      if (document.body) {
+        const bodyStyle = window.getComputedStyle(document.body);
+        if (bodyStyle.display === "none" || bodyStyle.visibility === "hidden") isGlobalHidden = true;
+      }
+      if (!isGlobalHidden && document.documentElement) {
+        const htmlStyle = window.getComputedStyle(document.documentElement);
+        if (htmlStyle.display === "none" || htmlStyle.visibility === "hidden") isGlobalHidden = true;
+      }
+    } catch (_) {}
+
+    if (!isGlobalHidden) {
+      try {
+        const ancestorCache = new Map();
+        for (let i = 0; i < hiddenCandidates.length; i++) {
+          if (passedLatentElements.length >= 150) break; // Cap at 150
+          const el = hiddenCandidates[i];
+
+          // 1. Skip elements already in visible pass
+          if (visibleElementsSet.has(el)) continue;
+
+          // 2. Strict exclusions: never inputs, selects, textareas, sensitive fields
+          const tag = (el.tagName || "").toLowerCase();
+          if (tag === "input" || tag === "select" || tag === "textarea") continue;
+          if (isSensitiveField(el)) continue;
+
+          // 3. Single upward traversal: check blockers, valid container, toggle, landmark, breadcrumbs
+          let isBlocked = false;
+          let validContainer = false;
+          let toggleEl = null;
+          let landmark = null;
+          let formId = null;
+          const breadcrumbLabels = [];
+
+          let curr = el.parentElement;
+          let depth = 0;
+          const chain = [];
+          while (curr && curr !== document.body && curr !== document.documentElement && depth < 12) {
+            depth++;
+            if (ancestorCache.has(curr)) {
+              const cached = ancestorCache.get(curr);
+              if (cached.isBlocked) isBlocked = true;
+              if (cached.validContainer) validContainer = true;
+              if (!landmark && cached.landmark) landmark = cached.landmark;
+              if (!toggleEl && cached.toggleEl) toggleEl = cached.toggleEl;
+              if (!formId && cached.formId) formId = cached.formId;
+              for (let b = 0; b < cached.breadcrumbLabels.length; b++) {
+                const lbl = cached.breadcrumbLabels[b];
+                if (breadcrumbLabels.length < 3 && !breadcrumbLabels.includes(lbl)) {
+                  breadcrumbLabels.push(lbl);
+                }
+              }
+              break;
+            }
+
+            chain.push(curr);
+
+            if (
+              curr.getAttribute?.("aria-hidden") === "true" ||
+              (curr.tagName === "DIALOG" && !curr.open && !curr.hasAttribute("open")) ||
+              curr.hasAttribute?.("inert") ||
+              curr.id === "atlas-sidebar-host" ||
+              curr.id === "atlas-sidebar-root"
+            ) {
+              isBlocked = true;
+              break;
+            }
+
+            const cTag = (curr.tagName || "").toLowerCase();
+            const cRole = (curr.getAttribute?.("role") || "").toLowerCase();
+            const cClass = (curr.getAttribute?.("class") || "").toLowerCase();
+            const cId = curr.id || "";
+
+            if (cTag === "form" && !formId) {
+              formId = curr.id || curr.getAttribute?.("name") || curr.getAttribute?.(ATLAS_ID_ATTR) || "form_0";
+            }
+
+            // Container validation: nav, header, menu, menubar, navigation, details:not([open]), aside, drawer, controlsMap
+            if (
+              cTag === "nav" ||
+              cTag === "header" ||
+              cTag === "aside" ||
+              cTag === "details" ||
+              cRole === "menu" ||
+              cRole === "menubar" ||
+              cRole === "navigation" ||
+              cClass.includes("drawer") ||
+              cId.includes("drawer") ||
+              (cId && controlsMap.has(cId))
+            ) {
+              validContainer = true;
+            }
+
+            // Closest landmark
+            if (!landmark) {
+              if (cTag === "header" || cRole === "banner") landmark = "header";
+              else if (cTag === "nav" || cRole === "navigation") landmark = "nav";
+              else if (cTag === "main" || cRole === "main") landmark = "main";
+              else if (cTag === "footer" || cRole === "contentinfo") landmark = "footer";
+              else if (cTag === "aside" || cRole === "complementary") landmark = "aside";
+            }
+
+            // Nearest toggle and breadcrumbs
+            let trigger = null;
+            if (cTag === "details") {
+              const summary = Array.from(curr.children || []).find(
+                (c) => (c.tagName || "").toLowerCase() === "summary"
+              );
+              if (summary && summary !== el) trigger = summary;
+            } else if (cId && controlsMap.has(cId)) {
+              const ctrl = controlsMap.get(cId);
+              if (ctrl && ctrl !== el && !curr.contains(ctrl)) trigger = ctrl;
+            } else if (
+              cTag === "ul" ||
+              cTag === "ol" ||
+              cTag === "nav" ||
+              cRole === "menu" ||
+              cRole === "menubar" ||
+              cClass.includes("menu") ||
+              cClass.includes("dropdown") ||
+              cClass.includes("drawer")
+            ) {
+              const prev = curr.previousElementSibling;
+              if (prev && prev !== el) {
+                const pTag = (prev.tagName || "").toLowerCase();
+                const pRole = (prev.getAttribute?.("role") || "").toLowerCase();
+                if (pTag === "button" || pTag === "a" || pRole === "button" || pRole === "menuitem") {
+                  trigger = prev;
+                }
+              }
+              if (!trigger && curr.parentElement && (curr.parentElement.tagName || "").toLowerCase() === "li") {
+                const liTrigger = Array.from(curr.parentElement.children || []).find((c) => {
+                  if (c === curr || c === el) return false;
+                  const cT = (c.tagName || "").toLowerCase();
+                  const cR = (c.getAttribute?.("role") || "").toLowerCase();
+                  return cT === "button" || cT === "a" || cR === "button" || cR === "menuitem";
+                });
+                if (liTrigger) trigger = liTrigger;
+              }
+            }
+
+            if (trigger) {
+              if (!toggleEl) toggleEl = trigger;
+              if (breadcrumbLabels.length < 3) {
+                const lbl = trigger.__atlas_lbl || (trigger.__atlas_lbl = resolveLabel(trigger));
+                if (lbl && !breadcrumbLabels.includes(lbl)) breadcrumbLabels.push(lbl);
+              }
+            }
+
+            curr = curr.parentElement;
+          }
+
+          for (let c = 0; c < chain.length; c++) {
+            ancestorCache.set(chain[c], {
+              isBlocked,
+              validContainer,
+              toggleEl,
+              landmark,
+              formId,
+              breadcrumbLabels: [...breadcrumbLabels],
+            });
+          }
+
+          if (isBlocked || !validContainer) continue;
+          if (activeModal && !activeModal.contains(el)) continue;
+          if (isStructuralNoise(el)) continue;
+
+          // 4. Label resolution: fallback to textContent, aria-label, title (Rule 4)
+          const ariaLabel = el.getAttribute?.("aria-label") || null;
+          const title = el.getAttribute?.("title") || null;
+          const rawText = ariaLabel || title || el.textContent || "";
+          const label = truncate(rawText);
+          if (!label) continue;
+          if (isTextNoise(label)) continue;
+          if (isMachineLabel(el)) continue;
+
+          // 5. Deduplication: shared seenLabels (cannot block visible elements)
+          if (isDuplicate(label, formId)) continue;
+
+          // 6. Ordinal and Ref: separate latentOrdinalCounter to prevent affecting visible refs
+          const role = el.getAttribute("role") || null;
+          const type = el.getAttribute("type") || null;
+          const basisKey = [tag, role || "", type || "", normaliseLabel(label), formId || ""].join("|");
+          const ordinal = latentOrdinalCounter.get(basisKey) || 0;
+          latentOrdinalCounter.set(basisKey, ordinal + 1);
+
+          const ref = computeRef(el, label, formId, ordinal);
+          const existingAtlasId = el.getAttribute(ATLAS_ID_ATTR);
+
+          // 7. Reveal via ID
+          let revealVia = null;
+          if (toggleEl) {
+            let toggleId = toggleEl.__atlas_id || toggleEl.getAttribute(ATLAS_ID_ATTR);
+            if (!toggleId) {
+              const tLbl = toggleEl.__atlas_lbl || (toggleEl.__atlas_lbl = resolveLabel(toggleEl));
+              const tRef = computeRef(toggleEl, tLbl || "toggle", formId, 0);
+              toggleId = tRef;
+              toggleEl.__atlas_id = tRef;
+              toggleEl.setAttribute(ATLAS_ID_ATTR, tRef);
+            }
+            revealVia = toggleId;
+          }
+
+          el.__atlas_id = existingAtlasId || ref;
+          el.__atlas_lbl = label;
+
+          const innerText = truncate(el.textContent || el.innerText);
+          const href = el.getAttribute("href") || null;
+          const name = el.getAttribute("name") || null;
+          const menu = detectMenu(el);
+          const breadcrumb = breadcrumbLabels.length > 0 ? breadcrumbLabels.reverse().slice(-3) : null;
+          const disabled = Boolean(el.disabled || el.getAttribute("aria-disabled") === "true");
+
+          passedLatentElements.push({
+            el,
+            existingAtlasId,
+            ref,
+            tag,
+            type,
+            inner_text: innerText,
+            placeholder: null,
+            aria_label: ariaLabel,
+            href,
+            name,
+            role,
+            sensitive: false,
+            resolved_label: label,
+            group_label: null,
+            section_label: null,
+            form_id: formId,
+            required: false,
+            disabled,
+            current_value: null,
+            checked: null,
+            options: null,
+            pattern: null,
+            maxlength: null,
+            inputmode: null,
+            autocomplete: null,
+            invalid: false,
+            error_text: null,
+            visible: false,
+            reveal_via: revealVia,
+            menu,
+            landmark,
+            breadcrumb,
+          });
+        }
+      } catch (_) {}
+    }
+
+    const latentEndTime = (typeof performance !== "undefined" && performance.now) ? performance.now() : 0;
+    lastLatentDurationMs = latentEndTime - latentStartTime;
+
+    // Phase 2: DOM Writes (Batch data-atlas-id and data-atlas-reveal-via writes)
     for (let i = 0; i < passedElements.length; i++) {
       const item = passedElements[i];
       if (!item.existingAtlasId) {
@@ -720,9 +1230,21 @@ const NOISE_TEXT_PATTERNS = [
         item.el.setAttribute(ATLAS_ID_ATTR, item.ref);
       }
     }
+    for (let i = 0; i < passedLatentElements.length; i++) {
+      const item = passedLatentElements[i];
+      if (!item.existingAtlasId) {
+        item.existingAtlasId = item.ref;
+        item.el.setAttribute(ATLAS_ID_ATTR, item.ref);
+      }
+      if (item.reveal_via) {
+        item.el.setAttribute(ATLAS_REVEAL_VIA_ATTR, item.reveal_via);
+      } else {
+        item.el.removeAttribute(ATLAS_REVEAL_VIA_ATTR);
+      }
+    }
 
     // Phase 3: Output Assembly
-    return passedElements.map((item) => ({
+    const assembleNode = (item) => ({
       id: item.existingAtlasId,
       tag: item.tag,
       type: item.type,
@@ -749,7 +1271,14 @@ const NOISE_TEXT_PATTERNS = [
       invalid: item.invalid,
       error_text: item.error_text,
       section_label: item.section_label,
-    }));
+      visible: item.visible,
+      reveal_via: item.reveal_via,
+      menu: item.menu,
+      landmark: item.landmark,
+      breadcrumb: item.breadcrumb,
+    });
+
+    return passedElements.map(assembleNode).concat(passedLatentElements.map(assembleNode));
   };
 
   const getElementByAtlasId = (atlasId, root = document) => {
@@ -788,7 +1317,7 @@ const NOISE_TEXT_PATTERNS = [
           m.target.id === "atlas-sidebar-root" ||
           m.target.closest?.("#atlas-sidebar-host") ||
           m.target.closest?.("#atlas-sidebar-root") ||
-          (m.type === "attributes" && m.attributeName === ATLAS_ID_ATTR),
+          (m.type === "attributes" && (m.attributeName === ATLAS_ID_ATTR || m.attributeName === ATLAS_REVEAL_VIA_ATTR)),
       );
       if (onlyAtlas) return;
       if (timer) clearTimeout(timer);
@@ -798,7 +1327,7 @@ const NOISE_TEXT_PATTERNS = [
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ["style", "class", "hidden", "disabled", "aria-hidden"],
+      attributeFilter: ["style", "class", "hidden", "disabled", "aria-hidden", "aria-expanded"],
     });
     return () => observer.disconnect();
   };
@@ -813,6 +1342,12 @@ const NOISE_TEXT_PATTERNS = [
     classifySensitiveField,
     computeRef,
     fnv1a64,
+    detectLandmark,
+    detectMenu,
+    detectBreadcrumb,
+    findNearestToggle,
+    getLastLatentDuration,
+    ATLAS_REVEAL_VIA_ATTR,
   };
 
   if (typeof window !== "undefined") {
