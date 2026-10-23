@@ -94,6 +94,11 @@ jobs:
         with:
           node-version: 20
 
+      - name: Install Node Dependencies
+        run: |
+          npm ci || npm install
+          npx playwright install --with-deps chromium
+
       - name: Run Core JavaScript Test Suites
         run: |
           node client-script/package_extension.js
