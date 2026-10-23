@@ -106,6 +106,48 @@
   </div>
 
   <div class="fixture-section">
+    <h2>D-F1: Wrapper Target Resolution & Widget Protection</h2>
+    <!-- 1. Hidden input + link -->
+    <div id="wrap-csrf-tile" class="portal-tile">
+      <input type="hidden" name="csrf" value="secret123">
+      <a id="link-csrf-tile" href="#t1">مركباتى</a>
+    </div>
+    <span id="link-csrf-counter">Clicks: 0</span>
+
+    <!-- 2. Disabled button + link -->
+    <div id="wrap-disabled-tile" class="portal-tile">
+      <a id="link-disabled-tile" href="#t5">Go</a>
+      <button id="btn-disabled-tile" disabled>x</button>
+    </div>
+    <span id="link-disabled-counter">Clicks: 0</span>
+
+    <!-- 3. Tile with cursor:pointer + link -->
+    <div id="wrap-pointer-tile" class="portal-tile" style="cursor:pointer">
+      <a id="link-pointer-tile" href="#t4">خدمة</a>
+    </div>
+    <span id="link-pointer-counter">Clicks: 0</span>
+
+    <!-- 4. Treeitem with expand button -->
+    <ul role="tree" style="list-style:none; padding:0; margin:8px 0;">
+      <li id="item-treeitem" role="treeitem" tabindex="0" class="portal-tile" style="display:block;">
+        <button id="btn-tree-expand" aria-label="expand">▸</button>
+        <span id="span-tree-text">Folder</span>
+      </li>
+    </ul>
+    <span id="treeitem-counter">Clicks: 0</span>
+    <span id="tree-expand-counter">Expand Clicks: 0</span>
+
+    <!-- 5. Switch widget with help button -->
+    <div id="switch-widget" role="switch" aria-checked="false" tabindex="0" class="portal-tile" style="display:inline-flex; align-items:center; gap:8px;">
+      <span class="knob">🔘</span>
+      <span>Toggle Setting</span>
+      <button id="btn-switch-help">?</button>
+    </div>
+    <span id="switch-counter">Clicks: 0</span>
+    <span id="switch-help-counter">Help Clicks: 0</span>
+  </div>
+
+  <div class="fixture-section">
     <h2>Popup Toggle & History Back</h2>
     <button id="btn-toggle-popup" aria-expanded="false">Toggle Service Modal</button>
     <span id="toggle-click-counter">Clicks: 0</span>
@@ -152,6 +194,13 @@
       btnDblClickEvents: 0,
       linkDblClicks: 0,
       linkDblActivations: 0,
+      linkCsrfClicks: 0,
+      linkDisabledClicks: 0,
+      linkPointerClicks: 0,
+      treeitemClicks: 0,
+      treeExpandClicks: 0,
+      switchClicks: 0,
+      switchHelpClicks: 0,
     };
 
     // Plain button
@@ -259,6 +308,50 @@
       window.__atlasCounters.linkDblClicks++;
       window.__atlasCounters.linkDblActivations++;
       document.getElementById('link-dblclick-counter').textContent = 'Clicks: ' + window.__atlasCounters.linkDblClicks;
+    });
+
+    // D-F1: 1. CSRF tile
+    document.getElementById('link-csrf-tile').addEventListener('click', () => {
+      window.__atlasCounters.linkCsrfClicks++;
+      document.getElementById('link-csrf-counter').textContent = 'Clicks: ' + window.__atlasCounters.linkCsrfClicks;
+    });
+
+    // D-F1: 2. Disabled button tile
+    document.getElementById('link-disabled-tile').addEventListener('click', () => {
+      window.__atlasCounters.linkDisabledClicks++;
+      document.getElementById('link-disabled-counter').textContent = 'Clicks: ' + window.__atlasCounters.linkDisabledClicks;
+    });
+
+    // D-F1: 3. Pointer tile
+    document.getElementById('link-pointer-tile').addEventListener('click', () => {
+      window.__atlasCounters.linkPointerClicks++;
+      document.getElementById('link-pointer-counter').textContent = 'Clicks: ' + window.__atlasCounters.linkPointerClicks;
+    });
+
+    // D-F1: 4. Treeitem
+    const treeitem = document.getElementById('item-treeitem');
+    treeitem.addEventListener('click', () => {
+      window.__atlasCounters.treeitemClicks++;
+      document.getElementById('treeitem-counter').textContent = 'Clicks: ' + window.__atlasCounters.treeitemClicks;
+    });
+    document.getElementById('btn-tree-expand').addEventListener('click', (e) => {
+      e.stopPropagation();
+      window.__atlasCounters.treeExpandClicks++;
+      document.getElementById('tree-expand-counter').textContent = 'Expand Clicks: ' + window.__atlasCounters.treeExpandClicks;
+    });
+
+    // D-F1: 5. Switch
+    const switchEl = document.getElementById('switch-widget');
+    switchEl.addEventListener('click', () => {
+      window.__atlasCounters.switchClicks++;
+      const current = switchEl.getAttribute('aria-checked') === 'true';
+      switchEl.setAttribute('aria-checked', current ? 'false' : 'true');
+      document.getElementById('switch-counter').textContent = 'Clicks: ' + window.__atlasCounters.switchClicks;
+    });
+    document.getElementById('btn-switch-help').addEventListener('click', (e) => {
+      e.stopPropagation();
+      window.__atlasCounters.switchHelpClicks++;
+      document.getElementById('switch-help-counter').textContent = 'Help Clicks: ' + window.__atlasCounters.switchHelpClicks;
     });
   </script>
 </body>

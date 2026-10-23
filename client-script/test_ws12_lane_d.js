@@ -104,6 +104,18 @@ test('isDirectlyInteractive identifies buttons, links, inputs, and semantic role
     nodeType: 1, tagName: 'DIV', getAttribute: (k) => k === 'role' ? 'link' : null,
   }), true);
   assert.strictEqual(AtlasExecutor.isDirectlyInteractive({
+    nodeType: 1, tagName: 'DIV', getAttribute: (k) => k === 'role' ? 'switch' : null,
+  }), true);
+  assert.strictEqual(AtlasExecutor.isDirectlyInteractive({
+    nodeType: 1, tagName: 'LI', getAttribute: (k) => k === 'role' ? 'treeitem' : null,
+  }), true);
+  assert.strictEqual(AtlasExecutor.isDirectlyInteractive({
+    nodeType: 1, tagName: 'DIV', getAttribute: (k) => k === 'role' ? 'checkbox' : null,
+  }), true);
+  assert.strictEqual(AtlasExecutor.isDirectlyInteractive({
+    nodeType: 1, tagName: 'DIV', isContentEditable: true,
+  }), true);
+  assert.strictEqual(AtlasExecutor.isDirectlyInteractive({
     nodeType: 1, tagName: 'DIV', hasAttribute: (k) => k === 'onclick',
   }), true);
   assert.strictEqual(AtlasExecutor.isDirectlyInteractive({
@@ -112,10 +124,11 @@ test('isDirectlyInteractive identifies buttons, links, inputs, and semantic role
 });
 
 test('resolveClickTarget resolves non-interactive wrapper with single child link to child link', () => {
-  const childLink = { nodeType: 1, tagName: 'A', href: 'http://example.com' };
+  const childLink = { nodeType: 1, tagName: 'A', href: 'http://example.com', innerText: 'Link Title' };
   const wrapperDiv = {
     nodeType: 1,
     tagName: 'DIV',
+    innerText: 'Link Title',
     getAttribute: () => null,
     hasAttribute: () => false,
     querySelectorAll: (sel) => [childLink],
@@ -125,10 +138,11 @@ test('resolveClickTarget resolves non-interactive wrapper with single child link
 });
 
 test('resolveClickTarget resolves non-interactive wrapper with single child button to child button', () => {
-  const childBtn = { nodeType: 1, tagName: 'BUTTON' };
+  const childBtn = { nodeType: 1, tagName: 'BUTTON', innerText: 'Action Button' };
   const wrapperDiv = {
     nodeType: 1,
     tagName: 'DIV',
+    innerText: 'Action Button',
     getAttribute: () => null,
     hasAttribute: () => false,
     querySelectorAll: (sel) => [childBtn],
@@ -147,6 +161,102 @@ test('resolveClickTarget keeps interactive element as itself', () => {
   };
   const resolved = AtlasExecutor.resolveClickTarget(divBtn);
   assert.strictEqual(resolved, divBtn, 'Role=button must NOT delegate to child link');
+});
+
+// D-F1 Unit Tests
+test('D-F1: resolveClickTarget follows link in tile with hidden CSRF input', () => {
+  const hiddenInput = {
+    nodeType: 1, tagName: 'INPUT', type: 'hidden',
+    getAttribute: (k) => k === 'type' ? 'hidden' : null,
+  };
+  const link = {
+    nodeType: 1, tagName: 'A', href: '#t1', innerText: 'مركباتى',
+    getAttribute: (k) => k === 'href' ? '#t1' : null,
+  };
+  const tileDiv = {
+    nodeType: 1, tagName: 'DIV', innerText: 'مركباتى',
+    getAttribute: () => null, hasAttribute: () => false,
+    querySelectorAll: () => [hiddenInput, link],
+  };
+  const resolved = AtlasExecutor.resolveClickTarget(tileDiv);
+  assert.strictEqual(resolved, link, 'Must skip hidden input and resolve to link');
+});
+
+test('D-F1: resolveClickTarget follows link in tile with disabled button', () => {
+  const disabledBtn = {
+    nodeType: 1, tagName: 'BUTTON', disabled: true, innerText: 'x',
+    getAttribute: () => null,
+  };
+  const link = {
+    nodeType: 1, tagName: 'A', href: '#t5', innerText: 'Go',
+    getAttribute: (k) => k === 'href' ? '#t5' : null,
+  };
+  const tileDiv = {
+    nodeType: 1, tagName: 'DIV', innerText: 'Go x',
+    getAttribute: () => null, hasAttribute: () => false,
+    querySelectorAll: () => [link, disabledBtn],
+  };
+  const resolved = AtlasExecutor.resolveClickTarget(tileDiv);
+  assert.strictEqual(resolved, link, 'Must skip disabled button and resolve to link');
+});
+
+test('D-F1: resolveClickTarget follows link in tile even when tile has cursor:pointer', () => {
+  const link = {
+    nodeType: 1, tagName: 'A', href: '#t4', innerText: 'خدمة',
+    getAttribute: (k) => k === 'href' ? '#t4' : null,
+  };
+  const tileDiv = {
+    nodeType: 1, tagName: 'DIV', innerText: 'خدمة',
+    getAttribute: (k) => k === 'style' ? 'cursor:pointer' : null,
+    hasAttribute: () => false,
+    querySelectorAll: () => [link],
+  };
+  const resolved = AtlasExecutor.resolveClickTarget(tileDiv);
+  assert.strictEqual(resolved, link, 'cursor:pointer does not prevent delegation to link');
+});
+
+test('D-F1: resolveClickTarget keeps role=treeitem as target, ignoring expand button', () => {
+  const expandBtn = {
+    nodeType: 1, tagName: 'BUTTON', innerText: '▸',
+    getAttribute: (k) => k === 'aria-label' ? 'expand' : null,
+  };
+  const treeitemLi = {
+    nodeType: 1, tagName: 'LI', innerText: '▸ Folder',
+    getAttribute: (k) => k === 'role' ? 'treeitem' : null,
+    hasAttribute: () => false,
+    querySelectorAll: () => [expandBtn],
+  };
+  const resolved = AtlasExecutor.resolveClickTarget(treeitemLi);
+  assert.strictEqual(resolved, treeitemLi, 'role=treeitem is directly interactive; do NOT click expand button');
+});
+
+test('D-F1: resolveClickTarget keeps role=switch as target, ignoring help button', () => {
+  const helpBtn = {
+    nodeType: 1, tagName: 'BUTTON', innerText: '?',
+    getAttribute: () => null,
+  };
+  const switchDiv = {
+    nodeType: 1, tagName: 'DIV', innerText: 'Toggle Setting ?',
+    getAttribute: (k) => k === 'role' ? 'switch' : null,
+    hasAttribute: () => false,
+    querySelectorAll: () => [helpBtn],
+  };
+  const resolved = AtlasExecutor.resolveClickTarget(switchDiv);
+  assert.strictEqual(resolved, switchDiv, 'role=switch is directly interactive; do NOT click help button');
+});
+
+test('D-F1: resolveClickTarget does NOT click lone close button inside a card', () => {
+  const closeBtn = {
+    nodeType: 1, tagName: 'BUTTON', innerText: '×',
+    getAttribute: () => null,
+  };
+  const cardDiv = {
+    nodeType: 1, tagName: 'DIV', innerText: 'Vehicle License Renewal Details and Information',
+    getAttribute: () => null, hasAttribute: () => false,
+    querySelectorAll: () => [closeBtn],
+  };
+  const resolved = AtlasExecutor.resolveClickTarget(cardDiv);
+  assert.strictEqual(resolved, cardDiv, 'Descendant text (×) is < half of wrapper text length; do NOT descend');
 });
 
 // ── 2. D1 Click Activations ──────────────────────────────────────────────────
@@ -199,6 +309,7 @@ test('doClick on tile div whose only child is a link navigates once', () => {
     nodeType: 1,
     tagName: 'A',
     href: 'http://example.com/dest',
+    innerText: 'Tile Destination',
     focus: () => {},
     getBoundingClientRect: () => ({ left: 0, top: 0, width: 40, height: 20 }),
     dispatchEvent: (e) => events.push('link:' + e.type),
@@ -209,6 +320,7 @@ test('doClick on tile div whose only child is a link navigates once', () => {
   const mockTileDiv = {
     nodeType: 1,
     tagName: 'DIV',
+    innerText: 'Tile Destination',
     getAttribute: () => null,
     hasAttribute: () => false,
     querySelectorAll: (sel) => [mockChildLink],
@@ -225,6 +337,7 @@ test('doClick on tile div whose only child is a button fires that button once', 
   const mockChildBtn = {
     nodeType: 1,
     tagName: 'BUTTON',
+    innerText: 'Action Button',
     focus: () => {},
     getBoundingClientRect: () => ({ left: 0, top: 0, width: 40, height: 20 }),
     dispatchEvent: (e) => events.push('btn:' + e.type),
@@ -233,6 +346,7 @@ test('doClick on tile div whose only child is a button fires that button once', 
   const mockTileDiv = {
     nodeType: 1,
     tagName: 'DIV',
+    innerText: 'Action Button',
     getAttribute: () => null,
     hasAttribute: () => false,
     querySelectorAll: (sel) => [mockChildBtn],
@@ -406,6 +520,51 @@ testAsync('fieldless credential prompt renders default chip and clicking it send
   } finally {
     content.handleChatInput = origHandleChatInput;
   }
+});
+
+testAsync('D-F2: fieldless credential prompt in ar-EG renders default chip with label "خلصت، كمل" and value "خلصت"', async () => {
+  let renderedActions = null;
+
+  global.window.AtlasSidebar = {
+    setExecuting: () => {},
+    setStatus: () => {},
+    hideGoalProgress: () => {},
+    setGoalProgress: () => {},
+    setAutoHide: () => {},
+    getLanguage: () => 'ar-EG',
+    addChatMessage: (role, msg, opts) => {
+      if (opts && opts.actions) {
+        renderedActions = opts.actions;
+      }
+    },
+    getShadowRoot: () => ({ querySelector: () => null }),
+  };
+
+  const fieldlessGoalHopData = {
+    status: 'awaiting_user_input',
+    reply: 'يرجى إكمال التحدي على الصفحة.',
+    goal_state: {
+      status: 'awaiting_user_input',
+      language: 'ar-EG',
+      awaiting: {
+        kind: 'credential',
+        prompt: 'يرجى إكمال التحدي على الصفحة.',
+        fields: [],
+        options: [],
+      },
+    },
+  };
+
+  global.chrome = {
+    storage: { local: { get: (k, cb) => cb({}), set: (o, cb) => cb() } },
+    runtime: { sendMessage: (p, cb) => cb({ ok: true, data: fieldlessGoalHopData }) },
+  };
+
+  await content.executeGoalHop({ status: 'in_progress', language: 'ar-EG' });
+
+  assert(renderedActions && renderedActions.length === 1, 'Must render exactly 1 default chip in Arabic');
+  assert.strictEqual(renderedActions[0].label, 'خلصت، كمل', 'Default chip label in Arabic must be خلصت، كمل');
+  assert.strictEqual(renderedActions[0].value, 'خلصت', 'Default chip value in Arabic must be خلصت');
 });
 
 testAsync('card with 2 fields plus options ["X"] renders fields and one "X" chip (Change 4)', async () => {

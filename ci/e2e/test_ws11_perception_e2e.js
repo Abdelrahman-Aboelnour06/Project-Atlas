@@ -485,6 +485,85 @@ async function runSuite() {
     const tileBtnCount = await page.evaluate(() => window.__atlasCounters.tileButtonClicks);
     record('Tile wrapping button delegates to child button: exactly 1 click', tileBtnCount === 1, `got ${tileBtnCount}`);
 
+    // 7.6b D-F1: Target Resolution for Wrappers & Widget Protection
+    console.log('  [7.6b] Testing D-F1 target resolution & widget protection...');
+
+    // 1. <div class="tile"><input type="hidden" name="csrf"><a href="#t1">مركباتى</a></div>
+    const csrfTileId = await page.evaluate(() => {
+      const tile = document.getElementById('wrap-csrf-tile');
+      tile.setAttribute('data-atlas-id', 'wrap_csrf_id');
+      return 'wrap_csrf_id';
+    });
+    await page.evaluate(async (id) => {
+      return await window.AtlasExecutor.execute({ action: 'click', element_id: id }, { skipConfirmation: true });
+    }, csrfTileId);
+    const csrfClicks = await page.evaluate(() => window.__atlasCounters.linkCsrfClicks);
+    const hashAfterCsrf = await page.evaluate(() => window.location.hash);
+    record('CSRF tile follows child link: exactly 1 click', csrfClicks === 1, `got ${csrfClicks}`);
+    record('CSRF tile navigates to link hash #t1', hashAfterCsrf === '#t1', `got ${hashAfterCsrf}`);
+
+    // 2. <div class="tile"><a href="#t5">Go</a><button disabled>x</button></div>
+    const disabledTileId = await page.evaluate(() => {
+      const tile = document.getElementById('wrap-disabled-tile');
+      tile.setAttribute('data-atlas-id', 'wrap_disabled_id');
+      return 'wrap_disabled_id';
+    });
+    await page.evaluate(async (id) => {
+      return await window.AtlasExecutor.execute({ action: 'click', element_id: id }, { skipConfirmation: true });
+    }, disabledTileId);
+    const disabledClicks = await page.evaluate(() => window.__atlasCounters.linkDisabledClicks);
+    const hashAfterDisabled = await page.evaluate(() => window.location.hash);
+    record('Tile with disabled button follows child link: exactly 1 click', disabledClicks === 1, `got ${disabledClicks}`);
+    record('Tile with disabled button navigates to link hash #t5', hashAfterDisabled === '#t5', `got ${hashAfterDisabled}`);
+
+    // 3. <div class="tile" style="cursor:pointer"><a href="#t4">خدمة</a></div>
+    const pointerTileId = await page.evaluate(() => {
+      const tile = document.getElementById('wrap-pointer-tile');
+      tile.setAttribute('data-atlas-id', 'wrap_pointer_id');
+      return 'wrap_pointer_id';
+    });
+    await page.evaluate(async (id) => {
+      return await window.AtlasExecutor.execute({ action: 'click', element_id: id }, { skipConfirmation: true });
+    }, pointerTileId);
+    const pointerClicks = await page.evaluate(() => window.__atlasCounters.linkPointerClicks);
+    const hashAfterPointer = await page.evaluate(() => window.location.hash);
+    record('Pointer tile follows child link: exactly 1 click', pointerClicks === 1, `got ${pointerClicks}`);
+    record('Pointer tile navigates to link hash #t4', hashAfterPointer === '#t4', `got ${hashAfterPointer}`);
+
+    // 4. <li role="treeitem"><button aria-label="expand">▸</button><span>Folder</span></li>
+    const treeitemId = await page.evaluate(() => {
+      const item = document.getElementById('item-treeitem');
+      item.setAttribute('data-atlas-id', 'item_treeitem_id');
+      return 'item_treeitem_id';
+    });
+    await page.evaluate(async (id) => {
+      return await window.AtlasExecutor.execute({ action: 'click', element_id: id }, { skipConfirmation: true });
+    }, treeitemId);
+    const treeCounts = await page.evaluate(() => ({
+      item: window.__atlasCounters.treeitemClicks,
+      expand: window.__atlasCounters.treeExpandClicks,
+    }));
+    record('Treeitem selects item: exactly 1 click', treeCounts.item === 1, `got ${treeCounts.item}`);
+    record('Treeitem expand button receives 0 clicks', treeCounts.expand === 0, `got ${treeCounts.expand}`);
+
+    // 5. <div role="switch" tabindex="0"><span class="knob"></span><button>?</button></div>
+    const switchWidgetId = await page.evaluate(() => {
+      const sw = document.getElementById('switch-widget');
+      sw.setAttribute('data-atlas-id', 'switch_widget_id');
+      return 'switch_widget_id';
+    });
+    await page.evaluate(async (id) => {
+      return await window.AtlasExecutor.execute({ action: 'click', element_id: id }, { skipConfirmation: true });
+    }, switchWidgetId);
+    const switchCounts = await page.evaluate(() => ({
+      sw: window.__atlasCounters.switchClicks,
+      help: window.__atlasCounters.switchHelpClicks,
+      checked: document.getElementById('switch-widget').getAttribute('aria-checked'),
+    }));
+    record('Switch toggles switch: exactly 1 click', switchCounts.sw === 1, `got ${switchCounts.sw}`);
+    record('Switch toggles aria-checked to true', switchCounts.checked === 'true', `got ${switchCounts.checked}`);
+    record('Switch help button receives 0 clicks', switchCounts.help === 0, `got ${switchCounts.help}`);
+
     // 7.7 Toggle Popup Button: stays OPEN and reports modal_opened: true, added_visible_count > 0
     console.log('  [7.7] Testing toggle button opening popup modal...');
     const toggleBtnId = await page.evaluate(() => {

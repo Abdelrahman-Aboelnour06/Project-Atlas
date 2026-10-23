@@ -88,7 +88,24 @@ const dispatchMouseSequence = (el, detail = 1) => {
     el.dispatchEvent(new MouseEvent('mouseup', eventInit));
 };
 
-const INTERACTIVE_DESCENDANT_SELECTOR = 'a[href], button, input, select, textarea, summary, [role="button"], [role="link"], [role="tab"], [role="menuitem"], [onclick]';
+const DIRECT_INTERACTIVE_ROLES = new Set([
+    'button',
+    'link',
+    'tab',
+    'menuitem',
+    'checkbox',
+    'radio',
+    'switch',
+    'option',
+    'treeitem',
+    'menuitemcheckbox',
+    'menuitemradio',
+    'combobox',
+    'textbox',
+    'searchbox',
+]);
+
+const INTERACTIVE_DESCENDANT_SELECTOR = 'a[href], button, input, select, textarea, summary, [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="checkbox"], [role="radio"], [role="switch"], [role="option"], [role="treeitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="combobox"], [role="textbox"], [role="searchbox"], [onclick]';
 
 const isDirectlyInteractive = (el) => {
     if (!el || el.nodeType !== 1) return false;
@@ -97,19 +114,35 @@ const isDirectlyInteractive = (el) => {
         return true;
     }
     const role = (el.getAttribute?.('role') || '').toLowerCase();
-    if (['button', 'link', 'tab', 'menuitem'].includes(role)) {
+    if (DIRECT_INTERACTIVE_ROLES.has(role)) {
+        return true;
+    }
+    if (Boolean(el.isContentEditable) || el.hasAttribute?.('contenteditable')) {
         return true;
     }
     if (el.hasAttribute?.('onclick') || typeof el.onclick === 'function') {
         return true;
     }
-    if (typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
-        try {
-            const cursor = window.getComputedStyle(el)?.cursor;
-            if (cursor === 'pointer') return true;
-        } catch (_) {}
-    }
     return false;
+};
+
+const isUsableInteractiveDescendant = (cand) => {
+    if (!cand || cand.nodeType !== 1) return false;
+    const tag = (cand.tagName || '').toLowerCase();
+    if (tag === 'input') {
+        const inputType = (cand.type || cand.getAttribute?.('type') || '').toLowerCase();
+        if (inputType === 'hidden') return false;
+    }
+    if (cand.disabled || cand.getAttribute?.('aria-disabled') === 'true') {
+        return false;
+    }
+    if (typeof cand.closest === 'function' && cand.closest('[aria-hidden="true"]')) {
+        return false;
+    }
+    if (typeof cand.getClientRects === 'function' && cand.getClientRects().length === 0) {
+        return false;
+    }
+    return true;
 };
 
 const resolveClickTarget = (el) => {
@@ -118,9 +151,23 @@ const resolveClickTarget = (el) => {
         return el;
     }
     if (typeof el.querySelectorAll === 'function') {
-        const candidates = el.querySelectorAll(INTERACTIVE_DESCENDANT_SELECTOR);
+        const rawCandidates = el.querySelectorAll(INTERACTIVE_DESCENDANT_SELECTOR);
+        const candidates = [];
+        for (let i = 0; i < rawCandidates.length; i++) {
+            if (isUsableInteractiveDescendant(rawCandidates[i])) {
+                candidates.push(rawCandidates[i]);
+            }
+        }
         if (candidates.length === 1) {
-            return candidates[0];
+            const cand = candidates[0];
+            const wrapperVisibleText = (el.innerText || el.textContent || '').trim().replace(/\s+/g, ' ');
+            let candText = (cand.innerText || cand.textContent || '').trim().replace(/\s+/g, ' ');
+            if (!candText) {
+                candText = (cand.getAttribute?.('aria-label') || '').trim().replace(/\s+/g, ' ');
+            }
+            if (candText.length > 0 && candText.length >= wrapperVisibleText.length / 2) {
+                return cand;
+            }
         }
     }
     return el;
@@ -148,7 +195,9 @@ const doClick = (el, options = {}) => {
     lastActionElement = target;
     scrollToElement(target);
     glow(target);
-    target.focus();
+    if (typeof target.focus === 'function') {
+        target.focus();
+    }
 
     const sameTab = Boolean(options.sameTab);
     const link = target.tagName === 'A' ? target : target.closest?.('a[href]');
@@ -201,7 +250,9 @@ const doOpen = async (el, options = {}) => {
     lastActionElement = target;
     scrollToElement(target);
     glow(target);
-    target.focus();
+    if (typeof target.focus === 'function') {
+        target.focus();
+    }
 
     const sameTab = Boolean(options.sameTab);
     const link = target.tagName === 'A' ? target : target.closest?.('a[href]');
@@ -284,7 +335,9 @@ const doTripleClick = async (el) => {
     const target = resolveClickTarget(el);
     scrollToElement(target);
     glow(target);
-    target.focus();
+    if (typeof target.focus === 'function') {
+        target.focus();
+    }
 
     // 1. First click in sequence (detail: 1)
     dispatchMouseSequence(target, 1);
@@ -369,7 +422,9 @@ const doMultiClick = async (el, count = 1, options = {}) => {
     const target = resolveClickTarget(el);
     scrollToElement(target);
     glow(target);
-    target.focus();
+    if (typeof target.focus === 'function') {
+        target.focus();
+    }
     for (let i = 1; i <= count; i++) {
         const detail = i <= 3 ? i : 1;
         dispatchMouseSequence(target, detail);
@@ -1485,6 +1540,7 @@ const executorApi = {
     installNativeAuthHook,
     resolveClickTarget,
     isDirectlyInteractive,
+    isUsableInteractiveDescendant,
 };
 if (typeof window !== 'undefined') {
     window.AtlasExecutor = executorApi;

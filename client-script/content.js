@@ -1152,7 +1152,7 @@
         } else if (!hasFields) {
           chipActions = [{
             label: isAr ? "خلصت، كمل" : "Done, continue",
-            value: "done",
+            value: isAr ? "خلصت" : "done",
           }];
         }
 
