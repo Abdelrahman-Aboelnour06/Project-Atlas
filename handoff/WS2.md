@@ -1,5 +1,5 @@
 # WS2 Language Backend
-Branch: feat/lang-backend   Last commit: pending   Model used: Gemini 3.8 Flash
+Branch: feat/lang-backend   Last commit: 3706a29   Model used: Gemini 3.8 Flash
 Status: done
 Done:
 - backend/app/i18n.py: Implemented universal i18n engine with `resolve_reply_language(selected, user_text)` returning 'ar-EG' or 'en-US' (Egyptian colloquial Arabic when selected starts with 'ar', otherwise script mirroring), `is_mostly_non_arabic(text)` (<30% Arabic character detector), and `t(key, lang, **kwargs)` over a 72-key string table with 100% key and parameter symmetry between 'en' and 'ar-EG' (Egyptian colloquial Arabic). Preserved byte-for-byte exact legacy English strings when English is used. Zero website/domain hardcoding (Prime Directive compliant).
