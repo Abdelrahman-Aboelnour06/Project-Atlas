@@ -12,6 +12,10 @@ const HIGHLIGHT_CLASS = 'atlas-glow-highlight'
 const HIGHLIGHT_DURATION_MS = 2000
 const TOKEN_REGEX = /^\{(?:vault:[a-zA-Z0-9_]+|password|cc_number|cc_cvv|cc_expiry|cc_name|ssn|otp|pin|secret|national_id|profile\.[a-z0-9_]+)(?:_\d+)?\}$/
 
+const cssEscape = (typeof CSS !== 'undefined' && typeof CSS.escape === 'function')
+    ? (s) => CSS.escape(s)
+    : (s) => String(s).replace(/["\\]/g, '\\$&');
+
 // Tracks the pending "remove highlight" timeout per element so that
 // re-glowing the same element within the highlight window resets the
 // timer instead of letting an earlier timeout remove the class early.
@@ -102,36 +106,54 @@ const checkAndArmTargetBlank = (link) => {
     }
 };
 
-const doClick = (el) => {
+const doClick = (el, options = {}) => {
     lastActionElement = el;
     scrollToElement(el);
     glow(el);
     el.focus();
+
+    const sameTab = Boolean(options.sameTab);
+    const link = el.tagName === 'A' ? el : (el.closest?.('a[href]') || el.querySelector?.('a[href]'));
+    if (link) {
+        if (sameTab) {
+            link.setAttribute('target', '_self');
+            link.target = '_self';
+        } else {
+            checkAndArmTargetBlank(link);
+        }
+    }
+
     dispatchMouseSequence(el, 1);
     el.click();
 
-    // If this element or a parent/child is an anchor with href, activate it
-    const link = el.tagName === 'A' ? el : (el.closest('a[href]') || el.querySelector('a[href]'));
-    if (link) {
-        checkAndArmTargetBlank(link);
-    }
     if (link && link !== el && link.href) {
         link.click();
         return;
     }
 
     // SPA child dispatch: try clicking a role=link/button child if present
-    const clickableChild = el.querySelector('[role="link"], [role="button"], a[href]');
+    const clickableChild = el.querySelector?.('[role="link"], [role="button"], a[href]');
     if (clickableChild && clickableChild !== el) {
         clickableChild.click();
     }
 };
 
-const doOpen = async (el) => {
+const doOpen = async (el, options = {}) => {
     lastActionElement = el;
     scrollToElement(el);
     glow(el);
     el.focus();
+
+    const sameTab = Boolean(options.sameTab);
+    const link = el.tagName === 'A' ? el : (el.closest?.('a[href]') || el.querySelector?.('a[href]'));
+    if (link) {
+        if (sameTab) {
+            link.setAttribute('target', '_self');
+            link.target = '_self';
+        } else {
+            checkAndArmTargetBlank(link);
+        }
+    }
 
     // 1. First click in sequence (detail: 1)
     dispatchMouseSequence(el, 1);
@@ -176,10 +198,6 @@ const doOpen = async (el) => {
     document.dispatchEvent(new KeyboardEvent('keyup', enterInit));
 
     // 4. If anchor with href — navigate directly (most reliable for links)
-    const link = el.tagName === 'A' ? el : (el.closest('a[href]') || el.querySelector('a[href]'));
-    if (link) {
-        checkAndArmTargetBlank(link);
-    }
     if (link && link.href) {
         link.click();
         return;
@@ -259,13 +277,13 @@ const doTripleClick = async (el) => {
     }
 };
 
-const doMultiClick = async (el, count = 1) => {
+const doMultiClick = async (el, count = 1, options = {}) => {
     if (count <= 1) {
-        doClick(el);
+        doClick(el, options);
         return;
     }
     if (count === 2) {
-        await doOpen(el);
+        await doOpen(el, options);
         return;
     }
     if (count === 3) {
@@ -540,7 +558,7 @@ const doWaitFor = async (value = 'settle') => {
         const ref = val.slice('element:'.length).trim();
         const start = Date.now();
         while (Date.now() - start < 5000) {
-            const found = window.AtlasSerializer?.getElementByAtlasId(ref) || document.querySelector(`[data-atlas-id="${CSS.escape(ref)}"]`);
+            const found = window.AtlasSerializer?.getElementByAtlasId(ref) || document.querySelector(`[data-atlas-id="${cssEscape(ref)}"]`);
             if (found) return { ok: true, message: `Element ${ref} appeared` };
             await new Promise((r) => setTimeout(r, 100));
         }
@@ -598,7 +616,7 @@ const doReveal = async (toggleEl, targetRefOrValue) => {
     let targetEl = null;
     if (typeof targetRefOrValue === 'string' && targetRefOrValue) {
         targetEl = window.AtlasSerializer?.getElementByAtlasId(targetRefOrValue) ||
-                   (typeof document !== 'undefined' ? document.querySelector(`[data-atlas-id="${CSS.escape(targetRefOrValue)}"]`) : null);
+                   (typeof document !== 'undefined' ? document.querySelector(`[data-atlas-id="${cssEscape(targetRefOrValue)}"]`) : null);
     }
 
     // Helper to check if target or controlled element is visible or expanded
@@ -714,6 +732,133 @@ if (typeof window !== 'undefined') {
 
 const navigationPending = async () => navigationPendingState;
 
+// ── DOM Settle & Structured Perception Helpers (WS11 L11) ───────────────────
+const waitForDomSettle = async (priorUrl, quietMs = 300, maxWaitMs = 2000) => {
+    if (navigationPendingState) return;
+    if (typeof window !== 'undefined' && window.location && priorUrl && window.location.href !== priorUrl) {
+        return;
+    }
+    if (typeof MutationObserver === 'undefined' || typeof document === 'undefined' || !document.body) {
+        await new Promise((r) => setTimeout(r, quietMs));
+        return;
+    }
+
+    return new Promise((resolve) => {
+        let quietTimer = null;
+        let maxTimer = null;
+        let resolved = false;
+        const startTime = Date.now();
+        const minWaitMs = 500; // Allow async renders (e.g. 400ms setTimeout in portal-tiles) to trigger before settling
+
+        const done = () => {
+            if (resolved) return;
+            const elapsed = Date.now() - startTime;
+            if (elapsed < minWaitMs && !navigationPendingState && (!priorUrl || window.location?.href === priorUrl)) {
+                quietTimer = setTimeout(done, minWaitMs - elapsed);
+                return;
+            }
+            resolved = true;
+            if (quietTimer) clearTimeout(quietTimer);
+            if (maxTimer) clearTimeout(maxTimer);
+            try { observer.disconnect(); } catch (_) {}
+            resolve();
+        };
+
+        const observer = new MutationObserver(() => {
+            if (navigationPendingState || (priorUrl && window.location?.href !== priorUrl)) {
+                done();
+                return;
+            }
+            if (quietTimer) clearTimeout(quietTimer);
+            const elapsed = Date.now() - startTime;
+            const delay = Math.max(quietMs, minWaitMs > elapsed ? (minWaitMs - elapsed) : quietMs);
+            quietTimer = setTimeout(done, delay);
+        });
+
+        try {
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true,
+                attributes: true,
+                characterData: true,
+            });
+        } catch (_) {
+            done();
+            return;
+        }
+
+        quietTimer = setTimeout(done, minWaitMs);
+        maxTimer = setTimeout(done, maxWaitMs);
+    });
+};
+
+const getVisibleFingerprints = () => {
+    const counts = new Map();
+    if (typeof window !== 'undefined' && window.AtlasSerializer?.serialize) {
+        try {
+            const nodes = window.AtlasSerializer.serialize();
+            for (let i = 0; i < nodes.length; i++) {
+                const n = nodes[i];
+                if (n.visible === false || n.blocked_by_modal) continue;
+                const fp = `${(n.tag || "").toLowerCase()}|${(n.resolved_label || "").trim().toLowerCase()}|${(n.role || "").toLowerCase()}`;
+                counts.set(fp, (counts.get(fp) || 0) + 1);
+            }
+        } catch (_) {}
+    } else if (typeof document !== 'undefined') {
+        try {
+            const els = document.querySelectorAll('button, a[href], input, select, textarea, [role="button"], [role="link"]');
+            for (let i = 0; i < els.length; i++) {
+                const el = els[i];
+                const tag = (el.tagName || "").toLowerCase();
+                const role = (el.getAttribute('role') || "").toLowerCase();
+                const lbl = (el.getAttribute('aria-label') || el.innerText || el.textContent || "").trim().toLowerCase();
+                const fp = `${tag}|${lbl}|${role}`;
+                counts.set(fp, (counts.get(fp) || 0) + 1);
+            }
+        } catch (_) {}
+    }
+    return counts;
+};
+
+const getPageTextHash = () => {
+    if (typeof document === 'undefined' || !document.body) return '0';
+    const text = (document.body.innerText || document.body.textContent || '').replace(/\s+/g, ' ').trim();
+    if (typeof window !== 'undefined' && window.AtlasSerializer?.fnv1a64) {
+        try {
+            return window.AtlasSerializer.fnv1a64(text).toString(16);
+        } catch (_) {}
+    }
+    let hash = 0x811c9dc5;
+    for (let i = 0; i < text.length; i++) {
+        hash ^= text.charCodeAt(i);
+        hash = Math.imul(hash, 0x01000193);
+    }
+    return (hash >>> 0).toString(16);
+};
+
+const getAriaFlipsSnapshot = () => {
+    if (typeof document === 'undefined') return '';
+    try {
+        const els = document.querySelectorAll('[aria-expanded], [aria-selected], [aria-hidden], details');
+        const parts = [];
+        for (let i = 0; i < els.length; i++) {
+            const el = els[i];
+            const id = el.getAttribute?.('data-atlas-id') || el.id || `idx_${i}`;
+            const exp = el.getAttribute?.('aria-expanded');
+            const sel = el.getAttribute?.('aria-selected');
+            const hid = el.getAttribute?.('aria-hidden');
+            const open = el.tagName === 'DETAILS' ? String(el.open) : null;
+            parts.push(`${id}:${exp},${sel},${hid},${open}`);
+        }
+        return parts.join(';');
+    } catch (_) {
+        return '';
+    }
+};
+
+let lastActionResult = null;
+const getLastActionResult = () => lastActionResult;
+
 const READ_ONLY_ACTIONS = new Set(['scroll', 'focus', 'wait_for', 'reveal'])
 const MUTATE_ACTIONS = new Set([
     'click', 'open', 'double_click', 'dblclick', 'triple_click', 'tripleclick',
@@ -824,19 +969,55 @@ const requestNativeCredentials = async (el) => {
 }
 
 const execute = async (actionResponse, options = {}) => {
-    const { status, action, element_id: elementId, value } = actionResponse
+    const { status, action, element_id: elementId, value } = actionResponse;
+    const sameTab = Boolean(actionResponse?.same_tab || options?.same_tab);
+
+    const makeFail = (msg) => {
+        const res = {
+            ok: false,
+            status: 'error',
+            success: false,
+            message: msg,
+            url_changed: false,
+            added_visible_count: 0,
+            removed_visible_count: 0,
+            text_changed: false,
+            expanded_changed: false,
+            modal_opened: false,
+            change_summary: {
+                url_changed: false,
+                added_visible_count: 0,
+                removed_visible_count: 0,
+                text_changed: false,
+                expanded_changed: false,
+                modal_opened: false,
+            }
+        };
+        lastActionResult = res;
+        return res;
+    };
+
     if (status === 'error' || status === 'no_match' || action === 'none') {
-        return { ok: false, message: actionResponse.message }
+        return makeFail(actionResponse.message || 'Action cannot be executed');
     }
     if (action === 'wait_for') {
-        return await doWaitFor(value);
+        const waitRes = await doWaitFor(value);
+        lastActionResult = waitRes;
+        return waitRes;
     }
 
     const el = window.AtlasSerializer?.getElementByAtlasId(elementId) ||
-               (typeof document !== 'undefined' ? document.querySelector(`[data-atlas-id="${CSS.escape(elementId)}"]`) : null)
+               (typeof document !== 'undefined' ? document.querySelector(`[data-atlas-id="${cssEscape(elementId)}"]`) : null);
     if (!el) {
-        return { ok: false, message: `Couldn't find that element on the page anymore — try again.` }
+        return makeFail(`Couldn't find that element on the page anymore — try again.`);
     }
+
+    const isSettleAction = ['click', 'open', 'double_click', 'dblclick', 'triple_click', 'tripleclick', 'reveal'].includes(action);
+    const priorUrl = (typeof window !== 'undefined' && window.location) ? window.location.href : '';
+    const priorFps = isSettleAction ? getVisibleFingerprints() : null;
+    const priorTextHash = isSettleAction ? getPageTextHash() : null;
+    const priorAria = isSettleAction ? getAriaFlipsSnapshot() : null;
+    const wasModalOpen = isSettleAction ? Boolean(typeof window !== 'undefined' && window.AtlasSerializer?.getActiveModalDialog?.()) : false;
 
     // Self-healing: if target element is hidden and has a stored reveal_via, run reveal first!
     const INTERACT_ACTIONS = ['click', 'open', 'double_click', 'dblclick', 'triple_click', 'tripleclick', 'fill'];
@@ -844,7 +1025,7 @@ const execute = async (actionResponse, options = {}) => {
         const revealVia = el.getAttribute?.('data-atlas-reveal-via');
         if (!isEffectivelyVisible(el) && revealVia) {
             const toggle = window.AtlasSerializer?.getElementByAtlasId(revealVia) ||
-                           (typeof document !== 'undefined' ? document.querySelector(`[data-atlas-id="${CSS.escape(revealVia)}"]`) : null);
+                           (typeof document !== 'undefined' ? document.querySelector(`[data-atlas-id="${cssEscape(revealVia)}"]`) : null);
             if (toggle) {
                 const revealRes = await doReveal(toggle, elementId);
                 if (!revealRes.ok) {
@@ -865,7 +1046,7 @@ const execute = async (actionResponse, options = {}) => {
                             } catch (_) {}
                         }
                     }
-                    return { ok: false, message: `Could not reveal menu: ${revealRes.message}` };
+                    return makeFail(`Could not reveal menu: ${revealRes.message}`);
                 }
             }
         }
@@ -894,7 +1075,7 @@ const execute = async (actionResponse, options = {}) => {
         const confirmed = await requestConfirmation(el, action, value);
         if (!confirmed) {
             window.AtlasSidebar?.setStatus("Action cancelled", "error");
-            return { ok: false, message: 'Action cancelled by user.' };
+            return makeFail('Action cancelled by user.');
         }
     }
 
@@ -918,21 +1099,21 @@ const execute = async (actionResponse, options = {}) => {
             case 'reveal': {
                 const revealRes = await doReveal(el, value);
                 if (!revealRes.ok) {
-                    return revealRes;
+                    return makeFail(revealRes.message);
                 }
                 break;
             }
             case 'click':
                 if (clickCount > 1) {
-                    await doMultiClick(el, clickCount);
+                    await doMultiClick(el, clickCount, { sameTab });
                 } else {
-                    doClick(el);
+                    doClick(el, { sameTab });
                 }
                 break;
             case 'open':
             case 'double_click':
             case 'dblclick':
-                await doOpen(el);
+                await doOpen(el, { sameTab });
                 break;
             case 'triple_click':
             case 'tripleclick':
@@ -948,7 +1129,7 @@ const execute = async (actionResponse, options = {}) => {
                     const currentOrigin = (typeof location !== 'undefined' && location.origin) ? location.origin : '';
                     const resolved = vault ? await vault.resolve(currentOrigin, tokenString) : null;
                     if (!resolved) {
-                        return { ok: false, message: "That value isn't saved — please say it again." };
+                        return makeFail("That value isn't saved — please say it again.");
                     }
                     fillValue = resolved;
                 }
@@ -990,16 +1171,72 @@ const execute = async (actionResponse, options = {}) => {
                 doFocus(el);
                 break;
             default:
-                return { ok: false, message: `Unknown action '${action}'` };
+                return makeFail(`Unknown action '${action}'`);
         }
+
+        if (isSettleAction) {
+            await waitForDomSettle(priorUrl);
+        }
+
+        const currentUrl = (typeof window !== 'undefined' && window.location) ? window.location.href : '';
+        const urlChanged = Boolean(priorUrl && currentUrl && priorUrl !== currentUrl);
+        const afterFps = isSettleAction ? getVisibleFingerprints() : new Map();
+        const afterTextHash = isSettleAction ? getPageTextHash() : priorTextHash;
+        const afterAria = isSettleAction ? getAriaFlipsSnapshot() : priorAria;
+        const isModalOpenNow = isSettleAction ? Boolean(typeof window !== 'undefined' && window.AtlasSerializer?.getActiveModalDialog?.()) : false;
+
+        let addedVisibleCount = 0;
+        let removedVisibleCount = 0;
+        if (isSettleAction && priorFps) {
+            for (const [fp, countAfter] of afterFps.entries()) {
+                const countBefore = priorFps.get(fp) || 0;
+                if (countAfter > countBefore) {
+                    addedVisibleCount += (countAfter - countBefore);
+                }
+            }
+            for (const [fp, countBefore] of priorFps.entries()) {
+                const countAfter = afterFps.get(fp) || 0;
+                if (countBefore > countAfter) {
+                    removedVisibleCount += (countBefore - countAfter);
+                }
+            }
+        }
+
+        const textChanged = Boolean(isSettleAction && priorTextHash !== afterTextHash);
+        const expandedChanged = Boolean(isSettleAction && priorAria !== afterAria);
+        const modalOpened = Boolean(isSettleAction && !wasModalOpen && isModalOpenNow);
+
+        const changeSummary = {
+            url_changed: urlChanged,
+            added_visible_count: addedVisibleCount,
+            removed_visible_count: removedVisibleCount,
+            text_changed: textChanged,
+            expanded_changed: expandedChanged,
+            modal_opened: modalOpened,
+        };
+
+        const successResult = {
+            ok: true,
+            status: 'ok',
+            success: true,
+            message: actionResponse.message,
+            url_changed: changeSummary.url_changed,
+            added_visible_count: changeSummary.added_visible_count,
+            removed_visible_count: changeSummary.removed_visible_count,
+            text_changed: changeSummary.text_changed,
+            expanded_changed: changeSummary.expanded_changed,
+            modal_opened: changeSummary.modal_opened,
+            change_summary: changeSummary,
+        };
+        lastActionResult = successResult;
+        return successResult;
     } catch (err) {
-        return { ok: false, message: `Failed to perform action: ${err.message}` };
+        return makeFail(`Failed to perform action: ${err.message}`);
     } finally {
         if (isInteractingAction && typeof window !== 'undefined') {
             window.AtlasSidebar?.setAutoHide?.(false);
         }
     }
-    return { ok: true, message: actionResponse.message };
 };
 
 const executeStep = async (step) => {
@@ -1009,8 +1246,9 @@ const executeStep = async (step) => {
         element_id: step.element_id,
         value: step.value,
         click_count: step.click_count,
+        same_tab: Boolean(step.same_tab),
         message: step.description || `Performed ${step.action}`,
-    }, { skipConfirmation: true });
+    }, { skipConfirmation: true, same_tab: Boolean(step.same_tab) });
 };
 
 const executeBatch = async (steps, options = {}) => {
@@ -1168,6 +1406,8 @@ const executorApi = {
     requestNativeCredentials,
     TOKEN_REGEX,
     checkAndArmTargetBlank,
+    waitForDomSettle,
+    getLastActionResult,
     getLastActionElement,
     setLastActionElement,
     installPopupBlockerHook,

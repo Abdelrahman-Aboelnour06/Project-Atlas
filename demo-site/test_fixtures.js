@@ -17,7 +17,10 @@ const REQUIRED_FILES = [
   'healthcare-intake.html',
   'finance-statement.html',
   'statement-2026.csv',
-  'checkout.html'
+  'checkout.html',
+  'portal-modal-form.html',
+  'portal-tiles.html',
+  'frames-host.html',
 ];
 
 let passed = 0;
@@ -159,5 +162,175 @@ test('checkout.html contains cart breakdown, sensitive payment fields, and conse
   assert(/Complete Payment|Place Order/i.test(content), 'Consequential payment button text required');
 });
 
-console.log(`\nDemo Site Fixture & E1 Test Summary: ${passed} passed, ${failed} failed.\n`);
-if (failed > 0) process.exit(1);
+// ── WS11 Lane B: Behavioral Tests for New Fixtures ──────────────────────────
+const vm = require('vm');
+
+test('portal-modal-form.html: service card opens modal, submit renders confirmation inside modal', () => {
+  const content = fs.readFileSync(path.join(DEMO_DIR, 'portal-modal-form.html'), 'utf8');
+  assert(content.includes('pattern="[0-9]{14}"'), 'National ID pattern [0-9]{14} required');
+
+  // Behavioral test: execute page scripts in synthetic DOM environment
+  const listeners = new Map();
+  const elements = {};
+
+  class MockElement {
+    constructor(id, tagName = 'div', attrs = {}) {
+      this.id = id;
+      this.tagName = tagName.toUpperCase();
+      this.attrs = new Map(Object.entries(attrs));
+      this.innerHTML = '';
+      this.value = '';
+    }
+    getAttribute(k) { return this.attrs.get(k) || null; }
+    setAttribute(k, v) { this.attrs.set(k, String(v)); }
+    removeAttribute(k) { this.attrs.delete(k); }
+    hasAttribute(k) { return this.attrs.has(k); }
+    addEventListener(event, fn) {
+      if (!listeners.has(this)) listeners.set(this, new Map());
+      const elMap = listeners.get(this);
+      if (!elMap.has(event)) elMap.set(event, []);
+      elMap.get(event).push(fn);
+    }
+    click() {
+      const elMap = listeners.get(this);
+      if (elMap && elMap.has('click')) {
+        for (const fn of elMap.get('click')) fn({ type: 'click', target: this, preventDefault: () => {} });
+      }
+    }
+    showModal() { this.setAttribute('open', ''); }
+    close() { this.removeAttribute('open'); }
+  }
+
+  elements['service-modal'] = new MockElement('service-modal', 'dialog', { role: 'dialog', 'aria-modal': 'true' });
+  elements['card-service-inquiry'] = new MockElement('card-service-inquiry', 'button');
+  elements['btn-cancel-modal'] = new MockElement('btn-cancel-modal', 'button');
+  elements['modal-form'] = new MockElement('modal-form', 'form');
+  elements['input-national-id'] = new MockElement('input-national-id', 'input', { type: 'text', pattern: '[0-9]{14}' });
+  elements['input-applicant-name'] = new MockElement('input-applicant-name', 'input', { type: 'text' });
+  elements['modal-result-container'] = new MockElement('modal-result-container', 'div');
+
+  const sandbox = {
+    document: {
+      getElementById: (id) => elements[id] || null,
+    },
+    console,
+  };
+
+  const scriptMatch = content.match(/<script>([\s\S]*?)<\/script>/i);
+  assert(scriptMatch, 'portal-modal-form.html must contain <script>');
+  vm.runInNewContext(scriptMatch[1], sandbox);
+
+  // 1. Initially closed
+  assert(!elements['service-modal'].hasAttribute('open'), 'Modal initially closed');
+
+  // 2. Click service card -> opens modal
+  elements['card-service-inquiry'].click();
+  assert(elements['service-modal'].hasAttribute('open'), 'Clicking service card opens modal');
+
+  // 3. Fill and submit form -> renders result inside modal
+  elements['input-national-id'].value = '00000000000000';
+  elements['input-applicant-name'].value = 'Citizen One';
+  const formListeners = listeners.get(elements['modal-form'])?.get('submit') || [];
+  for (const fn of formListeners) {
+    fn({ preventDefault: () => {} });
+  }
+  assert(elements['modal-result-container'].innerHTML.includes('Citizen One'), 'Submit renders confirmation message inside modal');
+
+  // 4. Cancel closes modal
+  elements['btn-cancel-modal'].click();
+  assert(!elements['service-modal'].hasAttribute('open'), 'Clicking cancel closes modal');
+});
+
+const asyncQueue = [];
+function testAsync(name, fn) {
+  asyncQueue.push(async () => {
+    try {
+      await fn();
+      console.log(`  ✓ ${name}`);
+      passed++;
+    } catch (err) {
+      console.error(`  ✗ ${name}: ${err.message}`);
+      failed++;
+    }
+  });
+}
+
+testAsync('portal-tiles.html: category tile swaps main panel content asynchronously with no URL change', async () => {
+  const content = fs.readFileSync(path.join(DEMO_DIR, 'portal-tiles.html'), 'utf8');
+
+  const listeners = new Map();
+  const elements = {};
+
+  class MockElement {
+    constructor(id, tagName = 'div') {
+      this.id = id;
+      this.tagName = tagName.toUpperCase();
+      this.innerHTML = '';
+    }
+    addEventListener(event, fn) {
+      if (!listeners.has(this)) listeners.set(this, new Map());
+      const elMap = listeners.get(this);
+      if (!elMap.has(event)) elMap.set(event, []);
+      elMap.get(event).push(fn);
+    }
+    click() {
+      const elMap = listeners.get(this);
+      if (elMap && elMap.has('click')) {
+        for (const fn of elMap.get('click')) fn({ type: 'click', target: this });
+      }
+    }
+  }
+
+  elements['main-panel'] = new MockElement('main-panel', 'main');
+  elements['main-panel'].innerHTML = '<div id="initial-panel-content">Initial Content</div>';
+  elements['tile-vehicles'] = new MockElement('tile-vehicles', 'button');
+  elements['tile-licenses'] = new MockElement('tile-licenses', 'button');
+  elements['tile-records'] = new MockElement('tile-records', 'button');
+
+  const sandbox = {
+    document: {
+      getElementById: (id) => elements[id] || null,
+    },
+    setTimeout,
+    console,
+  };
+
+  const scriptMatch = content.match(/<script>([\s\S]*?)<\/script>/i);
+  assert(scriptMatch, 'portal-tiles.html must contain <script>');
+  vm.runInNewContext(scriptMatch[1], sandbox);
+
+  // 1. Initial content present
+  assert(elements['main-panel'].innerHTML.includes('Initial Content'), 'Initial panel content present');
+
+  // 2. Click tile-vehicles -> content not swapped immediately (async swap)
+  elements['tile-vehicles'].click();
+  assert(elements['main-panel'].innerHTML.includes('Initial Content'), 'Content must not swap synchronously (0 ms)');
+
+  // 3. Wait 450 ms -> content swapped asynchronously
+  await new Promise((r) => setTimeout(r, 450));
+  assert(elements['main-panel'].innerHTML.includes('Vehicle Violations'), 'After 400ms delay, main panel content is swapped');
+  assert(elements['main-panel'].innerHTML.includes('btn-inquire-violations'), 'New action buttons appeared in swapped panel');
+});
+
+test('frames-host.html contains 2 same-origin iframes with child frame link targets', () => {
+  const content = fs.readFileSync(path.join(DEMO_DIR, 'frames-host.html'), 'utf8');
+  assert((content.match(/<iframe/gi) || []).length >= 2, 'frames-host.html must embed at least 2 iframes');
+
+  const f1Path = path.join(DEMO_DIR, 'frame-child-1.html');
+  const f2Path = path.join(DEMO_DIR, 'frame-child-2.html');
+  assert(fs.existsSync(f1Path), 'frame-child-1.html must exist');
+  assert(fs.existsSync(f2Path), 'frame-child-2.html must exist');
+
+  const f1 = fs.readFileSync(f1Path, 'utf8');
+  const f2 = fs.readFileSync(f2Path, 'utf8');
+  assert((f1.match(/<a\b[^>]*href/gi) || []).length >= 2, 'Frame 1 must contain links');
+  assert((f2.match(/<a\b[^>]*href/gi) || []).length >= 2, 'Frame 2 must contain links');
+});
+
+(async () => {
+  for (const t of asyncQueue) {
+    await t();
+  }
+  console.log(`\nDemo Site Fixture & E1 Test Summary: ${passed} passed, ${failed} failed.\n`);
+  if (failed > 0) process.exit(1);
+})();

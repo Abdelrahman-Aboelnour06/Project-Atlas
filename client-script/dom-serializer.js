@@ -681,17 +681,74 @@ const NOISE_TEXT_PATTERNS = [
     return results;
   };
 
-  const getActiveModalDialog = () => {
+  const getActiveModalInfo = () => {
     try {
-      const dialogs = Array.from(
+      // 1. Real dialogs per W3C APG (<dialog open>, role=dialog/alertdialog + aria-modal="true")
+      const realDialogs = Array.from(
         document.querySelectorAll('dialog[open], [role="dialog"][aria-modal="true"], [role="alertdialog"][aria-modal="true"]')
       );
-      for (let i = 0; i < dialogs.length; i++) {
-        const d = dialogs[i];
-        if (isVisible(d)) return d;
+      for (let i = 0; i < realDialogs.length; i++) {
+        const d = realDialogs[i];
+        if (isVisible(d)) return { element: d, isRealModal: true };
+      }
+
+      const allDialogTags = Array.from(document.querySelectorAll('dialog'));
+      for (let i = 0; i < allDialogTags.length; i++) {
+        const d = allDialogTags[i];
+        if ((d.open || d.hasAttribute?.('open')) && isVisible(d)) {
+          return { element: d, isRealModal: true };
+        }
+      }
+
+      // 2. Fixed-position overlay heuristic:
+      // Must cover >= 60% of viewport width and height, be topmost at viewport centre,
+      // and contain at least one input/select/textarea (buttons alone don't count).
+      const all = document.querySelectorAll('*');
+      const winW = (typeof window !== 'undefined' && window.innerWidth) ? window.innerWidth : 0;
+      const winH = (typeof window !== 'undefined' && window.innerHeight) ? window.innerHeight : 0;
+      const cx = Math.floor(winW / 2);
+      const cy = Math.floor(winH / 2);
+
+      let topCenterEl = null;
+      if (typeof document !== 'undefined' && typeof document.elementFromPoint === 'function' && cx > 0 && cy > 0) {
+        try {
+          topCenterEl = document.elementFromPoint(cx, cy);
+        } catch (_) {}
+      }
+
+      for (let i = 0; i < all.length; i++) {
+        const el = all[i];
+        if (el.id === 'atlas-sidebar-host' || el.id === 'atlas-sidebar-root') continue;
+        if (el.closest?.('#atlas-sidebar-host') || el.closest?.('#atlas-sidebar-root')) continue;
+
+        let style = null;
+        try {
+          style = window.getComputedStyle(el);
+        } catch (_) {}
+        if (!style || style.position !== 'fixed') continue;
+        if (!isVisible(el)) continue;
+
+        const rect = el.getBoundingClientRect();
+        if (winW > 0 && winH > 0) {
+          if (rect.width < winW * 0.6 || rect.height < winH * 0.6) continue;
+        }
+
+        if (topCenterEl && !el.contains(topCenterEl) && topCenterEl !== el) {
+          continue;
+        }
+
+        const hasInputs = Boolean(el.querySelector('input:not([type="hidden"]), select, textarea'));
+        if (!hasInputs) continue;
+
+        return { element: el, isRealModal: false };
       }
     } catch (_) {}
     return null;
+  };
+
+  const getActiveModalDialog = () => {
+    const info = getActiveModalInfo();
+    return info ? info.element : null;
   };
 
   // ── Landmark detection ───────────────────────────────────────────────────────
@@ -916,7 +973,9 @@ const NOISE_TEXT_PATTERNS = [
     const latentOrdinalCounter = new Map();
 
     // Check for active modal focus trap per W3C APG
-    const activeModal = getActiveModalDialog();
+    const modalInfo = getActiveModalInfo();
+    const activeModal = modalInfo ? modalInfo.element : null;
+    const isRealModal = modalInfo ? modalInfo.isRealModal : false;
 
     // Pre-build aria-controls index for O(1) toggle resolution
     const controlsMap = new Map();
@@ -945,8 +1004,8 @@ const NOISE_TEXT_PATTERNS = [
 
     for (let i = 0; i < candidates.length; i++) {
       const el = candidates[i];
-      // When a modal dialog is active, elements outside it are inert and occluded
-      if (activeModal && !activeModal.contains(el) && !el.closest("#atlas-sidebar-root") && !el.closest("#atlas-sidebar-host")) continue;
+      // When a real modal dialog is active, elements outside it are inert and occluded
+      if (isRealModal && activeModal && !activeModal.contains(el) && !el.closest("#atlas-sidebar-root") && !el.closest("#atlas-sidebar-host")) continue;
       // Note: do NOT skip el.disabled; emit disabled: true (§11.2)
       if (!isVisible(el)) {
         const t = (el.tagName || "").toLowerCase();
@@ -1026,6 +1085,29 @@ const NOISE_TEXT_PATTERNS = [
       const landmark = detectLandmark(el);
       const breadcrumb = detectBreadcrumb(el, controlsMap);
 
+      // L3: Detect if element opens in new tab and resolve target origin
+      let opensNewTab = false;
+      let targetOrigin = null;
+      const targetAttr = (el.getAttribute?.("target") || el.target || "").toLowerCase().trim();
+      const onclickAttr = el.getAttribute?.("onclick") || "";
+      if (targetAttr === "_blank" || targetAttr === "_new" || /window\.open/i.test(onclickAttr)) {
+        opensNewTab = true;
+      }
+      if (href && typeof href === "string") {
+        const trimmedHref = href.trim();
+        if (!trimmedHref.startsWith("#") && !trimmedHref.startsWith("javascript:") && !trimmedHref.startsWith("mailto:") && !trimmedHref.startsWith("tel:")) {
+          try {
+            const base = (typeof window !== "undefined" && window.location?.href) ? window.location.href : "http://localhost";
+            const resolvedUrl = new URL(trimmedHref, base);
+            targetOrigin = resolvedUrl.origin;
+          } catch (_) {}
+        }
+      }
+
+      // L7: Modal state
+      const inModal = Boolean(activeModal && activeModal.contains(el));
+      const blockedByModal = false;
+
       visibleElementsSet.add(el);
 
       el.__atlas_id = existingAtlasId || ref;
@@ -1063,6 +1145,10 @@ const NOISE_TEXT_PATTERNS = [
         menu,
         landmark,
         breadcrumb,
+        opens_new_tab: opensNewTab,
+        target_origin: targetOrigin,
+        in_modal: inModal,
+        blocked_by_modal: blockedByModal,
       });
     }
 
@@ -1185,7 +1271,7 @@ const NOISE_TEXT_PATTERNS = [
           }
 
           if (info.isBlocked || !info.validContainer) continue;
-          if (activeModal && !activeModal.contains(el)) continue;
+          if (isRealModal && activeModal && !activeModal.contains(el)) continue;
           if (isStructuralNoise(el)) continue;
 
           // 4. Label resolution: fallback to textContent, aria-label, title (Rule 4)
@@ -1234,6 +1320,25 @@ const NOISE_TEXT_PATTERNS = [
           const menu = detectMenu(el);
           const disabled = Boolean(el.disabled || el.getAttribute("aria-disabled") === "true");
 
+          let opensNewTab = false;
+          let targetOrigin = null;
+          const targetAttr = (el.getAttribute?.("target") || el.target || "").toLowerCase().trim();
+          const onclickAttr = el.getAttribute?.("onclick") || "";
+          if (targetAttr === "_blank" || targetAttr === "_new" || /window\.open/i.test(onclickAttr)) {
+            opensNewTab = true;
+          }
+          if (href && typeof href === "string") {
+            const trimmedHref = href.trim();
+            if (!trimmedHref.startsWith("#") && !trimmedHref.startsWith("javascript:") && !trimmedHref.startsWith("mailto:") && !trimmedHref.startsWith("tel:")) {
+              try {
+                const base = (typeof window !== "undefined" && window.location?.href) ? window.location.href : "http://localhost";
+                const resolvedUrl = new URL(trimmedHref, base);
+                targetOrigin = resolvedUrl.origin;
+              } catch (_) {}
+            }
+          }
+          const inModal = Boolean(activeModal && activeModal.contains(el));
+
           passedLatentElements.push({
             el,
             existingAtlasId,
@@ -1267,6 +1372,10 @@ const NOISE_TEXT_PATTERNS = [
             menu,
             landmark: info.landmark,
             breadcrumb: info.breadcrumb,
+            opens_new_tab: opensNewTab,
+            target_origin: targetOrigin,
+            in_modal: inModal,
+            blocked_by_modal: false,
           });
         }
       } catch (_) {}
@@ -1329,9 +1438,26 @@ const NOISE_TEXT_PATTERNS = [
       menu: item.menu,
       landmark: item.landmark,
       breadcrumb: item.breadcrumb,
+      opens_new_tab: Boolean(item.opens_new_tab),
+      target_origin: item.target_origin || null,
+      in_modal: Boolean(item.in_modal),
+      blocked_by_modal: Boolean(item.blocked_by_modal),
     });
 
-    return passedElements.map(assembleNode).concat(passedLatentElements.map(assembleNode));
+    const allItems = passedElements.map(assembleNode).concat(passedLatentElements.map(assembleNode));
+    if (!activeModal) {
+      return allItems;
+    }
+    const modalItems = [];
+    const otherItems = [];
+    for (let i = 0; i < allItems.length; i++) {
+      if (allItems[i].in_modal) {
+        modalItems.push(allItems[i]);
+      } else {
+        otherItems.push(allItems[i]);
+      }
+    }
+    return modalItems.concat(otherItems);
   };
 
   const getElementByAtlasId = (atlasId, root = document) => {
@@ -1400,6 +1526,8 @@ const NOISE_TEXT_PATTERNS = [
     detectBreadcrumb,
     findNearestToggle,
     getLastLatentDuration,
+    getActiveModalDialog,
+    getActiveModalInfo,
     ATLAS_REVEAL_VIA_ATTR,
   };
 
