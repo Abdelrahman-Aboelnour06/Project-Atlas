@@ -428,6 +428,93 @@ async function run() {
     assert.strictEqual(pauseMessageAdded, true, 'Pause chat message must be added');
   });
 
+  // ============================================================================
+  // L12: Navigation Resumption Quiet Mount & Sidebar State
+  // ============================================================================
+  console.log('\n[L12: Navigation Resumption Quiet Mount & Language Preservation]');
+
+  await test('L12-01: resume with sidebar not active mounts it once, shows no welcome, sends no ATLAS_SUMMARY, preserves language; 2nd resume does not mount twice', () => {
+    const content = require('./content.js');
+
+    // Reset state
+    content.deactivate();
+    assert.strictEqual(content.isActive(), false, 'Sidebar must be inactive initially');
+
+    let mountCalls = 0;
+    let welcomeMessageSent = false;
+    let chatMessages = [];
+    let progressSet = null;
+    let languageSet = null;
+    let atlasSummaryCalls = 0;
+
+    global.chrome = {
+      runtime: {
+        lastError: null,
+        sendMessage: (msg, cb) => {
+          if (msg && msg.type === 'ATLAS_SUMMARY') {
+            atlasSummaryCalls++;
+          }
+          if (cb) cb({ ok: true });
+        },
+      },
+      storage: {
+        local: {
+          get: (keys, cb) => cb({ atlasApiKey: 'test_key', atlasBaseUrl: 'http://localhost:8000' }),
+          set: (obj, cb) => cb && cb(),
+        },
+      },
+    };
+
+    global.window.AtlasSidebar = {
+      mount: () => { mountCalls++; },
+      unmount: () => {},
+      addChatMessage: (role, text) => {
+        chatMessages.push(text);
+        if (/Hi! I'm Atlas/i.test(text)) {
+          welcomeMessageSent = true;
+        }
+      },
+      setGoalProgress: (state) => { progressSet = state; },
+      setLanguage: (lang) => { languageSet = lang; },
+      setStatus: () => {},
+      renderElements: () => {},
+      deriveDisplayItems: () => [],
+    };
+
+    global.window.AtlasSerializer = {
+      serialize: () => [],
+      observe: () => () => {},
+    };
+
+    const goalStateAr = {
+      goal: 'اريد الاستفسار عن مخالفات المركبات',
+      language: 'ar-EG',
+      status: 'in_progress',
+      hop_count: 1,
+      milestones: [{ label: 'البحث عن الخدمة', status: 'completed' }],
+    };
+
+    // First resume: mounts sidebar
+    const result1 = content.mountSidebarForResume(goalStateAr);
+    assert.strictEqual(result1, true, 'mountSidebarForResume must return true on first call');
+    assert.strictEqual(content.isActive(), true, 'Sidebar must now be active');
+    assert.strictEqual(mountCalls, 1, 'Sidebar mount must be called exactly once');
+    assert.strictEqual(welcomeMessageSent, false, 'No welcome message must be shown during quiet resume mount');
+    assert.strictEqual(atlasSummaryCalls, 0, 'No ATLAS_SUMMARY must be requested during quiet resume mount');
+    assert.strictEqual(languageSet, 'ar-EG', 'Goal language must be preserved (ar-EG)');
+    assert(progressSet !== null && progressSet.goal === goalStateAr.goal, 'Goal progress must be updated');
+    assert(chatMessages.some((msg) => msg.includes('متابعة')), 'Quiet resume chat message must be added in Arabic');
+
+    // Second resume: already active, must NOT mount a second time
+    const result2 = content.mountSidebarForResume(goalStateAr);
+    assert.strictEqual(result2, false, 'mountSidebarForResume must return false when already active');
+    assert.strictEqual(mountCalls, 1, 'Sidebar mount must NOT be called a second time');
+
+    // Clean up
+    content.deactivate();
+    assert.strictEqual(content.isActive(), false, 'deactivate must clear active flag');
+  });
+
   console.log(`\nWS11 Lane A Tests Complete: ${passed} passed, ${failed} failed.\n`);
   if (failed > 0) {
     process.exit(1);

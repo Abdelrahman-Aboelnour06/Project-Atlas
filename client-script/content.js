@@ -11,8 +11,8 @@
   // cross-frame perception/serialization protocol is implemented.
   let isTopFrame = true;
   try {
-    if (typeof window !== "undefined" && window.top) {
-      isTopFrame = window.self === window.top;
+    if (typeof window !== "undefined") {
+      isTopFrame = typeof window.top === "undefined" ? true : window.top === window;
     }
   } catch (_) {
     // Accessing window.top can throw a SecurityError in restricted cross-origin frames -> definitely a child frame
@@ -1116,7 +1116,7 @@
         isExecuting = false;
         isHopInProgress = false;
         window.AtlasSidebar?.setExecuting?.(false);
-        const awaitingReq = data.goal_state?.awaiting || data.awaiting;
+        const awaitingReq = data.goal_state?.awaiting || data.awaiting || data.awaiting_user_input || data.goal_state?.awaiting_user_input;
         const promptText = awaitingReq?.prompt || data.reply || "Please provide the required details:";
         window.AtlasSidebar?.setStatus?.("Awaiting input", "info");
         window.AtlasSidebar?.addChatMessage?.("agent", promptText);
@@ -1948,12 +1948,11 @@ const handleElementClick = async (atlasId) => {
     return () => clearInterval(interval);
   };
 
-  // ── Activate / deactivate ─────────────────────────────────────────────────────
-  const activate = async () => {
-    if (!isTopFrame) return; // Child frames never activate or mount sidebar
-    if (active) return;
-
-    const { apiKey, baseUrl } = await getStoredSettings();
+  // ── Shared Sidebar Core Mount (L12: Navigation Resume & Activate) ────────────
+  const mountSidebarCore = () => {
+    if (!isTopFrame) return false;
+    if (active) return false;
+    if (typeof window === "undefined" || !window.AtlasSidebar?.mount) return false;
 
     window.AtlasSidebar.mount({
       onClose: deactivate,
@@ -1979,9 +1978,9 @@ const handleElementClick = async (atlasId) => {
       onRefresh: async () => {
         window.AtlasSidebar.setStatus("Refreshing page & elements...", "info");
         try {
-          const domMap = window.AtlasSerializer.serialize();
-          window.AtlasSidebar.renderElements(
-            window.AtlasSidebar.deriveDisplayItems(domMap),
+          const domMap = window.AtlasSerializer?.serialize ? window.AtlasSerializer.serialize() : [];
+          window.AtlasSidebar?.renderElements?.(
+            window.AtlasSidebar?.deriveDisplayItems ? window.AtlasSidebar.deriveDisplayItems(domMap) : []
           );
           await renderSimplified(domMap);
           await fetchPageSummary({ showThinking: true });
@@ -1994,36 +1993,88 @@ const handleElementClick = async (atlasId) => {
       },
     });
 
+    const domMap = window.AtlasSerializer?.serialize ? window.AtlasSerializer.serialize() : [];
+    if (window.AtlasSidebar?.renderElements) {
+      window.AtlasSidebar.renderElements(
+        window.AtlasSidebar?.deriveDisplayItems ? window.AtlasSidebar.deriveDisplayItems(domMap) : []
+      );
+    }
+
+    if (window.AtlasSerializer?.observe) {
+      stopObserving = window.AtlasSerializer.observe((updatedMap) => {
+        window.AtlasSidebar?.renderElements?.(
+          window.AtlasSidebar?.deriveDisplayItems ? window.AtlasSidebar.deriveDisplayItems(updatedMap) : []
+        );
+      });
+    }
+    stopUrlWatcher = startUrlWatcher();
+    lastUrl = typeof location !== "undefined" ? location.href : "";
+    active = true;
+    return true;
+  };
+
+  // ── Quiet Mount for Navigation Resumption (L12) ──────────────────────────────
+  const mountSidebarForResume = (state) => {
+    if (!isTopFrame) return false;
+    if (active) return false;
+
+    const mounted = mountSidebarCore();
+    if (!mounted) return false;
+
+    const isAr =
+      (state?.language && (state.language.startsWith("ar") || state.language === "ar-EG")) ||
+      (typeof state?.goal === "string" && /[\u0600-\u06FF]/.test(state.goal));
+
+    const targetLang = isAr ? "ar-EG" : "en-US";
+    if (window.AtlasSidebar?.setLanguage) {
+      window.AtlasSidebar.setLanguage(targetLang);
+    }
+
+    if (window.AtlasSidebar?.setGoalProgress) {
+      window.AtlasSidebar.setGoalProgress(state);
+    }
+
+    const goalText = state?.goal || "";
+    const resumeText = isAr
+      ? (goalText ? `متابعة: ${goalText}` : "متابعة تنفيذ الهدف...")
+      : (goalText ? `Continuing: ${goalText}` : "Continuing goal...");
+
+    if (window.AtlasSidebar?.addChatMessage) {
+      window.AtlasSidebar.addChatMessage("agent", resumeText);
+    }
+    if (window.AtlasSidebar?.setStatus) {
+      window.AtlasSidebar.setStatus(isAr ? "جارٍ المتابعة..." : "Resuming goal...", "info");
+    }
+    return true;
+  };
+
+  // ── Activate / deactivate ─────────────────────────────────────────────────────
+  const activate = async () => {
+    if (!isTopFrame) return; // Child frames never activate or mount sidebar
+    if (active) return;
+
+    const { apiKey, baseUrl } = await getStoredSettings();
+
+    mountSidebarCore();
+
     // Welcome message
-    window.AtlasSidebar.addChatMessage(
+    window.AtlasSidebar?.addChatMessage?.(
       "agent",
       'Hi! I\'m Atlas. You can ask me anything about this page, or tell me what you\'d like to do — like "click checkout" or "fill in my name".',
     );
 
     if (!apiKey) {
-      window.AtlasSidebar.addChatMessage(
+      window.AtlasSidebar?.addChatMessage?.(
         "agent",
         "⚠️ No API key found. Opening settings...",
       );
-      chrome.runtime.sendMessage({ type: "ATLAS_OPEN_OPTIONS" });
+      chrome.runtime?.sendMessage?.({ type: "ATLAS_OPEN_OPTIONS" });
       return;
     }
 
-    const domMap = window.AtlasSerializer.serialize();
-    window.AtlasSidebar.renderElements(
-      window.AtlasSidebar.deriveDisplayItems(domMap),
-    );
+    const domMap = window.AtlasSerializer?.serialize ? window.AtlasSerializer.serialize() : [];
 
-    stopObserving = window.AtlasSerializer.observe((updatedMap) => {
-      window.AtlasSidebar.renderElements(
-        window.AtlasSidebar.deriveDisplayItems(updatedMap),
-      );
-    });
-    stopUrlWatcher = startUrlWatcher();
-    lastUrl = location.href;
-    active = true;
-
-    window.AtlasSidebar.setStatus("Connecting...", "info", { showRetry: false });
+    window.AtlasSidebar?.setStatus?.("Connecting...", "info", { showRetry: false });
 
     if (typeof window !== "undefined" && window.AtlasConnectionManager) {
       window.AtlasConnectionManager.onStateChange((state, payload) => {
@@ -2127,7 +2178,7 @@ const handleElementClick = async (atlasId) => {
     stopUrlWatcher?.();
     stopUrlWatcher = null;
     window.AtlasSocket?.close();
-    window.AtlasSidebar.unmount();
+    window.AtlasSidebar?.unmount?.();
     active = false;
   };
 
@@ -2169,11 +2220,21 @@ const handleElementClick = async (atlasId) => {
         const state = message.goalState;
         if (state && state.status === "in_progress") {
           currentGoalState = state;
+          if (!active) {
+            mountSidebarForResume(state);
+          } else {
+            window.AtlasSidebar?.setGoalProgress?.(state);
+          }
           if (!isExecuting && !isHopInProgress) {
             isExecuting = true;
-            window.AtlasSidebar?.setExecuting(true);
-            window.AtlasSidebar?.setGoalProgress(state);
-            window.AtlasSidebar?.setStatus("Resuming goal...", "info");
+            window.AtlasSidebar?.setExecuting?.(true);
+            const isAr =
+              (state?.language && state.language.startsWith("ar")) ||
+              (typeof state?.goal === "string" && /[\u0600-\u06FF]/.test(state.goal));
+            window.AtlasSidebar?.setStatus?.(
+              isAr ? "جارٍ المتابعة..." : "Resuming goal...",
+              "info"
+            );
             executeGoalHop(state);
           }
         }
@@ -2282,6 +2343,9 @@ const handleElementClick = async (atlasId) => {
       setCurrentGoalState: (s) => { currentGoalState = s; },
       handleChatInput,
       renderAwaitingUserInputForm,
+      mountSidebarForResume,
+      mountSidebarCore,
+      isActive: () => active,
     };
   }
   if (typeof module !== "undefined" && module.exports) {
@@ -2316,6 +2380,9 @@ const handleElementClick = async (atlasId) => {
       setCurrentGoalState: (s) => { currentGoalState = s; },
       handleChatInput,
       renderAwaitingUserInputForm,
+      mountSidebarForResume,
+      mountSidebarCore,
+      isActive: () => active,
     };
   }
 })();

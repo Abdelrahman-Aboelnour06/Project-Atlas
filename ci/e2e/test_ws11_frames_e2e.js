@@ -73,23 +73,52 @@ async function runSuite() {
       let body = '';
       req.on('data', (chunk) => { body += chunk; });
       req.on('end', () => {
+        let parsed = {};
         try {
-          const parsed = JSON.parse(body);
+          parsed = JSON.parse(body);
           goalStepRequests.push(parsed);
         } catch (_) {
           goalStepRequests.push({});
         }
 
-        const responseData = {
-          status: 'goal_complete',
-          reply: 'Goal completed in top frame only.',
-          goal_state: {
-            goal: 'Test frame isolation',
+        let responseData;
+        if (
+          parsed.goal === 'Test navigation resume and form render' ||
+          parsed.goal_state?.goal === 'Test navigation resume and form render'
+        ) {
+          const awaitingObj = {
+            prompt: 'يرجى إدخال الرقم القومي ورقم اللوحة:',
+            fields: [
+              { ref: 'national_id', label: 'الرقم القومي', required: true, sensitive: true, kind: 'ssn' },
+              { ref: 'plate_number', label: 'رقم اللوحة', required: true, sensitive: false, kind: 'text' },
+            ],
+          };
+          responseData = {
+            status: 'awaiting_user_input',
+            reply: 'يرجى إدخال الرقم القومي ورقم اللوحة:',
+            awaiting: awaitingObj,
+            awaiting_user_input: awaitingObj,
+            goal_state: {
+              goal: 'Test navigation resume and form render',
+              status: 'awaiting_user_input',
+              awaiting: awaitingObj,
+              language: 'ar-EG',
+              hop_count: 2,
+              max_hops: 15,
+            },
+          };
+        } else {
+          responseData = {
             status: 'goal_complete',
-            hop_count: 1,
-            max_hops: 15,
-          },
-        };
+            reply: 'Goal completed in top frame only.',
+            goal_state: {
+              goal: 'Test frame isolation',
+              status: 'goal_complete',
+              hop_count: 1,
+              max_hops: 15,
+            },
+          };
+        }
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(responseData));
       });
@@ -333,6 +362,130 @@ async function runSuite() {
         result.chatText.toLowerCase().includes('complete') ||
         result.statusText.toLowerCase().includes('ready'),
       `Status text: "${result.statusText}", Chat: "${result.chatText}"`
+    );
+
+    // -------------------------------------------------------------------------
+    // L12 Real-Chromium Check: Navigation Resumption Quiet Mount & Form Render
+    // -------------------------------------------------------------------------
+    console.log('\n[E2E L12] Navigating to a new page without sidebar active...');
+    const childUrl = `http://127.0.0.1:${serverPort}/frame-child.html`;
+    await page.goto(childUrl, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(500);
+
+    // Verify sidebar is NOT mounted initially on the newly navigated page
+    const initialSidebarCount = await page.locator('#atlas-sidebar-host').count();
+    record(
+      'L12-01: Newly navigated page does NOT have #atlas-sidebar-host initially',
+      initialSidebarCount === 0,
+      `Expected 0 sidebars before resume, found ${initialSidebarCount}`
+    );
+
+    // If simulating in-page without service worker on Windows headless:
+    if (!serviceWorker) {
+      await page.evaluate(({ baseUrl, sidebarCss, secretVaultJs, sidebarJs, serializerJs, executorJs, speechJs, ttsJs, contentJs }) => {
+        window.__ATLAS_TEST_ENV__ = true;
+        window.chrome = {
+          runtime: {
+            lastError: null,
+            sendMessage: (msg, cb) => {
+              if (msg.type === 'ATLAS_GOAL_STEP') {
+                fetch(`${baseUrl}/v1/chat/goal_step`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(msg.payload || {}),
+                })
+                  .then((r) => r.json())
+                  .then((data) => cb && cb({ ok: true, data }))
+                  .catch((err) => cb && cb({ ok: false, error: err.message }));
+                return true;
+              }
+              if (cb) cb({ ok: true });
+            },
+            onMessage: {
+              listeners: [],
+              addListener: function (fn) { this.listeners.push(fn); },
+            },
+          },
+          storage: {
+            local: {
+              get: (k, cb) => cb({ atlasApiKey: 'atlas_test_key', atlasBaseUrl: baseUrl }),
+              set: (items, cb) => cb && cb(),
+            },
+            session: {
+              get: async () => ({}),
+              set: async () => ({}),
+              remove: async () => ({}),
+            },
+          },
+        };
+
+        window.eval(sidebarJs);
+        window.eval(secretVaultJs);
+        window.eval(serializerJs);
+        window.eval(executorJs);
+        window.eval(speechJs);
+        window.eval(ttsJs);
+        window.eval(contentJs);
+      }, { baseUrl: `http://127.0.0.1:${serverPort}`, sidebarCss, secretVaultJs, sidebarJs, serializerJs, executorJs, speechJs, ttsJs, contentJs });
+    }
+
+    // Now dispatch ATLAS_GOAL_RESUME to the page
+    console.log('[E2E L12] Dispatching ATLAS_GOAL_RESUME to navigated page...');
+    const resumeGoalState = {
+      goal: 'Test navigation resume and form render',
+      language: 'ar-EG',
+      status: 'in_progress',
+      hop_count: 1,
+      max_hops: 15,
+      baseUrl: `http://127.0.0.1:${serverPort}`,
+    };
+
+    if (serviceWorker) {
+      await serviceWorker.evaluate(async ({ port, resumeGoalState }) => {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (tab) {
+          await GoalStore.put(tab.id, resumeGoalState);
+          chrome.tabs.sendMessage(tab.id, { type: 'ATLAS_GOAL_RESUME', goalState: resumeGoalState });
+        }
+      }, { port: serverPort, resumeGoalState });
+    } else {
+      await page.evaluate((goalState) => {
+        if (window.chrome?.runtime?.onMessage?.listeners) {
+          for (const listener of window.chrome.runtime.onMessage.listeners) {
+            listener({ type: 'ATLAS_GOAL_RESUME', goalState }, {}, () => {});
+          }
+        }
+      }, resumeGoalState);
+    }
+
+    // Wait for the hop and DOM rendering
+    await page.waitForTimeout(2000);
+
+    // 1. Assert #atlas-sidebar-host exists in top frame
+    const resumedSidebarCount = await page.locator('#atlas-sidebar-host').count();
+    record(
+      'L12-02: After ATLAS_GOAL_RESUME, #atlas-sidebar-host exists in top frame',
+      resumedSidebarCount === 1,
+      `Expected 1 sidebar host after resume, found ${resumedSidebarCount}`
+    );
+
+    // 2. Assert awaiting_user_input form card rendered inside the sidebar
+    const formCardFound = await page.evaluate(() => {
+      const root = window.AtlasSidebar?.getShadowRoot?.() || window.__atlasShadowRoot;
+      const formCard = root?.querySelector?.('.atlas-user-input-form-card');
+      const input = formCard?.querySelector?.('input[data-field-ref="national_id"]');
+      const submitBtn = formCard?.querySelector?.('.atlas-form-submit-btn');
+      return {
+        hasFormCard: Boolean(formCard),
+        hasNationalIdInput: Boolean(input),
+        submitBtnText: submitBtn?.textContent || '',
+      };
+    });
+
+    record(
+      'L12-03: awaiting_user_input response renders form card inside resumed sidebar',
+      formCardFound.hasFormCard && formCardFound.hasNationalIdInput,
+      `Form card: ${formCardFound.hasFormCard}, National ID input: ${formCardFound.hasNationalIdInput}, submit text: "${formCardFound.submitBtnText}"`
     );
 
   } catch (err) {

@@ -380,7 +380,7 @@ async function handleGoalStep(message, sender = {}) {
       err.name === "TypeError" ||
       /failed to fetch|network|econnrefused|fetch failed/i.test(err.message || "");
     const customErr = isConnErr
-      ? new Error(`Can't reach the Atlas backend at ${goalBase}`)
+      ? new Error(`Can't reach the Atlas backend at ${goalBase} (${err.message})`)
       : err;
     customErr.code = isConnErr ? "BACKEND_UNREACHABLE" : "NETWORK_ERROR";
     customErr.baseUrl = goalBase;
@@ -446,7 +446,9 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
         const isConnErr =
           err.name === "TypeError" ||
           /failed to fetch|network|econnrefused|fetch failed/i.test(err.message || "");
-        const errMsg = isConnErr ? `Can't reach the Atlas backend at ${chatBase}` : err.message;
+        const errMsg = isConnErr
+          ? `Can't reach the Atlas backend at ${chatBase} (${err.message})`
+          : err.message;
         sendResponse({
           ok: false,
           error: errMsg,
@@ -476,7 +478,9 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
         const isConnErr =
           err.name === "TypeError" ||
           /failed to fetch|network|econnrefused|fetch failed/i.test(err.message || "");
-        const errMsg = isConnErr ? `Can't reach the Atlas backend at ${summaryBase}` : err.message;
+        const errMsg = isConnErr
+          ? `Can't reach the Atlas backend at ${summaryBase} (${err.message})`
+          : err.message;
         sendResponse({
           ok: false,
           error: errMsg,
