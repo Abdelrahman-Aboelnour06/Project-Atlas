@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>بوابة الخدمات الحكومية التجريبية - القائمة الجانبية</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --primary: #0f766e;
+      --primary-dark: #134e4a;
+      --accent: #14b8a6;
+      --text: #1e293b;
+      --text-muted: #64748b;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --border: #e2e8f0;
+      --radius: 8px;
+    }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Arabic", sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      position: relative;
+      overflow-x: hidden;
+    }
+    header {
+      background: #ffffff;
+      border-bottom: 2px solid var(--primary);
+      padding: 16px 24px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .header-content {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .brand-section {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .site-title {
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--primary-dark);
+      text-decoration: none;
+    }
+    .hamburger-btn {
+      background: var(--primary);
+      color: #ffffff;
+      border: none;
+      width: 44px;
+      height: 44px;
+      border-radius: 6px;
+      font-size: 22px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s;
+    }
+    .hamburger-btn:hover, .hamburger-btn:focus {
+      background: var(--primary-dark);
+      outline: 2px solid var(--accent);
+    }
+
+    /* Off-canvas Drawer Navigation */
+    .drawer-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 998;
+      display: none;
+    }
+    .drawer-overlay.active {
+      display: block;
+    }
+    #offcanvas-drawer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 320px;
+      height: 100vh;
+      background: #ffffff;
+      box-shadow: -4px 0 15px rgba(0,0,0,0.15);
+      z-index: 999;
+      display: flex;
+      flex-direction: column;
+      transition: transform 0.25s ease-in-out, visibility 0.25s;
+    }
+    #offcanvas-drawer.drawer-closed {
+      transform: translateX(100%);
+      visibility: hidden;
+    }
+    #offcanvas-drawer.drawer-open {
+      transform: translateX(0);
+      visibility: visible;
+    }
+    .drawer-header {
+      padding: 16px 20px;
+      background: var(--primary-dark);
+      color: #ffffff;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .drawer-title {
+      font-weight: 700;
+      font-size: 16px;
+    }
+    .drawer-close {
+      background: transparent;
+      border: none;
+      color: #ffffff;
+      font-size: 20px;
+      cursor: pointer;
+      padding: 4px 8px;
+    }
+    .drawer-nav {
+      list-style: none;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .drawer-link {
+      display: block;
+      padding: 12px 16px;
+      color: var(--text);
+      text-decoration: none;
+      font-size: 15px;
+      font-weight: 600;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      transition: all 0.15s ease;
+    }
+    .drawer-link:hover, .drawer-link:focus {
+      background: #ccfbf1;
+      border-color: var(--accent);
+      color: var(--primary-dark);
+    }
+    main {
+      max-width: 1100px;
+      margin: 40px auto;
+      padding: 0 24px;
+    }
+    .hero-card {
+      background: #ffffff;
+      padding: 36px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+    }
+    h1 {
+      font-size: 24px;
+      color: var(--primary-dark);
+      margin-bottom: 12px;
+    }
+    p {
+      color: var(--text-muted);
+      font-size: 15px;
+    }
+  </style>
+</head>
+<body>
+  <div class="drawer-overlay" id="drawer-overlay" aria-hidden="true"></div>
+
+  <header>
+    <div class="header-content">
+      <div class="brand-section">
+        <!-- Hamburger Button with aria-controls & aria-expanded -->
+        <button 
+          type="button" 
+          id="drawer-hamburger" 
+          class="hamburger-btn" 
+          aria-label="افتح القائمة الجانبية للخدمات" 
+          aria-expanded="false" 
+          aria-controls="offcanvas-drawer"
+        >
+          ☰
+        </button>
+        <a href="portal-drawer.html" class="site-title">بوابة الخدمات الحكومية التجريبية (نمط القائمة الجانبية)</a>
+      </div>
+      <div>
+        <span style="font-size: 13px; color: var(--text-muted);">نمط القائمة الجانبية Drawer</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Off-canvas Drawer Navigation -->
+  <nav id="offcanvas-drawer" class="drawer-closed" aria-hidden="true" aria-label="القائمة الجانبية">
+    <div class="drawer-header">
+      <span class="drawer-title">قائمة الخدمات المتاحة</span>
+      <button type="button" id="drawer-close-btn" class="drawer-close" aria-label="إغلاق القائمة الجانبية">✕</button>
+    </div>
+    <ul class="drawer-nav">
+      <li><a href="portal-drawer.html" class="drawer-link">الرئيسية</a></li>
+      <li><a href="#general" class="drawer-link">الخدمات العامة</a></li>
+      <li>
+        <a href="portal-inquiry.html" id="drawer-traffic-link" class="drawer-link">
+          نيابات المرور - الاستعلام عن المخالفات
+        </a>
+      </li>
+      <li><a href="#notary" class="drawer-link">خدمات التوثيق العقاري</a></li>
+      <li><a href="#help" class="drawer-link">الدعم والمساعدة</a></li>
+    </ul>
+  </nav>
+
+  <main>
+    <div class="hero-card">
+      <h1>نمط القائمة الجانبية المنزلقة (Off-canvas Drawer)</h1>
+      <p>
+        في هذا النمط، لا تظهر روابط الخدمات مباشرة في ترويسة الصفحة، بل تتاح عبر زر القائمة الجانبية (Hamburger Button) الذي يفتح لوح تنقل جانبي يحتوي على خدمة الاستعلام عن مخالفات المرور.
+      </p>
+    </div>
+  </main>
+
+  <script>
+    const hamburger = document.getElementById('drawer-hamburger');
+    const drawer = document.getElementById('offcanvas-drawer');
+    const closeBtn = document.getElementById('drawer-close-btn');
+    const overlay = document.getElementById('drawer-overlay');
+
+    function openDrawer() {
+      hamburger.setAttribute('aria-expanded', 'true');
+      drawer.setAttribute('aria-hidden', 'false');
+      drawer.classList.remove('drawer-closed');
+      drawer.classList.add('drawer-open');
+      overlay.classList.add('active');
+    }
+
+    function closeDrawer() {
+      hamburger.setAttribute('aria-expanded', 'false');
+      drawer.setAttribute('aria-hidden', 'true');
+      drawer.classList.remove('drawer-open');
+      drawer.classList.add('drawer-closed');
+      overlay.classList.remove('active');
+    }
+
+    hamburger.addEventListener('click', function() {
+      const isExpanded = hamburger.getAttribute('aria-expanded') === 'true';
+      if (isExpanded) {
+        closeDrawer();
+      } else {
+        openDrawer();
+      }
+    });
+
+    closeBtn.addEventListener('click', closeDrawer);
+    overlay.addEventListener('click', closeDrawer);
+  </script>
+</body>
+</html>

@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>بوابة الخدمات الثقافية والمناخية التجريبية</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --primary: #475569;
+      --primary-dark: #1e293b;
+      --accent: #64748b;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --border: #cbd5e1;
+      --radius: 8px;
+    }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Arabic", sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+    header {
+      background: var(--primary-dark);
+      color: #ffffff;
+      padding: 16px 24px;
+    }
+    .header-content {
+      max-width: 1000px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .brand {
+      font-size: 18px;
+      font-weight: 800;
+      color: #ffffff;
+      text-decoration: none;
+    }
+    main {
+      max-width: 1000px;
+      margin: 40px auto;
+      padding: 0 24px;
+    }
+    .hero-box {
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 32px;
+      margin-bottom: 24px;
+    }
+    h1 {
+      font-size: 24px;
+      color: var(--primary-dark);
+      margin-bottom: 8px;
+    }
+    p {
+      color: var(--text-muted);
+      font-size: 15px;
+    }
+    .services-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+      margin-top: 24px;
+    }
+    .item-card {
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+    }
+    .item-card h2 {
+      font-size: 16px;
+      color: var(--primary-dark);
+      margin-bottom: 8px;
+    }
+    .item-card a {
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 14px;
+      display: inline-block;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-content">
+      <a href="portal-deadend.html" class="brand">بوابة الخدمات الثقافية والمناخية التجريبية</a>
+      <span style="font-size: 13px; color: #94a3b8;">بيئة خدمات عامة (مسار منتهٍ)</span>
+    </div>
+  </header>
+
+  <main>
+    <div class="hero-box">
+      <h1>دليل الأنشطة والمناخ المحلي</h1>
+      <p>
+        تقتصر هذه المنصة على استعراض النشرات الجوية ومواعيد المتاحف الوطنية والفعاليات الثقافية العامة في مختلف المحافظات.
+      </p>
+
+      <div class="services-list">
+        <div class="item-card">
+          <h2>نشرات الأرصاد والطقس</h2>
+          <p>متابعة درجات الحرارة المتوقعة وتوقعات هطول الأمطار على المحافظات.</p>
+          <a href="#weather" id="link-weather">عرض النشرة الجوية ←</a>
+        </div>
+        <div class="item-card">
+          <h2>دليل المتاحف القومية</h2>
+          <p>مواعيد الزيارة وأسعار تذاكر المتاحف والمعارض التاريخية العامة.</p>
+          <a href="#museums" id="link-museums">استعراض المتاحف ←</a>
+        </div>
+        <div class="item-card">
+          <h2>المكتبات العامة والكتب</h2>
+          <p>فهرس عناوين الكتب المتاحة للاستعارة في فروع المكتبة المركزية.</p>
+          <a href="#libraries" id="link-libraries">بحث الكتب ←</a>
+        </div>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

@@ -1,0 +1,55 @@
+{
+  "scenario_id": "portal_megamenu",
+  "name": "Mega-menu Hover Portal Navigation",
+  "description": "Navigation through an Arabic RTL government portal with a CSS :hover and :focus-within mega-menu to an inquiry form.",
+  "start_page": "portal-megamenu.html",
+  "goal_text": {
+    "ar": "اريد الاستعلام عن مخالفات رخص المركبات",
+    "en": "I want to check vehicle traffic violations"
+  },
+  "expected_target_page": "portal-inquiry.html",
+  "target_link_id": "traffic-prosecution-link",
+  "menu_toggle": {
+    "id": "citizen-services-menu",
+    "aria_haspopup": "true",
+    "aria_controls": "citizen-services-dropdown",
+    "interaction": "hover_or_focus"
+  },
+  "required_inputs": [
+    {
+      "field_id": "national-id",
+      "name": "national_id",
+      "type": "text",
+      "pattern": "[0-9]{14}",
+      "maxlength": 14,
+      "required": true,
+      "fake_value": "00000000000000"
+    },
+    {
+      "field_id": "plate-digits",
+      "name": "plate_digits",
+      "type": "text",
+      "pattern": "[0-9]{1,4}",
+      "maxlength": 4,
+      "required": true,
+      "fake_value": "1234"
+    },
+    {
+      "field_id": "plate-letters",
+      "name": "plate_letters",
+      "type": "text",
+      "pattern": "[\\u0600-\\u06FF\\s]{1,4}",
+      "maxlength": 7,
+      "required": true,
+      "fake_value": "أ ب ج"
+    }
+  ],
+  "expected_end_state": {
+    "status": "goal_complete",
+    "results_container_id": "violations-results",
+    "violations_table_id": "violations-table",
+    "total_amount_id": "total-amount",
+    "expected_fine_amount": "550 ج.م",
+    "expected_violations_count": 3
+  }
+}
