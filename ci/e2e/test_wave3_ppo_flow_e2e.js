@@ -421,6 +421,16 @@ async function runScenario(scenarioName, startPage, { browser, backendPort, fixt
   }, hop0Res.goal_state);
 
   // Assertion (d): Exactly one awaiting_user_input with all form fields, ID sensitive
+  const awaitingStart = Date.now();
+  let awaitingRes = null;
+  while (Date.now() - awaitingStart < 20000) {
+    awaitingRes = interceptedGoalStepResponses.find(
+      (r) => r.status === "awaiting_user_input" || r.goal_state?.status === "awaiting_user_input"
+    );
+    if (awaitingRes) break;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+
   await page.waitForFunction(() => {
     const shadowRoot = window.AtlasSidebar?.getShadowRoot?.();
     const card = shadowRoot?.querySelector?.(".atlas-user-input-form-card");
@@ -476,21 +486,30 @@ async function runScenario(scenarioName, startPage, { browser, backendPort, fixt
   console.log("[E2E] Awaiting form submit result:", JSON.stringify(submitResult));
 
   // Assertion (e): requires_confirmation comes BEFORE submit click, in Arabic
+  // Poll until interceptedGoalStepResponses contains a response with status "requires_confirmation" (timeout 20 s)
+  const confirmStart = Date.now();
+  let confirmRes = null;
+  while (Date.now() - confirmStart < 20000) {
+    confirmRes = interceptedGoalStepResponses.find(
+      (r) => r.status === "requires_confirmation" || r.requires_confirmation === true
+    );
+    if (confirmRes) break;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+
+  record(`[${scenarioName}] e. requires_confirmation triggered before submit click`, confirmRes != null);
+  const promptText = confirmRes?.confirmation_prompt || "";
+  const promptArabic = /[\u0600-\u06FF]/.test(promptText);
+  const promptNoLatin = !/[a-zA-Z]/.test(promptText);
+  record(`[${scenarioName}] e. Confirmation prompt is Arabic with zero Latin words`, promptArabic && promptNoLatin, `Prompt: "${promptText}"`);
+
+  // Wait for confirmation button to be rendered in DOM before clicking
   await page.waitForFunction(() => {
     const shadowRoot = window.AtlasSidebar?.getShadowRoot?.();
     const chatLog = shadowRoot?.querySelector?.("#atlas-chat-log, .atlas-chat-log");
     const buttons = chatLog ? chatLog.querySelectorAll(".atlas-chip-btn, .atlas-chip-confirm, button") : [];
     return buttons.length > 0;
   }, { timeout: 15000 });
-
-  const confirmRes = interceptedGoalStepResponses.find(
-    (r) => r.status === "requires_confirmation" || r.requires_confirmation === true
-  );
-  record(`[${scenarioName}] e. requires_confirmation triggered before submit click`, confirmRes != null);
-  const promptText = confirmRes?.confirmation_prompt || "";
-  const promptArabic = /[\u0600-\u06FF]/.test(promptText);
-  const promptNoLatin = !/[a-zA-Z]/.test(promptText);
-  record(`[${scenarioName}] e. Confirmation prompt is Arabic with zero Latin words`, promptArabic && promptNoLatin, `Prompt: "${promptText}"`);
 
   // User answers "نعم" to confirmation
   const btnInfo = await page.evaluate(() => {
@@ -533,6 +552,17 @@ async function runScenario(scenarioName, startPage, { browser, backendPort, fixt
   });
   console.log("[E2E] Page form state after confirm:", JSON.stringify(pageFormState));
   console.log("[E2E] Last intercepted response:", JSON.stringify(interceptedGoalStepResponses[interceptedGoalStepResponses.length - 1]));
+
+  // Poll until interceptedGoalStepResponses contains terminal response (status "goal_complete")
+  const terminalStart = Date.now();
+  let terminalRes = null;
+  while (Date.now() - terminalStart < 20000) {
+    terminalRes = interceptedGoalStepResponses.find(
+      (r) => r.status === "goal_complete" || r.goal_state?.status === "goal_complete"
+    );
+    if (terminalRes) break;
+    await new Promise((r) => setTimeout(r, 100));
+  }
 
   // Assertion (f): Results table appears and final reply is Arabic and contains total (550)
   await page.waitForFunction(() => {
@@ -873,6 +903,7 @@ async function runSuite() {
     env: {
       ...process.env,
       LLM_PROVIDER: "mock",
+      RATE_LIMIT_MAX_REQUESTS: "1000",
       PYTHONIOENCODING: "utf-8",
       ALLOW_ORIGIN_REGEX: ".*",
     },

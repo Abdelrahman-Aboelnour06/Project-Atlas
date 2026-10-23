@@ -1690,8 +1690,8 @@ async def goal_step_endpoint(
         is_exhausted = (
             has_prior_action
             and (
-                "exhausted" in (plan.thought or "").lower()
-                or (plan and plan.reply and any(k in plan.reply for k in ("معرفتش", "couldn't find", "couldn't reach", "الحد الأقصى")))
+                getattr(plan, "type", "") == "exhausted"
+                or (plan and "exhausted" in (plan.thought or "").lower())
                 or goal_state.exceeded_max_hops()
             )
         )
