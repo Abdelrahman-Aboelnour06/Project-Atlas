@@ -1,27 +1,42 @@
 # WS8 LLM Reliability
-Branch: feat/llm-repair   Last commit: 8dc5170   Model used: Gemini 3.8 Flash
-Status: in progress
+Branch: feat/llm-repair   Last commit: a588837   Model used: Gemini 3.8 Flash
+Status: done
 
 Done:
-- Checked out working branch `feat/llm-repair` from `origin/main`.
-- Analyzed problem statement, prime directives (AGENTS.md, GEMINI.md), and master plan (docs/plans/atlas_multistep_arabic_plan.md).
-- Formulated architectural design and published implementation plan artifact.
+- backend/app/agent/json_utils.py:1: created `extract_json(raw)` with brace-depth and bracket-depth scanner respecting string boundaries and escape characters, stripping closed & unclosed `<think>` reasoning tags, markdown code blocks, and prose.
+- backend/app/agent/json_utils.py:145: created `repair_json(raw, schema_hint)` retrying once asking the model for valid JSON on parse failure.
+- backend/app/agent/llm_client.py:85: added structured failure diagnostics (`record_llm_failure`, `record_llm_success`, `get_llm_health_info`, `is_limited_mode`, `reset_llm_health`) logging provider, model, error_class, and status_code with zero secret or prompt leakage.
+- backend/app/agent/llm_client.py:610: added opt-in `json_mode: bool = False` flag to `call_llm` for Ollama (`format="json"`), Groq/NIM/OpenAI (`response_format={"type": "json_object"}`), with automatic HTTP 400 fallback that retries once without `response_format` and remembers for the process.
+- backend/app/agent/llm_client.py:476: added deterministic mock repair in `_generate_deterministic_mock_response` for `role="repair"`.
+- backend/app/agent/llm_client.py:760: implemented `repair_json` that runs only on parse failure (never on timeouts or 4xx/5xx HTTP errors) and at most once.
+- backend/app/routes/health.py:15: extended `HealthResponse` with `provider`, `model`, `last_error_class`, `last_error_time`, and `limited_mode: bool`.
+- backend/app/routes/health.py:38: updated `health_check` to report provider metadata and set `limited_mode` to True on failure, resetting to False on subsequent success.
+- backend/tests/test_json_utils.py:1: added 14 comprehensive tests covering `<think>` tags, unclosed `<think>`, trailing prose containing '{', nested objects, string braces, code fences, Arabic prose, arrays, and repair retries.
+- backend/tests/test_llm_client.py:277: added tests for timeout raising `LLMError` with cause, zero-leak logging, `json_mode` payloads, HTTP 400 fallback memory, and `limited_mode` state transitions.
+- backend/tests/test_routes_rest.py:92: added tests for `/health` reporting `provider`, `model`, `limited_mode`, and ensuring error messages or URLs are never leaked.
 
 Tests run:
-- Baseline check from `./backend`: `cd backend && LLM_PROVIDER=mock pytest tests/ -q` (957 passed, 0 failed)
-- Baseline check from repo root: `LLM_PROVIDER=mock pytest backend/tests -q` (957 passed, 0 failed)
-- Baseline JS test check: `npm run test:js` (1,136 passed, 0 failed across 27 suites)
+- Isolated WS8 suite: `cd backend && LLM_PROVIDER=mock pytest tests/test_json_utils.py tests/test_llm_client.py tests/test_routes_rest.py -v`: 61 passed, 0 failed in 3.24s
+- Full backend suite from `./backend`: `cd backend && LLM_PROVIDER=mock pytest tests/ -q`: 981 passed, 0 failed, 3 warnings in 7.77s
+- Full backend suite from repo root: `LLM_PROVIDER=mock pytest backend/tests -q`: 981 passed, 0 failed, 3 warnings in 6.67s
+- JS test suite: `npm run test:js`: 1,136 passed, 0 failed across all 27 JS/fixture suites in 17.5s
 
 Next steps:
-1. Wait for user review and approval of `implementation_plan.md`.
-2. Implement `extract_json` and `repair_json` in `backend/app/agent/json_utils.py`.
-3. Update `backend/app/agent/llm_client.py` with failure logging (provider, model, error_class, status_code), `json_mode`, health state tracking, and mock repair.
-4. Update `backend/app/routes/health.py` with `provider`, `last_error_class`, `last_error_time`, and `limited_mode`.
-5. Author comprehensive unit tests in `backend/tests/test_json_utils.py` and update `backend/tests/test_llm_client.py` and `backend/tests/test_routes_rest.py`.
-6. Run full verification suites and publish handoff details with import requests for other workstreams.
+1. Integrator merges `feat/llm-repair` into Wave 1 integration branch.
+2. WS2 imports `is_limited_mode` in `backend/app/agent/agentic_planner.py` to render the localized limited mode message.
+3. Other agent owners adopt `extract_json` from `backend/app/agent/json_utils.py`.
 
 Requests for other workstreams:
-- None pending plan review.
+- WS2 (`agentic_planner.py` / `i18n`):
+  Import `is_limited_mode`:
+  `from app.agent.llm_client import is_limited_mode`
+  When planner fallback occurs and `is_limited_mode()` returns True, return the localized reply:
+  `t("error_limited_mode", language)` (or Egyptian Arabic string: "أطلس شغال دلوقتي في الوضع المحدود عشان خدمة الذكاء الاصطناعي مش متوفرة حالياً") instead of "I reviewed the page, but couldn't find an element matching...".
+- WS2, WS6, WS7 (`agentic_planner.py`, `navigator.py`, `form_filler.py`, `planner.py`, `scout.py`, `verifier.py`):
+  Replace local `_clean_json_str(raw)` duplicates with:
+  `from app.agent.json_utils import extract_json`
+  `cleaned = extract_json(raw_llm)`
+  This universally strips `<think>` blocks, unclosed thinking tags, markdown fences, and prose across all models without regex breakage.
 
 Open questions for Raafat:
 - None.
