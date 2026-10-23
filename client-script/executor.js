@@ -848,6 +848,15 @@ const execute = async (actionResponse, options = {}) => {
             if (toggle) {
                 const revealRes = await doReveal(toggle, elementId);
                 if (!revealRes.ok) {
+                    // Self-healing fallback for pure CSS hover menus: if reveal fails and element is a same-origin <a href>, click directly
+                    const tag = (el.tagName || '').toUpperCase();
+                    const href = (el.getAttribute?.('href') || '').trim();
+                    const isNavigableHref = href && href !== '#' && !href.startsWith('javascript:');
+                    const isSameOrigin = !href.startsWith('http://') && !href.startsWith('https://') && !href.startsWith('//');
+                    if (tag === 'A' && isNavigableHref && isSameOrigin) {
+                        el.click?.();
+                        return { ok: true, message: `Navigated to ${href}` };
+                    }
                     return { ok: false, message: `Could not reveal menu: ${revealRes.message}` };
                 }
             }

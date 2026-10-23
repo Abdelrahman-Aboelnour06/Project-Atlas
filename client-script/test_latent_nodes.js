@@ -782,6 +782,38 @@ testAsync('Executor execute self-healing: clicking latent node triggers reveal o
   assert.strictEqual(childClicked, true, 'Target child must be clicked after reveal');
 });
 
+testAsync('Executor execute self-healing: fallback to direct click on same-origin <a href> when reveal fails', async () => {
+  const { body } = setupMockDocument();
+
+  let linkClicked = false;
+  const toggle = new MockElement('button', { id: 'hover-menu-toggle', 'data-atlas-id': 'el_hov_toggle' }, 'Menu');
+  // Pure CSS hover menu: clicking the toggle does NOT reveal the target link
+  const targetLink = new MockElement('a', {
+    id: 'latent-nav-link',
+    href: '/services/inquiry.html',
+    'data-atlas-id': 'el_latent_link',
+    'data-atlas-reveal-via': 'el_hov_toggle',
+    style: 'display:none',
+  }, 'Inquiry Link');
+
+  targetLink.addEventListener('click', () => {
+    linkClicked = true;
+  });
+
+  body.appendChild(toggle);
+  body.appendChild(targetLink);
+
+  const res = await AtlasExecutor.execute({
+    status: 'ok',
+    action: 'click',
+    element_id: 'el_latent_link',
+    message: 'Click latent link',
+  }, { skipConfirmation: true });
+
+  assert.strictEqual(res.ok, true, 'Fallback link click must succeed when reveal fails');
+  assert.strictEqual(linkClicked, true, 'Latent <a href> click() must be invoked');
+});
+
 test('Breadcrumb isolation: real ancestor triggers only, never sibling menus', () => {
   const { body } = setupMockDocument();
 
