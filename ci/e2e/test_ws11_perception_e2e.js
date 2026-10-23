@@ -214,6 +214,136 @@ async function runSuite() {
     record('same_tab: true navigated the current tab to target URL', finalUrl.includes('portal-tiles.html'), `got ${finalUrl}`);
     record('No extra browser tabs/pages opened in context', context.pages().length === 1, `pages: ${context.pages().length}`);
 
+    // ────────────────────────────────────────────────────────────────────────
+    // TEST 5: B1/B2/B3 Non-Dialog Heuristic Overlays (portal-overlay-form.html)
+    // ────────────────────────────────────────────────────────────────────────
+    console.log('\n[Test 5] Testing non-dialog heuristic overlays (Pattern A & Pattern B)...');
+    await page.goto(`${baseUrl}/portal-overlay-form.html`, { waitUntil: 'domcontentloaded' });
+    await page.addScriptTag({ path: path.join(ROOT_DIR, 'client-script/dom-serializer.js') });
+    await page.addScriptTag({ path: path.join(ROOT_DIR, 'client-script/executor.js') });
+
+    // 5.1 Negative cases: Fixed header search, fixed side nav filter, fixed cookie bar
+    const initialOverlayNodes = await page.evaluate(() => {
+      const modalInfo = window.AtlasSerializer.getActiveModalInfo();
+      const nodes = window.AtlasSerializer.serialize();
+      return { modalInfo, nodes };
+    });
+
+    record('Negative case: No modal detected on initial load with header/nav/cookiebar', initialOverlayNodes.modalInfo === null);
+    const anyInitialBlocked = initialOverlayNodes.nodes.some((n) => n.blocked_by_modal);
+    const anyInitialInModal = initialOverlayNodes.nodes.some((n) => n.in_modal);
+    record('Initial nodes have blocked_by_modal: false', anyInitialBlocked === false);
+    record('Initial nodes have in_modal: false', anyInitialInModal === false);
+
+    // Save initial node IDs for pre-existing controls to verify ID stability
+    const headerNode = initialOverlayNodes.nodes.find((n) => (n.placeholder || '').includes('Search government services'));
+    const navNode = initialOverlayNodes.nodes.find((n) => (n.placeholder || '').includes('Filter category links'));
+    const licensingLinkNode = initialOverlayNodes.nodes.find((n) => (n.resolved_label || '').includes('Licensing'));
+    const openBtnANode = initialOverlayNodes.nodes.find((n) => (n.resolved_label || '').includes('Pattern A'));
+    const openBtnBNode = initialOverlayNodes.nodes.find((n) => (n.resolved_label || '').includes('Pattern B'));
+
+    record('Pre-existing controls identified with Atlas IDs', Boolean(headerNode && navNode && licensingLinkNode && openBtnANode && openBtnBNode));
+    const preIds = {
+      header: headerNode?.id,
+      nav: navNode?.id,
+      licensing: licensingLinkNode?.id,
+      openA: openBtnANode?.id,
+      openB: openBtnBNode?.id,
+    };
+
+    // 5.2 Pattern A: Bootstrap-style fixed wrapper covering >= 60% viewport
+    console.log('\n  [5.2] Testing Pattern A (fixed wrapper with centered card)...');
+    const openAResult = await page.evaluate(async (btnId) => {
+      return await window.AtlasExecutor.executeStep({
+        action: 'click',
+        element_id: btnId,
+        description: 'Open Pattern A Overlay',
+      });
+    }, openBtnANode.id);
+
+    record('Pattern A open returned ok: true', openAResult && openAResult.ok === true);
+    record('Pattern A open reports modal_opened: true', openAResult && openAResult.modal_opened === true);
+
+    const postANodes = await page.evaluate(() => window.AtlasSerializer.serialize());
+    const applicantNameNode = postANodes.find((n) => n.name === 'applicant_name' || (n.resolved_label || '').includes('Full Name'));
+    const permitCategoryNode = postANodes.find((n) => n.name === 'permit_category' || (n.resolved_label || '').includes('Permit Category'));
+    const submitPermitBtn = postANodes.find((n) => (n.resolved_label || '').includes('Submit Permit'));
+
+    record('Pattern A form field found in serialization', Boolean(applicantNameNode && submitPermitBtn));
+    record('Pattern A form fields have in_modal: true', applicantNameNode?.in_modal === true && submitPermitBtn?.in_modal === true);
+    record('Pattern A form fields have blocked_by_modal: false', applicantNameNode?.blocked_by_modal === false);
+
+    // Form fields must come first in serialization order
+    const firstNonModalA = postANodes.findIndex((n) => !n.in_modal);
+    const lastModalA = postANodes.reduce((last, n, idx) => (n.in_modal ? idx : last), -1);
+    record('Pattern A modal elements emitted first', firstNonModalA === -1 || lastModalA < firstNonModalA);
+
+    // Elements outside Pattern A modal must have blocked_by_modal: true
+    const postAHeader = postANodes.find((n) => n.id === preIds.header);
+    const postALicensing = postANodes.find((n) => n.id === preIds.licensing);
+    record('Outside elements have blocked_by_modal: true during Pattern A', postAHeader?.blocked_by_modal === true && postALicensing?.blocked_by_modal === true);
+    record('Pre-existing node IDs remain unchanged after Pattern A opened', postAHeader?.id === preIds.header && postALicensing?.id === preIds.licensing);
+
+    // Close Pattern A
+    await page.evaluate(() => {
+      document.getElementById('pattern-a-modal').style.display = 'none';
+    });
+
+    // 5.3 Pattern B: Sibling backdrop >= 60% + centered card < 60%
+    console.log('\n  [5.3] Testing Pattern B (sibling backdrop + centered card)...');
+    const openBResult = await page.evaluate(async (btnId) => {
+      return await window.AtlasExecutor.executeStep({
+        action: 'click',
+        element_id: btnId,
+        description: 'Open Pattern B Overlay',
+      });
+    }, openBtnBNode.id);
+
+    record('Pattern B open returned ok: true', openBResult && openBResult.ok === true);
+    record('Pattern B open reports modal_opened: true', openBResult && openBResult.modal_opened === true);
+
+    const postBNodes = await page.evaluate(() => window.AtlasSerializer.serialize());
+    const feedbackTextNode = postBNodes.find((n) => n.name === 'comments' || (n.resolved_label || '').includes('Feedback'));
+    const submitFeedbackBtn = postBNodes.find((n) => (n.resolved_label || '').includes('Send Feedback'));
+
+    record('Pattern B form field found in serialization', Boolean(feedbackTextNode && submitFeedbackBtn));
+    record('Pattern B form fields have in_modal: true', feedbackTextNode?.in_modal === true && submitFeedbackBtn?.in_modal === true);
+    record('Pattern B form fields have blocked_by_modal: false', feedbackTextNode?.blocked_by_modal === false);
+
+    // Pattern B modal elements must come first
+    const firstNonModalB = postBNodes.findIndex((n) => !n.in_modal);
+    const lastModalB = postBNodes.reduce((last, n, idx) => (n.in_modal ? idx : last), -1);
+    record('Pattern B modal elements emitted first', firstNonModalB === -1 || lastModalB < firstNonModalB);
+
+    // Outside elements have blocked_by_modal: true
+    const postBHeader = postBNodes.find((n) => n.id === preIds.header);
+    const postBNav = postBNodes.find((n) => n.id === preIds.nav);
+    record('Outside elements have blocked_by_modal: true during Pattern B', postBHeader?.blocked_by_modal === true && postBNav?.blocked_by_modal === true);
+    record('Pre-existing node IDs remain unchanged after Pattern B opened', postBHeader?.id === preIds.header && postBNav?.id === preIds.nav);
+
+    // 5.4 Viewport 800px wide with Atlas sidebar mounted
+    console.log('\n  [5.4] Testing viewport 800px with Atlas sidebar mounted...');
+    await page.setViewportSize({ width: 800, height: 600 });
+    await page.evaluate(() => {
+      const host = document.createElement('div');
+      host.id = 'atlas-sidebar-host';
+      host.style.position = 'fixed';
+      host.style.top = '0';
+      host.style.right = '0';
+      host.style.width = '348px';
+      host.style.height = '100%';
+      host.style.background = '#0f172a';
+      host.style.zIndex = '99999';
+      document.body.appendChild(host);
+    });
+
+    const sidebarNodes = await page.evaluate(() => window.AtlasSerializer.serialize());
+    const sidebarFeedbackNode = sidebarNodes.find((n) => n.name === 'comments');
+    record('Pattern B card still detected as modal when 348px sidebar mounted at 800px viewport', Boolean(sidebarFeedbackNode && sidebarFeedbackNode.in_modal === true));
+    record('Modal elements still emitted first with sidebar mounted', sidebarNodes[0]?.in_modal === true);
+    const sidebarHostEmitted = sidebarNodes.some((n) => n.id === 'atlas-sidebar-host' || (n.resolved_label || '').includes('atlas-sidebar'));
+    record('Atlas sidebar host node is strictly excluded from serialization', sidebarHostEmitted === false);
+
   } finally {
     if (browser) await browser.close();
     server.close();

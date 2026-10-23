@@ -114,8 +114,12 @@ const doClick = (el, options = {}) => {
 
     const sameTab = Boolean(options.sameTab);
     const link = el.tagName === 'A' ? el : (el.closest?.('a[href]') || el.querySelector?.('a[href]'));
+    let originalTarget = null;
+    let hadTarget = false;
     if (link) {
         if (sameTab) {
+            hadTarget = link.hasAttribute ? link.hasAttribute('target') : (link.getAttribute('target') !== null);
+            originalTarget = link.getAttribute('target');
             link.setAttribute('target', '_self');
             link.target = '_self';
         } else {
@@ -123,18 +127,30 @@ const doClick = (el, options = {}) => {
         }
     }
 
-    dispatchMouseSequence(el, 1);
-    el.click();
+    try {
+        dispatchMouseSequence(el, 1);
+        el.click();
 
-    if (link && link !== el && link.href) {
-        link.click();
-        return;
-    }
+        if (link && link !== el && link.href) {
+            link.click();
+            return;
+        }
 
-    // SPA child dispatch: try clicking a role=link/button child if present
-    const clickableChild = el.querySelector?.('[role="link"], [role="button"], a[href]');
-    if (clickableChild && clickableChild !== el) {
-        clickableChild.click();
+        // SPA child dispatch: try clicking a role=link/button child if present
+        const clickableChild = el.querySelector?.('[role="link"], [role="button"], a[href]');
+        if (clickableChild && clickableChild !== el) {
+            clickableChild.click();
+        }
+    } finally {
+        if (link && sameTab) {
+            if (hadTarget && originalTarget !== null) {
+                link.setAttribute('target', originalTarget);
+                link.target = originalTarget;
+            } else {
+                link.removeAttribute?.('target');
+                link.target = '';
+            }
+        }
     }
 };
 
@@ -146,8 +162,12 @@ const doOpen = async (el, options = {}) => {
 
     const sameTab = Boolean(options.sameTab);
     const link = el.tagName === 'A' ? el : (el.closest?.('a[href]') || el.querySelector?.('a[href]'));
+    let originalTarget = null;
+    let hadTarget = false;
     if (link) {
         if (sameTab) {
+            hadTarget = link.hasAttribute ? link.hasAttribute('target') : (link.getAttribute('target') !== null);
+            originalTarget = link.getAttribute('target');
             link.setAttribute('target', '_self');
             link.target = '_self';
         } else {
@@ -155,66 +175,78 @@ const doOpen = async (el, options = {}) => {
         }
     }
 
-    // 1. First click in sequence (detail: 1)
-    dispatchMouseSequence(el, 1);
-    el.click();
+    try {
+        // 1. First click in sequence (detail: 1)
+        dispatchMouseSequence(el, 1);
+        el.click();
 
-    await new Promise((r) => setTimeout(r, 60));
+        await new Promise((r) => setTimeout(r, 60));
 
-    // 2. Second click in sequence (detail: 2) + dblclick
-    const rect = el.getBoundingClientRect();
-    const clientX = rect.left + rect.width / 2;
-    const clientY = rect.top + rect.height / 2;
-    const dblInit = {
-        bubbles: true,
-        cancelable: true,
-        view: window,
-        detail: 2,
-        clientX,
-        clientY,
-    };
-    el.dispatchEvent(new PointerEvent('pointerdown', dblInit));
-    el.dispatchEvent(new MouseEvent('mousedown', dblInit));
-    el.dispatchEvent(new PointerEvent('pointerup', dblInit));
-    el.dispatchEvent(new MouseEvent('mouseup', dblInit));
-    el.dispatchEvent(new MouseEvent('click', dblInit));
-    el.dispatchEvent(new MouseEvent('dblclick', dblInit));
+        // 2. Second click in sequence (detail: 2) + dblclick
+        const rect = el.getBoundingClientRect();
+        const clientX = rect.left + rect.width / 2;
+        const clientY = rect.top + rect.height / 2;
+        const dblInit = {
+            bubbles: true,
+            cancelable: true,
+            view: window,
+            detail: 2,
+            clientX,
+            clientY,
+        };
+        el.dispatchEvent(new PointerEvent('pointerdown', dblInit));
+        el.dispatchEvent(new MouseEvent('mousedown', dblInit));
+        el.dispatchEvent(new PointerEvent('pointerup', dblInit));
+        el.dispatchEvent(new MouseEvent('mouseup', dblInit));
+        el.dispatchEvent(new MouseEvent('click', dblInit));
+        el.dispatchEvent(new MouseEvent('dblclick', dblInit));
 
-    // 3. Enter keypress on the element AND on document (apps like Google Drive listen globally)
-    const enterInit = {
-        key: 'Enter',
-        code: 'Enter',
-        keyCode: 13,
-        which: 13,
-        bubbles: true,
-        cancelable: true,
-        view: window,
-    };
-    el.dispatchEvent(new KeyboardEvent('keydown', enterInit));
-    el.dispatchEvent(new KeyboardEvent('keypress', enterInit));
-    el.dispatchEvent(new KeyboardEvent('keyup', enterInit));
-    // Also dispatch on document for apps with global keyboard listeners
-    document.dispatchEvent(new KeyboardEvent('keydown', enterInit));
-    document.dispatchEvent(new KeyboardEvent('keyup', enterInit));
+        // 3. Enter keypress on the element AND on document (apps like Google Drive listen globally)
+        const enterInit = {
+            key: 'Enter',
+            code: 'Enter',
+            keyCode: 13,
+            which: 13,
+            bubbles: true,
+            cancelable: true,
+            view: window,
+        };
+        el.dispatchEvent(new KeyboardEvent('keydown', enterInit));
+        el.dispatchEvent(new KeyboardEvent('keypress', enterInit));
+        el.dispatchEvent(new KeyboardEvent('keyup', enterInit));
+        // Also dispatch on document for apps with global keyboard listeners
+        document.dispatchEvent(new KeyboardEvent('keydown', enterInit));
+        document.dispatchEvent(new KeyboardEvent('keyup', enterInit));
 
-    // 4. If anchor with href — navigate directly (most reliable for links)
-    if (link && link.href) {
-        link.click();
-        return;
-    }
+        // 4. If anchor with href — navigate directly (most reliable for links)
+        if (link && link.href) {
+            link.click();
+            return;
+        }
 
-    // 5. React/SPA child dispatch: for rows in apps like Google Drive where the real
-    //    event listener lives on a specific child element (aria name cell, icon div, etc.)
-    //    rather than the row container itself.
-    await new Promise((r) => setTimeout(r, 40));
-    const clickableChild = el.querySelector('[role="link"], [role="button"], a[href]') ||
-        el.querySelector('[data-id], [data-itemid], [data-entryid]');
-    if (clickableChild && clickableChild !== el) {
-        clickableChild.focus();
-        clickableChild.click();
-        clickableChild.dispatchEvent(new MouseEvent('dblclick', {
-            bubbles: true, cancelable: true, view: window, detail: 2, clientX, clientY,
-        }));
+        // 5. React/SPA child dispatch: for rows in apps like Google Drive where the real
+        //    event listener lives on a specific child element (aria name cell, icon div, etc.)
+        //    rather than the row container itself.
+        await new Promise((r) => setTimeout(r, 40));
+        const clickableChild = el.querySelector('[role="link"], [role="button"], a[href]') ||
+            el.querySelector('[data-id], [data-itemid], [data-entryid]');
+        if (clickableChild && clickableChild !== el) {
+            clickableChild.focus();
+            clickableChild.click();
+            clickableChild.dispatchEvent(new MouseEvent('dblclick', {
+                bubbles: true, cancelable: true, view: window, detail: 2, clientX, clientY,
+            }));
+        }
+    } finally {
+        if (link && sameTab) {
+            if (hadTarget && originalTarget !== null) {
+                link.setAttribute('target', originalTarget);
+                link.target = originalTarget;
+            } else {
+                link.removeAttribute?.('target');
+                link.target = '';
+            }
+        }
     }
 };
 

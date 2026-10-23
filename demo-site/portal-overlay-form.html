@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Portal Non-Dialog Overlay Forms (Pattern A & B)</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: #f4f6f8;
+      color: #333;
+    }
+    #top-header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 60px;
+      background-color: #1e293b;
+      color: white;
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      z-index: 100;
+      box-sizing: border-box;
+      gap: 15px;
+    }
+    #side-nav {
+      position: fixed;
+      top: 60px;
+      left: 0;
+      width: 220px;
+      bottom: 50px;
+      background-color: #ffffff;
+      border-right: 1px solid #e2e8f0;
+      padding: 16px;
+      z-index: 90;
+      box-sizing: border-box;
+    }
+    #cookie-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 50px;
+      background-color: #0f172a;
+      color: #cbd5e1;
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      z-index: 100;
+      box-sizing: border-box;
+    }
+    #main-content {
+      margin-top: 70px;
+      margin-left: 240px;
+      margin-bottom: 60px;
+      padding: 24px;
+    }
+    .service-btn {
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      padding: 10px 18px;
+      border-radius: 6px;
+      font-size: 15px;
+      cursor: pointer;
+      margin-right: 12px;
+      margin-bottom: 12px;
+    }
+    .modal-wrapper-a {
+      display: none;
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(15, 23, 42, 0.6);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-backdrop-b {
+      display: none;
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(15, 23, 42, 0.6);
+      z-index: 1040;
+    }
+    .modal-card-b {
+      display: none;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 440px;
+      background: #fff;
+      border-radius: 8px;
+      padding: 24px;
+      z-index: 1050;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+    }
+    .modal-card-inner {
+      background: #fff;
+      border-radius: 8px;
+      padding: 24px;
+      width: 440px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+    }
+    .form-group {
+      margin-bottom: 14px;
+    }
+    .form-group label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
+      box-sizing: border-box;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Negative Case 1: Fixed top header with a search input -->
+  <header id="top-header">
+    <strong>National Portal</strong>
+    <input id="header-search-input" type="search" placeholder="Search government services..." aria-label="Portal Search" />
+  </header>
+
+  <!-- Negative Case 2: Fixed side nav with a search box -->
+  <nav id="side-nav" aria-label="Service Categories">
+    <h3>Categories</h3>
+    <input id="nav-filter-input" type="text" placeholder="Filter category links..." aria-label="Filter Categories" />
+    <ul style="list-style: none; padding: 0; margin-top: 12px;">
+      <li><a id="nav-licensing-link" href="#licensing">Licensing</a></li>
+      <li><a id="nav-civil-link" href="#civil">Civil Affairs</a></li>
+    </ul>
+  </nav>
+
+  <!-- Negative Case 3: Fixed bottom cookie bar with a checkbox -->
+  <div id="cookie-bar" role="region" aria-label="Cookie Preferences">
+    <label>
+      <input id="cookie-consent-checkbox" type="checkbox" />
+      I accept essential cookies and analytical telemetry
+    </label>
+  </div>
+
+  <!-- Main Content Area -->
+  <main id="main-content">
+    <h1>Government Permitting & Citizen Feedback</h1>
+    <p>Please select an electronic service procedure from the options below:</p>
+
+    <div style="margin: 20px 0;">
+      <button id="open-pattern-a-btn" class="service-btn" type="button">Apply for Building Permit (Pattern A)</button>
+      <button id="open-pattern-b-btn" class="service-btn" type="button">Submit Public Feedback (Pattern B)</button>
+    </div>
+
+    <div id="status-card" style="padding: 16px; background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; width: 400px;">
+      <h4>Application Tracking</h4>
+      <p id="tracking-status-text">No active service request in progress.</p>
+    </div>
+  </main>
+
+  <!-- PATTERN A: Fixed wrapper covering >= 60% of viewport with centered form card -->
+  <div id="pattern-a-modal" class="modal-wrapper-a">
+    <div class="modal-card-inner">
+      <h2>Building Permit Application</h2>
+      <form id="permit-form">
+        <div class="form-group">
+          <label for="permit-applicant-name">Applicant Full Name</label>
+          <input id="permit-applicant-name" name="applicant_name" type="text" placeholder="Full Name" required />
+        </div>
+        <div class="form-group">
+          <label for="permit-category-select">Permit Category</label>
+          <select id="permit-category-select" name="permit_category">
+            <option value="residential">Residential Construction</option>
+            <option value="commercial">Commercial Renovation</option>
+          </select>
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 8px;">
+          <button id="close-pattern-a-btn" type="button" onclick="document.getElementById('pattern-a-modal').style.display='none'">Cancel</button>
+          <button id="submit-permit-btn" class="service-btn" type="button" onclick="document.getElementById('tracking-status-text').textContent='Permit application submitted successfully.';document.getElementById('pattern-a-modal').style.display='none';">Submit Permit</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- PATTERN B: Separate fixed backdrop >= 60% viewport + separate centered card < 60% viewport -->
+  <div id="pattern-b-backdrop" class="modal-backdrop-b"></div>
+  <div id="pattern-b-card" class="modal-card-b">
+    <h2>Citizen Service Feedback</h2>
+    <form id="feedback-form">
+      <div class="form-group">
+        <label for="feedback-comments-input">Your Feedback Comments</label>
+        <textarea id="feedback-comments-input" name="comments" rows="3" placeholder="Provide details regarding your service experience..."></textarea>
+      </div>
+      <div style="display: flex; justify-content: flex-end; gap: 8px;">
+        <button id="close-pattern-b-btn" type="button" onclick="document.getElementById('pattern-b-backdrop').style.display='none';document.getElementById('pattern-b-card').style.display='none'">Cancel</button>
+        <button id="submit-feedback-btn" class="service-btn" type="button" onclick="document.getElementById('tracking-status-text').textContent='Feedback received. Thank you!';document.getElementById('pattern-b-backdrop').style.display='none';document.getElementById('pattern-b-card').style.display='none';">Send Feedback</button>
+      </div>
+    </form>
+  </div>
+
+  <script>
+    document.getElementById('open-pattern-a-btn').addEventListener('click', function() {
+      document.getElementById('pattern-a-modal').style.display = 'flex';
+    });
+    document.getElementById('open-pattern-b-btn').addEventListener('click', function() {
+      document.getElementById('pattern-b-backdrop').style.display = 'block';
+      document.getElementById('pattern-b-card').style.display = 'block';
+    });
+  </script>
+</body>
+</html>

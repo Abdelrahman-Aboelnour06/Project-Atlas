@@ -327,6 +327,45 @@ test('frames-host.html contains 2 same-origin iframes with child frame link targ
   assert((f2.match(/<a\b[^>]*href/gi) || []).length >= 2, 'Frame 2 must contain links');
 });
 
+testAsync('portal-overlay-form.html: negative controls, Pattern A and Pattern B trigger displays', async () => {
+  const content = fs.readFileSync(path.join(DEMO_DIR, 'portal-overlay-form.html'), 'utf8');
+  assert(content.includes('id="top-header"'), 'Header must be present');
+  assert(content.includes('id="side-nav"'), 'Side nav must be present');
+  assert(content.includes('id="cookie-bar"'), 'Cookie bar must be present');
+  assert(content.includes('id="pattern-a-modal"'), 'Pattern A modal must be present');
+  assert(content.includes('id="pattern-b-backdrop"'), 'Pattern B backdrop must be present');
+  assert(content.includes('id="pattern-b-card"'), 'Pattern B card must be present');
+
+  const elements = {
+    'open-pattern-a-btn': { listeners: {}, addEventListener: function(e, fn) { this.listeners[e] = fn; }, click: function() { this.listeners['click']?.(); } },
+    'open-pattern-b-btn': { listeners: {}, addEventListener: function(e, fn) { this.listeners[e] = fn; }, click: function() { this.listeners['click']?.(); } },
+    'pattern-a-modal': { style: { display: 'none' } },
+    'pattern-b-backdrop': { style: { display: 'none' } },
+    'pattern-b-card': { style: { display: 'none' } },
+    'tracking-status-text': { textContent: '' },
+  };
+
+  const sandbox = {
+    document: {
+      getElementById: (id) => elements[id] || null,
+    },
+    console,
+  };
+
+  const scriptMatch = content.match(/<script>([\s\S]*?)<\/script>/i);
+  assert(scriptMatch, 'portal-overlay-form.html must contain <script>');
+  vm.runInNewContext(scriptMatch[1], sandbox);
+
+  // Trigger Pattern A
+  elements['open-pattern-a-btn'].click();
+  assert.strictEqual(elements['pattern-a-modal'].style.display, 'flex', 'Pattern A opened with flex display');
+
+  // Trigger Pattern B
+  elements['open-pattern-b-btn'].click();
+  assert.strictEqual(elements['pattern-b-backdrop'].style.display, 'block', 'Pattern B backdrop opened with block display');
+  assert.strictEqual(elements['pattern-b-card'].style.display, 'block', 'Pattern B card opened with block display');
+});
+
 (async () => {
   for (const t of asyncQueue) {
     await t();

@@ -389,9 +389,11 @@ test('L7: Heuristic fixed overlay covering viewport with inputs is recognized wi
   const nodes = AtlasSerializer.serialize();
   assert(nodes.length >= 3, 'Must serialize both overlay and background nodes (overlay does not hide page)');
   assert.strictEqual(nodes[0].in_modal, true, 'Overlay node emitted first with in_modal: true');
+  assert.strictEqual(nodes[0].blocked_by_modal, false, 'Overlay node inside modal has blocked_by_modal: false');
   assert.strictEqual(nodes[1].in_modal, true, 'Second overlay node emitted with in_modal: true');
+  assert.strictEqual(nodes[1].blocked_by_modal, false, 'Second overlay node inside modal has blocked_by_modal: false');
   assert.strictEqual(nodes[2].in_modal, false, 'Background node in_modal: false');
-  assert.strictEqual(nodes[2].blocked_by_modal, false, 'Background node not blocked by heuristic overlay');
+  assert.strictEqual(nodes[2].blocked_by_modal, true, 'Background node has blocked_by_modal: true for heuristic overlay');
 });
 
 console.log(`\nTrack 1f Test Summary: ${passed} passed, ${failed} failed.\n`);

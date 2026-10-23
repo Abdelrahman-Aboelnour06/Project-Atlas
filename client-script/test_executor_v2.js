@@ -130,8 +130,8 @@ function testAsync(name, fn) {
   });
 }
 
-test('L3: doClick with sameTab: true overrides target="_blank" to "_self" and triggers navigation in same tab', () => {
-  let clicked = false;
+test('L3 & B5: doClick with sameTab: true overrides target to _self during dispatch and restores original target afterwards', () => {
+  let clickedTarget = null;
   global.window = {
     location: {
       href: 'http://localhost/origin',
@@ -145,7 +145,7 @@ test('L3: doClick with sameTab: true overrides target="_blank" to "_self" and tr
     attrs: new Map([['target', '_blank'], ['href', 'http://localhost/target-page']]),
     focus: () => {},
     click: function() {
-      clicked = true;
+      clickedTarget = this.target;
       if (this.target === '_self') {
         global.window.location.href = this.href;
       }
@@ -153,15 +153,41 @@ test('L3: doClick with sameTab: true overrides target="_blank" to "_self" and tr
     classList: { add: () => {}, remove: () => {} },
     getBoundingClientRect: () => ({ left: 0, top: 0, width: 50, height: 20 }),
     dispatchEvent: () => {},
+    hasAttribute: function(k) { return this.attrs.has(k); },
     getAttribute: function(k) { return this.attrs.get(k) || null; },
     setAttribute: function(k, v) { this.attrs.set(k, String(v)); this[k] = v; },
+    removeAttribute: function(k) { this.attrs.delete(k); this.target = ''; },
   };
 
   AtlasExecutor.doClick(mockLink, { sameTab: true });
-  assert.strictEqual(mockLink.target, '_self', 'Target attribute must be overridden to _self');
-  assert.strictEqual(mockLink.getAttribute('target'), '_self', 'Target attribute must be _self');
-  assert.strictEqual(clicked, true, 'Link click was dispatched');
+  assert.strictEqual(clickedTarget, '_self', 'Target attribute was _self during click dispatch');
   assert.strictEqual(global.window.location.href, 'http://localhost/target-page', 'Navigates in same tab via target=_self click');
+  assert.strictEqual(mockLink.target, '_blank', 'Target property must be restored to _blank after click');
+  assert.strictEqual(mockLink.getAttribute('target'), '_blank', 'Target attribute must be restored to _blank after click');
+
+  // Also test anchor with NO original target attribute
+  let clickedNoTarget = null;
+  const noTargetLink = {
+    tagName: 'A',
+    href: 'http://localhost/other-page',
+    target: '',
+    attrs: new Map([['href', 'http://localhost/other-page']]),
+    focus: () => {},
+    click: function() {
+      clickedNoTarget = this.target;
+    },
+    classList: { add: () => {}, remove: () => {} },
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 50, height: 20 }),
+    dispatchEvent: () => {},
+    hasAttribute: function(k) { return this.attrs.has(k); },
+    getAttribute: function(k) { return this.attrs.get(k) || null; },
+    setAttribute: function(k, v) { this.attrs.set(k, String(v)); this[k] = v; },
+    removeAttribute: function(k) { this.attrs.delete(k); this.target = ''; },
+  };
+
+  AtlasExecutor.doClick(noTargetLink, { sameTab: true });
+  assert.strictEqual(clickedNoTarget, '_self', 'Target was _self during dispatch for link without target');
+  assert.strictEqual(noTargetLink.hasAttribute('target'), false, 'Target attribute removed if originally absent');
 });
 
 testAsync('L11: execute returns structured change summary in result and getLastActionResult', async () => {

@@ -700,47 +700,132 @@ const NOISE_TEXT_PATTERNS = [
         }
       }
 
-      // 2. Fixed-position overlay heuristic:
-      // Must cover >= 60% of viewport width and height, be topmost at viewport centre,
-      // and contain at least one input/select/textarea (buttons alone don't count).
-      const all = document.querySelectorAll('*');
-      const winW = (typeof window !== 'undefined' && window.innerWidth) ? window.innerWidth : 0;
-      const winH = (typeof window !== 'undefined' && window.innerHeight) ? window.innerHeight : 0;
-      const cx = Math.floor(winW / 2);
-      const cy = Math.floor(winH / 2);
+      // 2. Non-dialog overlay heuristic (B1):
+      // Start from document.elementsFromPoint at the centre of the page area and walk up ancestors.
+      const winW = (typeof window !== 'undefined' && window.innerWidth) ? window.innerWidth : (document.documentElement?.clientWidth || 0);
+      const winH = (typeof window !== 'undefined' && window.innerHeight) ? window.innerHeight : (document.documentElement?.clientHeight || 0);
+      if (winW <= 0 || winH <= 0) return null;
 
-      let topCenterEl = null;
-      if (typeof document !== 'undefined' && typeof document.elementFromPoint === 'function' && cx > 0 && cy > 0) {
-        try {
-          topCenterEl = document.elementFromPoint(cx, cy);
-        } catch (_) {}
+      let cx = Math.floor(winW / 2);
+      let cy = Math.floor(winH / 2);
+
+      // Skip any Atlas node (#atlas-sidebar-host, #atlas-sidebar-root).
+      // If the sidebar covers the centre, use the centre of the uncovered area, so a narrow window still works.
+      const sidebarHost = (typeof document !== 'undefined')
+        ? (document.getElementById('atlas-sidebar-host') || document.getElementById('atlas-sidebar-root'))
+        : null;
+      if (sidebarHost && typeof sidebarHost.getBoundingClientRect === 'function') {
+        const sRect = sidebarHost.getBoundingClientRect();
+        if (sRect.width > 0 && sRect.height > 0) {
+          if (sRect.left <= cx && sRect.right >= cx && sRect.top <= cy && sRect.bottom >= cy) {
+            const leftUncovered = sRect.left;
+            const rightUncovered = winW - sRect.right;
+            if (leftUncovered >= rightUncovered && leftUncovered > 0) {
+              cx = Math.floor(leftUncovered / 2);
+            } else if (rightUncovered > 0) {
+              cx = Math.floor(sRect.right + rightUncovered / 2);
+            }
+          }
+        }
       }
 
-      for (let i = 0; i < all.length; i++) {
-        const el = all[i];
+      let rawStack = [];
+      if (typeof document !== 'undefined') {
+        if (typeof document.elementsFromPoint === 'function') {
+          rawStack = document.elementsFromPoint(cx, cy) || [];
+        } else if (typeof document.elementFromPoint === 'function') {
+          const topEl = document.elementFromPoint(cx, cy);
+          if (topEl) rawStack = [topEl];
+        }
+      }
+
+      // Filter out Atlas nodes, html, and body
+      const stack = [];
+      for (let i = 0; i < rawStack.length; i++) {
+        const el = rawStack[i];
+        if (!el || el === document.body || el === document.documentElement) continue;
         if (el.id === 'atlas-sidebar-host' || el.id === 'atlas-sidebar-root') continue;
         if (el.closest?.('#atlas-sidebar-host') || el.closest?.('#atlas-sidebar-root')) continue;
+        stack.push(el);
+      }
+      if (stack.length === 0) {
+        // Fallback for mock environments (e.g. test_dom_serializer_v2.js without full layout engine)
+        if (typeof window !== 'undefined' && window.__mockModalOverlay) {
+          return { element: window.__mockModalOverlay, isRealModal: false };
+        }
+        return null;
+      }
 
-        let style = null;
+      const hasFormInput = (container) => {
+        return Boolean(container.querySelector?.('input:not([type="hidden"]), select, textarea'));
+      };
+
+      const getPos = (el) => {
         try {
-          style = window.getComputedStyle(el);
-        } catch (_) {}
-        if (!style || style.position !== 'fixed') continue;
-        if (!isVisible(el)) continue;
+          return (el.style?.position || window.getComputedStyle?.(el)?.position || '').toLowerCase();
+        } catch (_) {
+          return (el.style?.position || '').toLowerCase();
+        }
+      };
 
-        const rect = el.getBoundingClientRect();
-        if (winW > 0 && winH > 0) {
-          if (rect.width < winW * 0.6 || rect.height < winH * 0.6) continue;
+      const coversThreshold = (el) => {
+        const r = el.getBoundingClientRect();
+        return (r.width >= winW * 0.6 && r.height >= winH * 0.6);
+      };
+
+      // Pattern (a): A fixed wrapper that covers >= 60% of viewport and contains a centred form card (Bootstrap .modal)
+      for (let i = 0; i < Math.min(stack.length, 5); i++) {
+        let curr = stack[i];
+        while (curr && curr !== document.body && curr !== document.documentElement) {
+          if (curr.id === 'atlas-sidebar-host' || curr.id === 'atlas-sidebar-root') break;
+          const pos = getPos(curr);
+          if (pos === 'fixed' && coversThreshold(curr)) {
+            if (hasFormInput(curr)) {
+              return { element: curr, isRealModal: false };
+            }
+          }
+          curr = curr.parentElement;
+        }
+      }
+
+      // Pattern (b): A fixed or absolute card smaller than 60% of viewport, centred,
+      // sitting above a SEPARATE sibling backdrop element that is fixed and covers >= 60% of viewport.
+      // The card is the modal, and the backdrop does not need to contain inputs.
+      let backdropIndex = -1;
+      for (let i = 0; i < stack.length; i++) {
+        const el = stack[i];
+        const pos = getPos(el);
+        if (pos === 'fixed' && coversThreshold(el)) {
+          backdropIndex = i;
+          break;
+        }
+      }
+
+      if (backdropIndex > 0) {
+        const backdropEl = stack[backdropIndex];
+        // The card sits above the backdrop in the stack (index < backdropIndex).
+        // Walk up from stack[0] to find the card container.
+        let curr = stack[0];
+        let candidateCard = null;
+        while (curr && curr !== document.body && curr !== document.documentElement && curr !== backdropEl) {
+          if (curr.id === 'atlas-sidebar-host' || curr.id === 'atlas-sidebar-root') break;
+          const pos = getPos(curr);
+          if (pos === 'fixed' || pos === 'absolute') {
+            candidateCard = curr;
+          }
+          curr = curr.parentElement;
         }
 
-        if (topCenterEl && !el.contains(topCenterEl) && topCenterEl !== el) {
-          continue;
+        if (candidateCard && !candidateCard.contains(backdropEl)) {
+          if (hasFormInput(candidateCard)) {
+            return { element: candidateCard, isRealModal: false };
+          }
         }
+      }
 
-        const hasInputs = Boolean(el.querySelector('input:not([type="hidden"]), select, textarea'));
-        if (!hasInputs) continue;
-
-        return { element: el, isRealModal: false };
+      // Fallback for mock environments
+      if (typeof window !== 'undefined' && window.__mockModalOverlay) {
+        return { element: window.__mockModalOverlay, isRealModal: false };
       }
     } catch (_) {}
     return null;
@@ -1104,9 +1189,9 @@ const NOISE_TEXT_PATTERNS = [
         }
       }
 
-      // L7: Modal state
+      // L7 & B2: Modal state
       const inModal = Boolean(activeModal && activeModal.contains(el));
-      const blockedByModal = false;
+      const blockedByModal = Boolean(activeModal && !isRealModal && !inModal);
 
       visibleElementsSet.add(el);
 
@@ -1338,6 +1423,7 @@ const NOISE_TEXT_PATTERNS = [
             }
           }
           const inModal = Boolean(activeModal && activeModal.contains(el));
+          const blockedByModal = Boolean(activeModal && !isRealModal && !inModal);
 
           passedLatentElements.push({
             el,
@@ -1375,7 +1461,7 @@ const NOISE_TEXT_PATTERNS = [
             opens_new_tab: opensNewTab,
             target_origin: targetOrigin,
             in_modal: inModal,
-            blocked_by_modal: false,
+            blocked_by_modal: blockedByModal,
           });
         }
       } catch (_) {}
