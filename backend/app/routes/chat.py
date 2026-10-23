@@ -130,6 +130,7 @@ class ChatRequest(BaseModel):
     dom_map: Optional[List[Dict[str, Any]]] = None
     history: Optional[List[Dict[str, str]]] = None
     language: Optional[str] = Field(default=None, max_length=32, description="Preferred language locale e.g. 'ar-EG'")
+    contract_version: int = Field(default=2, description="Contract version: 1 (legacy), 2 (multi-tab aware), 3 (exploration & rich inputs/routing)")
 
 
 class ChatResponse(BaseModel):
@@ -144,6 +145,145 @@ class ChatResponse(BaseModel):
         default=None,
         description="Initial goal state seed for the client goal loop when intent_route is 'goal'",
     )
+
+
+# ── Universal Intent Classification Regex & Helpers (WS5 / Prime Directive) ───
+GOAL_TASK_PATTERNS = [
+    # English task and workflow phrasing
+    r"\b(i want to|i want|i need to|i need|i'd like to|i would like to|help me to|can you help me)\b",
+    r"\b(inquire about|inquire|inquiry|check my|check on|look up|lookup)\b",
+    r"\b(pay for|pay my|pay|make a payment|pay bill)\b",
+    r"\b(apply for|apply|submit application|sign up for|sign up|register for|register)\b",
+    r"\b(book|reserve|schedule an appointment|renew|file a complaint)\b",
+    # Arabic task & workflow phrasing (MSA and Egyptian Colloquial)
+    r"(عايز|عاوز|عاوزه|عايزة|حابب|ياريت|نفسي)",
+    r"(اريد|أريد|احتاج|أحتاج|محتاج|محتاجة|وديني|ساعدني)",
+    r"(استعلام|استفسار|استعلم|استفسر|معرفة|فحص|كشف)",
+    r"(ادفع|دفع|تسديد|سدد)",
+    r"(قدم|تقديم|طلب|تسجيل|سجل|اشتراك|اشترك)",
+    r"(تجديد|حجز|احجز|شكوى|شكاوى|مخالفات|مرور|رخصة|رخص|بطاقة)",
+]
+
+QUESTION_PATTERNS = [
+    r"^(what|where|who|why|how|when|is there|are there|can i find|tell me about|summarize|explain|describe)\b",
+    r"\b(what is|what does|where is|where can|how does|how do i|tell me about this)\b",
+    r"^(ما|ماذا|ما هو|ما هي|اين|أين|كيف|لماذا|ليه|ازاي|إزاي|فين|مين|هل|عن ماذا|اشرح|وضح|عرفني|ملخص)\b",
+    r"\b(عن ايه|بيتكلم عن ايه|عبارة عن ايه|معلومات عن)\b",
+]
+
+
+PAGE_INQUIRY_PHRASES = (
+    "what do you see", "what you see", "what's visible", "what is visible",
+    "what do you notice", "what's here", "what is here", "what is on this",
+    "what's on this", "what is this", "what page", "summarize", "overview",
+    "describe", "tell me about", "what can i click", "what are my files",
+    "what files", "what folders", "show me what", "read the page", "where am i"
+)
+
+
+def _is_page_inquiry(user_message: str) -> bool:
+    lower_msg = user_message.lower()
+    return any(q in lower_msg for q in PAGE_INQUIRY_PHRASES)
+
+
+def _is_explicit_goal_request(user_message: str) -> bool:
+    """Detects multi-step task intent, service inquiries, applications, and payments."""
+    import re
+    norm_msg = agentic_planner._normalize_text(user_message)
+    lower_msg = user_message.lower()
+    for pat in GOAL_TASK_PATTERNS:
+        if re.search(pat, lower_msg, re.IGNORECASE) or re.search(pat, norm_msg):
+            return True
+    return False
+
+
+def _is_informational_question(user_message: str) -> bool:
+    """Detects conversational and informational questions about page content."""
+    import re
+    clean = user_message.strip()
+    norm_clean = agentic_planner._normalize_text(clean)
+    lower_clean = clean.lower()
+    for pat in QUESTION_PATTERNS:
+        if re.search(pat, lower_clean, re.IGNORECASE) or re.search(pat, norm_clean):
+            return True
+    if _is_page_inquiry(clean):
+        return True
+    if clean.endswith("?") or clean.endswith("؟"):
+        if not _is_explicit_goal_request(clean):
+            return True
+    return False
+
+
+async def classify_intent_route(
+    question: str,
+    dom_map: Optional[List[Dict[str, Any]]],
+    page_text: Optional[str] = None,
+    language: Optional[str] = None,
+) -> tuple[Literal["direct", "question", "goal"], Optional[Dict[str, Any]]]:
+    """
+    Universal intent classifier for /v1/chat.
+    Order of precedence:
+    1. Question FIRST: informational questions about page content.
+       ('No visible match' alone must not turn a question into a goal).
+    2. Direct: short command AND a VISIBLE node scores >= 0.85.
+       (Requests to inquire/pay/apply/register/check are 'goal' even if a word matches a link).
+    3. LLM classification if rules are unsure and LLM is healthy (not limited_mode).
+    4. Goal fallback: multi-step tasks or commands with no visible match.
+    """
+    clean_q = (question or "").strip()
+    if not clean_q:
+        return "question", None
+
+    # 1. Question FIRST: informational inquiries about page content
+    if _is_informational_question(clean_q) and not _is_explicit_goal_request(clean_q):
+        return "question", None
+
+    # 2. Explicit Goal Rule Check: multi-step task verbs, service requests, inquiries, payments
+    if _is_explicit_goal_request(clean_q):
+        return "goal", None
+
+    # 3. Direct Command Check: short command + VISIBLE node score >= 0.85
+    words = clean_q.split()
+    if len(words) <= 6:
+        visible_nodes = [
+            n for n in (dom_map or [])
+            if n.get("visible") is not False and n.get("id") is not None
+        ]
+        if visible_nodes:
+            matched_node, score = agentic_planner.find_heuristic_match(clean_q, visible_nodes)
+            if matched_node and score >= 0.85:
+                return "direct", matched_node
+
+    # 4. LLM Classification when rules are unsure (only when not in limited mode)
+    if not llm_client.is_limited_mode():
+        try:
+            from app.agent.json_utils import extract_json
+            router_prompt = f"""You are Atlas's intent classifier for web interactions.
+Classify the authentic user input into exactly one category:
+- "question": Informational question about page content (e.g. "what is this page", "how much is shipping").
+- "direct": A single immediate command targeting a visible element on this page (e.g. "click login", "press enter").
+- "goal": Multi-step task, inquiry, application, registration, or service workflow (e.g. "find traffic fines", "pay bill").
+
+User input: "{clean_q}"
+
+Respond with ONLY valid JSON:
+{{"route": "question" | "direct" | "goal"}}"""
+            raw_llm = await llm_client.call_llm(router_prompt, json_mode=True)
+            parsed = extract_json(raw_llm)
+            if isinstance(parsed, dict) and parsed.get("route") in ("direct", "question", "goal"):
+                llm_route = parsed["route"]
+                if llm_route == "direct":
+                    visible_nodes = [n for n in (dom_map or []) if n.get("visible") is not False and n.get("id") is not None]
+                    matched_node, score = agentic_planner.find_heuristic_match(clean_q, visible_nodes)
+                    if matched_node and score >= 0.85:
+                        return "direct", matched_node
+                    return "goal", None
+                return llm_route, None
+        except Exception as exc:
+            logger.debug("LLM router classification fallback to rules: %s", exc)
+
+    # 5. Fallback: If not a question, and no visible element matches with >= 0.85, it is a goal
+    return "goal", None
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -172,8 +312,75 @@ async def chat_endpoint(
             detail="Rate limit exceeded — please slow down and try again shortly.",
         )
 
-    # If DOM map is provided, invoke the multi-step agentic planner
-    if payload.dom_map and len(payload.dom_map) > 0:
+    # WS5: For contract_version >= 3, route using the intelligent router
+    if payload.contract_version >= 3:
+        route, matched_node = await classify_intent_route(
+            question=payload.question,
+            dom_map=payload.dom_map,
+            page_text=payload.page_text,
+            language=payload.language,
+        )
+
+        if route == "goal":
+            reply_lang = resolve_reply_language(payload.language, payload.question)
+            ack_msg = t("router_goal_ack", reply_lang, goal=payload.question)
+            goal_state = GoalState(
+                goal=payload.question,
+                status="in_progress",
+                hop_count=0,
+                max_hops=15,
+                language=reply_lang,
+                current_url=payload.url,
+            )
+            return ChatResponse(
+                status="ok",
+                answer=ack_msg,
+                plan=None,
+                intent_route="goal",
+                goal_state=goal_state,
+            )
+
+        if route == "direct":
+            if payload.dom_map and len(payload.dom_map) > 0:
+                try:
+                    plan = await agentic_planner.plan_agentic_action(
+                        dom_map=payload.dom_map,
+                        user_message=payload.question,
+                        page_text=payload.page_text or "",
+                        url=payload.url,
+                        history=payload.history,
+                        language=payload.language,
+                    )
+                    return ChatResponse(
+                        status="ok",
+                        answer=plan.reply,
+                        plan=plan,
+                        intent_route="direct",
+                    )
+                except Exception as exc:
+                    logger.warning("Agentic planner error for direct route: %s", exc)
+
+        if route == "question" and payload.dom_map and len(payload.dom_map) > 0 and _is_page_inquiry(payload.question):
+            try:
+                plan = await agentic_planner.plan_agentic_action(
+                    dom_map=payload.dom_map,
+                    user_message=payload.question,
+                    page_text=payload.page_text or "",
+                    url=payload.url,
+                    history=payload.history,
+                    language=payload.language,
+                )
+                return ChatResponse(
+                    status="ok",
+                    answer=plan.reply,
+                    plan=plan,
+                    intent_route="question",
+                )
+            except Exception as exc:
+                logger.warning("Agentic planner error for question page inquiry: %s", exc)
+
+    # Legacy contract_version < 3: invoke multi-step agentic planner if DOM map is provided
+    elif payload.dom_map and len(payload.dom_map) > 0:
         try:
             plan = await agentic_planner.plan_agentic_action(
                 dom_map=payload.dom_map,
@@ -235,7 +442,11 @@ Answer:"""
                 answer = t("qa_not_sure", reply_lang)
         if not answer:
             answer = t("qa_not_sure", reply_lang)
-        return ChatResponse(status="ok", answer=answer)
+        return ChatResponse(
+            status="ok",
+            answer=answer,
+            intent_route="question" if payload.contract_version >= 3 else None,
+        )
     except LLMError as exc:
         logger.warning("LLM call failed for chat: %s", exc)
         return ChatResponse(
