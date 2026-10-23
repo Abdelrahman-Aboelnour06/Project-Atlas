@@ -1,5 +1,5 @@
 # WS4 Perception
-Branch: feat/latent-nodes   Last commit: 231811d   Model used: Gemini 3.8 Flash
+Branch: feat/latent-nodes   Last commit: ec51876   Model used: Gemini 3.8 Flash
 Status: done
 Done:
 - client-script/dom-serializer.js:11 — added `summary` to `INTERACTIVE_SELECTOR` to capture disclosure toggles.
