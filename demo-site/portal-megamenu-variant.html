@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>بوابة المعاملات الحكومية التجريبية - نسخة التنوع</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --primary: #1e3a8a;
+      --primary-dark: #172554;
+      --accent: #3b82f6;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --bg: #f1f5f9;
+      --card-bg: #ffffff;
+      --border: #e2e8f0;
+      --radius: 8px;
+    }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Arabic", sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+    header {
+      background: var(--primary-dark);
+      color: #ffffff;
+      padding: 16px 24px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .header-inner {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .brand {
+      font-size: 20px;
+      font-weight: 800;
+      color: #ffffff;
+      text-decoration: none;
+    }
+    .nav-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      position: relative;
+    }
+    .variant-menu-btn {
+      background: var(--accent);
+      color: #ffffff;
+      border: none;
+      padding: 10px 20px;
+      border-radius: var(--radius);
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: background 0.15s;
+    }
+    .variant-menu-btn:hover, .variant-menu-btn:focus {
+      background: #2563eb;
+      outline: 2px solid #93c5fd;
+    }
+    
+    /* Variant Panel Controlled via JS Button (aria-controls / aria-expanded) */
+    #variant-services-panel {
+      position: absolute;
+      top: 100%;
+      right: 0;
+      margin-top: 8px;
+      width: 480px;
+      background: #ffffff;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+      padding: 20px;
+      z-index: 200;
+    }
+    .panel-title {
+      font-size: 14px;
+      font-weight: 800;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+      text-transform: uppercase;
+    }
+    .services-shuffled-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .service-link {
+      display: flex;
+      align-items: center;
+      padding: 10px 14px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      color: var(--text);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.15s ease;
+    }
+    .service-link:hover, .service-link:focus {
+      background: #eff6ff;
+      border-color: var(--accent);
+      color: var(--primary);
+    }
+    main {
+      max-width: 1100px;
+      margin: 40px auto;
+      padding: 0 24px;
+    }
+    .content-box {
+      background: #ffffff;
+      padding: 36px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+    }
+    h1 {
+      font-size: 26px;
+      color: var(--primary-dark);
+      margin-bottom: 12px;
+    }
+    p {
+      color: var(--text-muted);
+      font-size: 15px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <a href="portal-megamenu-variant.html" class="brand">بوابة المعاملات الحكومية التجريبية (نسخة منوعة)</a>
+      
+      <div class="nav-wrapper">
+        <!-- Variant Button Toggle with aria-expanded and aria-controls -->
+        <button 
+          type="button" 
+          id="variant-services-toggle" 
+          aria-expanded="false" 
+          aria-controls="variant-services-panel" 
+          class="variant-menu-btn"
+        >
+          دليل المعاملات والخدمات الموحدة ▾
+        </button>
+
+        <div id="variant-services-panel" role="region" aria-labelledby="variant-services-toggle" style="display:none;">
+          <div class="panel-title">قائمة المعاملات المتاحة</div>
+          <!-- Shuffled and renamed menu order -->
+          <ul class="services-shuffled-list">
+            <li><a href="#energy" class="service-link">خدمات الطاقة والكهرباء والعدادات</a></li>
+            <li><a href="#building" class="service-link">تراخيص البناء والتنمية العمرانية</a></li>
+            <li>
+              <a href="portal-inquiry-variant.html" id="variant-traffic-link" class="service-link">
+                مخالفات رخص المركبات والقيادة (استعلام وسداد)
+              </a>
+            </li>
+            <li><a href="#notary" class="service-link">خدمات الشهر العقاري والتوثيق</a></li>
+            <li><a href="#civil-cards" class="service-link">بطاقات الهوية الوطنية والأحوال الشخصية</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="content-box">
+      <h1>بوابة المعاملات الحكومية المتكاملة — بيئة اختبارات التنوع</h1>
+      <p>
+        تعتمد هذه النسخة التجريبية على توزيع وتسميات مختلفة للروابط والخدمات، لضمان قدرة نماذج الاستكشاف الذكية على تحديد الخدمات بغض النظر عن ترتيبها أو اختلاف صياغة المسميات.
+      </p>
+    </div>
+  </main>
+
+  <script>
+    const toggleBtn = document.getElementById('variant-services-toggle');
+    const panel = document.getElementById('variant-services-panel');
+
+    toggleBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      const isExpanded = toggleBtn.getAttribute('aria-expanded') === 'true';
+      const nextState = !isExpanded;
+      toggleBtn.setAttribute('aria-expanded', nextState ? 'true' : 'false');
+      panel.style.display = nextState ? 'block' : 'none';
+    });
+
+    // Close on outside click
+    document.addEventListener('click', function(e) {
+      if (!panel.contains(e.target) && e.target !== toggleBtn) {
+        toggleBtn.setAttribute('aria-expanded', 'false');
+        panel.style.display = 'none';
+      }
+    });
+  </script>
+</body>
+</html>

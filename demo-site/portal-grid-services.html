@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>فهرس جميع الخدمات الحكومية التجريبية</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --primary: #4338ca;
+      --primary-dark: #312e81;
+      --accent: #6366f1;
+      --text: #1e293b;
+      --text-muted: #64748b;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --border: #e2e8f0;
+      --radius: 8px;
+    }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Arabic", sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+    header {
+      background: #ffffff;
+      border-bottom: 2px solid var(--accent);
+      padding: 16px 24px;
+    }
+    .header-content {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .brand {
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--primary-dark);
+      text-decoration: none;
+    }
+    .breadcrumbs {
+      max-width: 1100px;
+      margin: 20px auto 0;
+      padding: 0 24px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    .breadcrumbs a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    main {
+      max-width: 1100px;
+      margin: 24px auto 40px;
+      padding: 0 24px;
+    }
+    h1 {
+      font-size: 24px;
+      color: var(--primary-dark);
+      margin-bottom: 8px;
+    }
+    p.lead {
+      color: var(--text-muted);
+      font-size: 15px;
+      margin-bottom: 28px;
+    }
+    .services-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 20px;
+    }
+    .service-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+    }
+    .service-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 16px rgba(0,0,0,0.08);
+      border-color: var(--accent);
+    }
+    .card-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--primary-dark);
+      margin-bottom: 8px;
+    }
+    .card-desc {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+      flex-grow: 1;
+    }
+    .card-btn {
+      display: inline-block;
+      text-align: center;
+      padding: 10px 16px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--primary);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.15s ease;
+    }
+    .card-btn:hover, .card-btn:focus {
+      background: var(--primary);
+      color: #ffffff;
+      border-color: var(--primary);
+    }
+    .card-featured .card-btn {
+      background: var(--primary);
+      color: #ffffff;
+      border-color: var(--primary);
+    }
+    .card-featured .card-btn:hover {
+      background: var(--primary-dark);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-content">
+      <a href="portal-grid.html" class="brand">بوابة الخدمات الحكومية التجريبية</a>
+      <span style="font-size: 13px; color: var(--text-muted);">فهرس الخدمات الشامل</span>
+    </div>
+  </header>
+
+  <nav class="breadcrumbs" aria-label="مسار التصفح">
+    <a href="portal-grid.html">الرئيسية</a> &gt; 
+    <span>جميع الخدمات الحكومية</span>
+  </nav>
+
+  <main>
+    <h1>فهرس الخدمات الحكومية المتاحة</h1>
+    <p class="lead">اختر الخدمة المطلوبة من بطاقات الخدمات أدناه لبدء المعاملة أو الاستعلام.</p>
+
+    <div class="services-grid" role="list">
+      <div class="service-card" role="listitem">
+        <h2 class="card-title">خدمات التموين والبطاقات الذكية</h2>
+        <p class="card-desc">إصدار بطاقات التموين الذكية وبدل الفاقد والتالف وخصم أو إضافة أفراد الأسرة.</p>
+        <a href="#ration" class="card-btn">الدخول للخدمة</a>
+      </div>
+
+      <div class="service-card" role="listitem">
+        <h2 class="card-title">خدمات الصحة والتأمين الشامل</h2>
+        <p class="card-desc">حجز المواعيد الطبية وتحديث بيانات الملف الصحي للمواطنين المسجلين.</p>
+        <a href="#health" class="card-btn">الدخول للخدمة</a>
+      </div>
+
+      <div class="service-card card-featured" role="listitem">
+        <h2 class="card-title">نيابات المرور - مخالفات رخص القيادة والمركبات</h2>
+        <p class="card-desc">الاستعلام الفوري عن قيم مخالفات رخص المركبات والقيادة وبيان المخالفات التفصيلي.</p>
+        <a href="portal-inquiry.html" id="grid-traffic-link" class="card-btn">
+          الانتقال لخدمة نيابات المرور ←
+        </a>
+      </div>
+
+      <div class="service-card" role="listitem">
+        <h2 class="card-title">خدمات الإسكان الاجتماعي والتمويل</h2>
+        <p class="card-desc">متابعة ملفات حجز الوحدات السكنية واستعلامات صندوق الإسكان الاجتماعي.</p>
+        <a href="#housing" class="card-btn">الدخول للخدمة</a>
+      </div>
+
+      <div class="service-card" role="listitem">
+        <h2 class="card-title">خدمات السجل التجاري والضرائب</h2>
+        <p class="card-desc">استخراج السجلات التجارية وتجديد القيد وسداد الالتزامات الضريبية التجريبية.</p>
+        <a href="#tax" class="card-btn">الدخول للخدمة</a>
+      </div>
+
+      <div class="service-card" role="listitem">
+        <h2 class="card-title">خدمات المحاكم والدعاوى القضائية</h2>
+        <p class="card-desc">الاستعلام عن رول الجلسات ومواعيد نظر الدعاوى القضائية المقيدة إلكترونياً.</p>
+        <a href="#courts" class="card-btn">الدخول للخدمة</a>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

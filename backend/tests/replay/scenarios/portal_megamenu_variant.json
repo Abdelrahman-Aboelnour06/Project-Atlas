@@ -1,0 +1,55 @@
+{
+  "scenario_id": "portal_megamenu_variant",
+  "name": "Variant Portal Navigation (Unbiased Shuffled Labels)",
+  "description": "Navigation through an Arabic RTL portal with renamed and shuffled menu items and a JS button toggle to prove zero hard-coding.",
+  "start_page": "portal-megamenu-variant.html",
+  "goal_text": {
+    "ar": "استعلام عن مخالفات رخص المركبات والقيادة",
+    "en": "Inquire about vehicle and driving license violations"
+  },
+  "expected_target_page": "portal-inquiry-variant.html",
+  "target_link_id": "variant-traffic-link",
+  "menu_toggle": {
+    "id": "variant-services-toggle",
+    "aria_haspopup": null,
+    "aria_controls": "variant-services-panel",
+    "interaction": "click"
+  },
+  "required_inputs": [
+    {
+      "field_id": "civil-id",
+      "name": "civil_id",
+      "type": "text",
+      "pattern": "[0-9]{14}",
+      "maxlength": 14,
+      "required": true,
+      "fake_value": "00000000000000"
+    },
+    {
+      "field_id": "vehicle-plate-num",
+      "name": "plate_num",
+      "type": "text",
+      "pattern": "[0-9]{1,4}",
+      "maxlength": 4,
+      "required": true,
+      "fake_value": "5678"
+    },
+    {
+      "field_id": "vehicle-plate-chars",
+      "name": "plate_chars",
+      "type": "text",
+      "pattern": "[\\u0600-\\u06FF\\s]{1,4}",
+      "maxlength": 7,
+      "required": true,
+      "fake_value": "س ص ع"
+    }
+  ],
+  "expected_end_state": {
+    "status": "goal_complete",
+    "results_container_id": "variant-results",
+    "violations_table_id": "variant-violations-table",
+    "total_amount_id": "variant-total-amount",
+    "expected_fine_amount": "550 ج.م",
+    "expected_violations_count": 3
+  }
+}

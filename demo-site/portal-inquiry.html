@@ -1,0 +1,450 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>نيابات المرور - الاستعلام عن مخالفات المركبات</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --primary: #155e75;
+      --primary-dark: #0e3b4a;
+      --primary-light: #e0f2fe;
+      --accent: #0284c7;
+      --danger: #dc2626;
+      --success: #16a34a;
+      --text: #1e293b;
+      --text-muted: #64748b;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --border: #cbd5e1;
+      --radius: 8px;
+    }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Arabic", sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+    header {
+      background: #ffffff;
+      border-bottom: 2px solid var(--accent);
+      padding: 16px 24px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .header-content {
+      max-width: 900px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .site-title {
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--primary-dark);
+      text-decoration: none;
+    }
+    .breadcrumbs {
+      max-width: 900px;
+      margin: 20px auto 0;
+      padding: 0 24px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    .breadcrumbs a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    main {
+      max-width: 900px;
+      margin: 24px auto 40px;
+      padding: 0 24px;
+    }
+    .card {
+      background: var(--card-bg);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      padding: 32px;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+    }
+    h1 {
+      font-size: 24px;
+      color: var(--primary-dark);
+      margin-bottom: 8px;
+    }
+    p.lead {
+      color: var(--text-muted);
+      font-size: 14px;
+      margin-bottom: 24px;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    label {
+      display: block;
+      font-weight: 700;
+      font-size: 14px;
+      margin-bottom: 6px;
+      color: var(--text);
+    }
+    .req {
+      color: var(--danger);
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 15px;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    input[type="text"]:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.2);
+    }
+    .hint {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+    .error-msg {
+      font-size: 12px;
+      color: var(--danger);
+      margin-top: 4px;
+      font-weight: 600;
+    }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 600px) {
+      .grid-2 { grid-template-columns: 1fr; }
+    }
+    .btn-submit {
+      width: 100%;
+      padding: 14px;
+      background: var(--primary);
+      color: #ffffff;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-submit:hover {
+      background: var(--primary-dark);
+    }
+    
+    /* Violations Result Section */
+    #violations-results {
+      margin-top: 24px;
+      padding: 24px;
+      border-radius: var(--radius);
+      background: #ffffff;
+      border: 1px solid #93c5fd;
+    }
+    .result-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 12px;
+    }
+    .result-title {
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--primary);
+    }
+    .vehicle-summary {
+      background: #f0f9ff;
+      border: 1px solid #bae6fd;
+      padding: 16px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 24px;
+    }
+    .summary-item {
+      font-size: 14px;
+    }
+    .summary-item strong {
+      color: var(--primary-dark);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 20px;
+    }
+    th, td {
+      padding: 12px 14px;
+      text-align: right;
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+    }
+    th {
+      background: #f1f5f9;
+      color: var(--primary-dark);
+      font-weight: 700;
+    }
+    .badge-status {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      background: #fee2e2;
+      color: var(--danger);
+    }
+    .total-banner {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      padding: 16px;
+      border-radius: 6px;
+      text-align: center;
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--primary-dark);
+      margin-bottom: 20px;
+    }
+    .btn-reset {
+      background: #e2e8f0;
+      color: var(--text);
+      border: none;
+      padding: 10px 18px;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-reset:hover {
+      background: #cbd5e1;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-content">
+      <a href="portal-megamenu.html" class="site-title">بوابة الخدمات الحكومية التجريبية</a>
+      <span style="font-size: 13px; color: var(--text-muted);">نموذج استعلام تجريبي</span>
+    </div>
+  </header>
+
+  <nav class="breadcrumbs" aria-label="مسار التصفح">
+    <a href="portal-megamenu.html">الرئيسية</a> &gt; 
+    <span>خدمات المواطنين</span> &gt; 
+    <span>نيابات المرور</span>
+  </nav>
+
+  <main>
+    <div class="card">
+      <h1>نيابات المرور - الاستعلام عن مخالفات المركبات</h1>
+      <p class="lead">أدخل الرقم القومي ورمز وحروف اللوحة للاستعلام عن بيان المخالفات المرورية المسجلة.</p>
+
+      <form id="violations-inquiry-form" novalidate>
+        <div class="form-group">
+          <label for="national-id">
+            الرقم القومي (14 رقماً) <span class="req">*</span>
+          </label>
+          <input 
+            type="text" 
+            id="national-id" 
+            name="national_id" 
+            pattern="[0-9]{14}" 
+            maxlength="14" 
+            required 
+            autocomplete="off" 
+            placeholder="مثال: 00000000000000"
+            aria-describedby="nid-hint nid-error"
+          >
+          <div id="nid-hint" class="hint">يجب إدخال الرقم القومي المكون من 14 رقماً بدون مسافات أو حروف</div>
+          <div id="nid-error" class="error-msg" role="alert" style="display:none;">يرجى إدخال 14 رقماً قومياً صحيحاً</div>
+        </div>
+
+        <div class="grid-2">
+          <div class="form-group">
+            <label for="plate-digits">
+              أرقام اللوحة <span class="req">*</span>
+            </label>
+            <input 
+              type="text" 
+              id="plate-digits" 
+              name="plate_digits" 
+              pattern="[0-9]{1,4}" 
+              maxlength="4" 
+              required 
+              placeholder="مثال: 1234"
+              aria-describedby="digits-hint digits-error"
+            >
+            <div id="digits-hint" class="hint">من 1 إلى 4 أرقام</div>
+            <div id="digits-error" class="error-msg" role="alert" style="display:none;">يرجى إدخال أرقام اللوحة (1 إلى 4 أرقام)</div>
+          </div>
+
+          <div class="form-group">
+            <label for="plate-letters">
+              حروف اللوحة <span class="req">*</span>
+            </label>
+            <input 
+              type="text" 
+              id="plate-letters" 
+              name="plate_letters" 
+              pattern="[\u0600-\u06FF\s]{1,4}" 
+              maxlength="7" 
+              required 
+              placeholder="مثال: أ ب ج"
+              aria-describedby="letters-hint letters-error"
+            >
+            <div id="letters-hint" class="hint">حروف عربية تفصل بينها مسافة</div>
+            <div id="letters-error" class="error-msg" role="alert" style="display:none;">يرجى إدخال حروف اللوحة باللغة العربية</div>
+          </div>
+        </div>
+
+        <button type="submit" id="submit-inquiry" class="btn-submit">استعلام عن المخالفات</button>
+      </form>
+
+      <!-- Client-side Violations Results Section (No GET Query String) -->
+      <section id="violations-results" role="region" aria-live="polite" style="display:none;">
+        <div class="result-header">
+          <div class="result-title">بيان مخالفات رخصة المركبة (بيانات تجريبية)</div>
+          <span class="badge-status">مستحقة السداد</span>
+        </div>
+
+        <div class="vehicle-summary">
+          <div class="summary-item">الرقم القومي: <strong id="res-nid">00000000000000</strong></div>
+          <div class="summary-item">رقم اللوحة: <strong id="res-plate">أ ب ج 1 2 3 4</strong></div>
+          <div class="summary-item">نوع الترخيص: <strong>ملاكي تجريبي</strong></div>
+          <div class="summary-item">وحدة المرور: <strong>مرور تجريبي رقم 1</strong></div>
+        </div>
+
+        <table id="violations-table" aria-label="جدول المخالفات المرورية">
+          <thead>
+            <tr>
+              <th scope="col">التاريخ</th>
+              <th scope="col">نوع المخالفة</th>
+              <th scope="col">الموقع</th>
+              <th scope="col">قيمة الغرامة</th>
+              <th scope="col">الحالة</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>2026-09-15</td>
+              <td>تجاوز السرعة المقررة تجريبياً بواسطة الرادار</td>
+              <td>طريق المحور التجريبي</td>
+              <td>300 ج.م</td>
+              <td><span class="badge-status">غير مسددة</span></td>
+            </tr>
+            <tr>
+              <td>2026-10-02</td>
+              <td>الانتظار في الممنوع أو صف ثانٍ تجريبي</td>
+              <td>شارع الجمهورية التجريبي</td>
+              <td>150 ج.م</td>
+              <td><span class="badge-status">غير مسددة</span></td>
+            </tr>
+            <tr>
+              <td>2026-10-18</td>
+              <td>عدم استخدام حزام الأمان لقائد المركبة</td>
+              <td>الطريق الدائري التجريبي</td>
+              <td>100 ج.م</td>
+              <td><span class="badge-status">غير مسددة</span></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="total-banner" id="total-amount">
+          إجمالي المخالفات المستحقة: 550 ج.م
+        </div>
+
+        <div style="display: flex; gap: 12px; justify-content: flex-end;">
+          <button type="button" id="btn-new-inquiry" class="btn-reset">استعلام جديد</button>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const form = document.getElementById('violations-inquiry-form');
+    const resultsSec = document.getElementById('violations-results');
+    const nidInput = document.getElementById('national-id');
+    const digitsInput = document.getElementById('plate-digits');
+    const lettersInput = document.getElementById('plate-letters');
+    
+    const nidError = document.getElementById('nid-error');
+    const digitsError = document.getElementById('digits-error');
+    const lettersError = document.getElementById('letters-error');
+    
+    const resNid = document.getElementById('res-nid');
+    const resPlate = document.getElementById('res-plate');
+    const btnNew = document.getElementById('btn-new-inquiry');
+
+    form.addEventListener('submit', function(e) {
+      e.preventDefault(); // Never send GET query parameters in URL!
+
+      let valid = true;
+
+      // Validate National ID (14 digits)
+      const nidVal = nidInput.value.trim();
+      const nidRegex = /^[0-9]{14}$/;
+      if (!nidRegex.test(nidVal)) {
+        nidError.style.display = 'block';
+        nidInput.setAttribute('aria-invalid', 'true');
+        valid = false;
+      } else {
+        nidError.style.display = 'none';
+        nidInput.removeAttribute('aria-invalid');
+      }
+
+      // Validate Plate Digits (1-4 digits)
+      const digitsVal = digitsInput.value.trim();
+      const digitsRegex = /^[0-9]{1,4}$/;
+      if (!digitsRegex.test(digitsVal)) {
+        digitsError.style.display = 'block';
+        digitsInput.setAttribute('aria-invalid', 'true');
+        valid = false;
+      } else {
+        digitsError.style.display = 'none';
+        digitsInput.removeAttribute('aria-invalid');
+      }
+
+      // Validate Plate Letters (Arabic letters)
+      const lettersVal = lettersInput.value.trim();
+      const lettersRegex = /^[\u0600-\u06FF\s]{1,7}$/;
+      if (!lettersRegex.test(lettersVal) || lettersVal.length === 0) {
+        lettersError.style.display = 'block';
+        lettersInput.setAttribute('aria-invalid', 'true');
+        valid = false;
+      } else {
+        lettersError.style.display = 'none';
+        lettersInput.removeAttribute('aria-invalid');
+      }
+
+      if (!valid) {
+        return;
+      }
+
+      // Render Fake Results Client-Side
+      resNid.textContent = nidVal;
+      resPlate.textContent = `${lettersVal} ${digitsVal}`;
+
+      form.style.display = 'none';
+      resultsSec.style.display = 'block';
+      resultsSec.scrollIntoView({ behavior: 'smooth' });
+    });
+
+    btnNew.addEventListener('click', function() {
+      form.reset();
+      nidError.style.display = 'none';
+      digitsError.style.display = 'none';
+      lettersError.style.display = 'none';
+      resultsSec.style.display = 'none';
+      form.style.display = 'block';
+      nidInput.focus();
+    });
+  </script>
+</body>
+</html>

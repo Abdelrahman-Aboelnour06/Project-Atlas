@@ -1,0 +1,51 @@
+{
+  "scenario_id": "portal_grid",
+  "name": "All Services Catalog Grid Navigation",
+  "description": "Navigation through an introductory home page with an 'All Services' button leading to a catalog grid of service cards.",
+  "start_page": "portal-grid.html",
+  "intermediate_page": "portal-grid-services.html",
+  "intermediate_link_id": "all-services-link",
+  "goal_text": {
+    "ar": "الوصول إلى خدمة نيابات المرور عبر صفحة جميع الخدمات",
+    "en": "Reach traffic prosecution service via all services catalog page"
+  },
+  "expected_target_page": "portal-inquiry.html",
+  "target_link_id": "grid-traffic-link",
+  "required_inputs": [
+    {
+      "field_id": "national-id",
+      "name": "national_id",
+      "type": "text",
+      "pattern": "[0-9]{14}",
+      "maxlength": 14,
+      "required": true,
+      "fake_value": "00000000000000"
+    },
+    {
+      "field_id": "plate-digits",
+      "name": "plate_digits",
+      "type": "text",
+      "pattern": "[0-9]{1,4}",
+      "maxlength": 4,
+      "required": true,
+      "fake_value": "1234"
+    },
+    {
+      "field_id": "plate-letters",
+      "name": "plate_letters",
+      "type": "text",
+      "pattern": "[\\u0600-\\u06FF\\s]{1,4}",
+      "maxlength": 7,
+      "required": true,
+      "fake_value": "أ ب ج"
+    }
+  ],
+  "expected_end_state": {
+    "status": "goal_complete",
+    "results_container_id": "violations-results",
+    "violations_table_id": "violations-table",
+    "total_amount_id": "total-amount",
+    "expected_fine_amount": "550 ج.م",
+    "expected_violations_count": 3
+  }
+}
