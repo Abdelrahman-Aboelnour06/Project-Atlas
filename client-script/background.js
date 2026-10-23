@@ -1,28 +1,26 @@
 
 
-// Load TabRegistry (support Service Worker and Node.js environments)
-let TabRegistry;
-let AsyncMutex;
-
-if (typeof require !== "undefined") {
-  try {
-    const trMod = require("./tab-registry.js");
-    TabRegistry = trMod.TabRegistry;
-    AsyncMutex = trMod.AsyncMutex;
-  } catch (_) {}
-} else if (typeof self !== "undefined" && self.TabRegistry) {
-  TabRegistry = self.TabRegistry;
-  AsyncMutex = self.AsyncMutex;
-}
-
-if (!TabRegistry && typeof importScripts === "function") {
+// Load TabRegistry (support Service Worker and Node.js environments without top-level redeclaration)
+if (typeof importScripts === "function") {
   try {
     importScripts("tab-registry.js");
-    TabRegistry = self.TabRegistry;
-    AsyncMutex = self.AsyncMutex;
   } catch (e) {
     console.error("Atlas: failed to importScripts tab-registry.js", e);
   }
+}
+
+// In Node.js environment where importScripts is not available
+if (typeof require !== "undefined" && (typeof TabRegistry === "undefined" || !TabRegistry)) {
+  try {
+    const trMod = require("./tab-registry.js");
+    if (typeof global !== "undefined") {
+      global.TabRegistry = trMod.TabRegistry;
+      global.AsyncMutex = trMod.AsyncMutex;
+      if (trMod.TabRegistryImpl) {
+        global.TabRegistryImpl = trMod.TabRegistryImpl;
+      }
+    }
+  } catch (_) {}
 }
 
 async function ensureContentScript(tabId) {
@@ -367,14 +365,27 @@ async function handleGoalStep(message, sender = {}) {
     }
   }
 
-  const res = await fetch(`${goalBase}/v1/chat/goal_step`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Atlas-Key": message?.apiKey || "",
-    },
-    body: JSON.stringify(message?.payload || {}),
-  });
+  let res;
+  try {
+    res = await fetch(`${goalBase}/v1/chat/goal_step`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Atlas-Key": message?.apiKey || "",
+      },
+      body: JSON.stringify(message?.payload || {}),
+    });
+  } catch (err) {
+    const isConnErr =
+      err.name === "TypeError" ||
+      /failed to fetch|network|econnrefused|fetch failed/i.test(err.message || "");
+    const customErr = isConnErr
+      ? new Error(`Can't reach the Atlas backend at ${goalBase} (${err.message})`)
+      : err;
+    customErr.code = isConnErr ? "BACKEND_UNREACHABLE" : "NETWORK_ERROR";
+    customErr.baseUrl = goalBase;
+    throw customErr;
+  }
 
   if (!res.ok) {
     let errDetail = `HTTP ${res.status}`;
@@ -391,8 +402,15 @@ async function handleGoalStep(message, sender = {}) {
 if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === "ATLAS_OPEN_OPTIONS") {
-      chrome.runtime.openOptionsPage();
-      return;
+      try {
+        if (chrome.runtime?.openOptionsPage) {
+          chrome.runtime.openOptionsPage();
+        }
+        sendResponse({ ok: true });
+      } catch (err) {
+        sendResponse({ ok: false, error: err.message });
+      }
+      return true;
     }
 
   if (message.type === "ATLAS_SOCKET_CONNECT") {
@@ -425,7 +443,18 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
         sendResponse({ ok: true, data });
       })
       .catch((err) => {
-        sendResponse({ ok: false, error: err.message });
+        const isConnErr =
+          err.name === "TypeError" ||
+          /failed to fetch|network|econnrefused|fetch failed/i.test(err.message || "");
+        const errMsg = isConnErr
+          ? `Can't reach the Atlas backend at ${chatBase} (${err.message})`
+          : err.message;
+        sendResponse({
+          ok: false,
+          error: errMsg,
+          code: isConnErr ? "BACKEND_UNREACHABLE" : "NETWORK_ERROR",
+          baseUrl: chatBase,
+        });
       });
     return true;
   }
@@ -446,7 +475,18 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
         sendResponse({ ok: true, data });
       })
       .catch((err) => {
-        sendResponse({ ok: false, error: err.message });
+        const isConnErr =
+          err.name === "TypeError" ||
+          /failed to fetch|network|econnrefused|fetch failed/i.test(err.message || "");
+        const errMsg = isConnErr
+          ? `Can't reach the Atlas backend at ${summaryBase} (${err.message})`
+          : err.message;
+        sendResponse({
+          ok: false,
+          error: errMsg,
+          code: isConnErr ? "BACKEND_UNREACHABLE" : "NETWORK_ERROR",
+          baseUrl: summaryBase,
+        });
       });
     return true;
   }
@@ -455,7 +495,22 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
   if (message.type === "ATLAS_GOAL_STEP") {
     handleGoalStep(message, sender)
       .then((data) => sendResponse({ ok: true, data }))
-      .catch((err) => sendResponse({ ok: false, error: err.message }));
+      .catch((err) => {
+        const goalBase = sanitizeBaseUrl(message?.baseUrl || "http://localhost:8000");
+        const isConnErr =
+          err.code === "BACKEND_UNREACHABLE" ||
+          err.name === "TypeError" ||
+          /failed to fetch|network|econnrefused|fetch failed|can't reach the atlas backend/i.test(
+            err.message || ""
+          );
+        const errMsg = isConnErr ? `Can't reach the Atlas backend at ${goalBase}` : err.message;
+        sendResponse({
+          ok: false,
+          error: errMsg,
+          code: isConnErr ? "BACKEND_UNREACHABLE" : (err.code || "GOAL_STEP_ERROR"),
+          baseUrl: goalBase,
+        });
+      });
     return true;
   }
 
@@ -575,6 +630,10 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
     }
     return true;
   }
+
+  // Guarantee response for any unhandled message type (no silent drop)
+  sendResponse({ ok: false, error: `Unhandled message type: ${message?.type}` });
+  return true;
   });
 }
 
@@ -814,8 +873,8 @@ if (typeof setInterval !== "undefined" && typeof chrome !== "undefined" && chrom
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     GoalStore,
-    TabRegistry,
-    AsyncMutex,
+    TabRegistry: typeof TabRegistry !== "undefined" ? TabRegistry : (typeof global !== "undefined" ? global.TabRegistry : null),
+    AsyncMutex: typeof AsyncMutex !== "undefined" ? AsyncMutex : (typeof global !== "undefined" ? global.AsyncMutex : null),
     sanitizeBaseUrl,
     recordDownloadEvidence,
     downloadEvidenceList,

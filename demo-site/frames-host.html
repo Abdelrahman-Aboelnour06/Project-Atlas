@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Multi-Frame Portal Host Fixture</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      margin: 20px;
+      background: #ffffff;
+      color: #1e293b;
+    }
+    header {
+      padding: 16px;
+      background: #0284c7;
+      color: white;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+    .frames-container {
+      display: flex;
+      gap: 20px;
+      margin-top: 20px;
+    }
+    iframe {
+      width: 45%;
+      height: 250px;
+      border: 2px dashed #94a3b8;
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Portal Main Application</h1>
+    <nav>
+      <a href="#services" id="top-services-link">Services</a>
+    </nav>
+  </header>
+  <main>
+    <p>Top frame application host with embedded iframes.</p>
+    <div class="frames-container">
+      <iframe id="iframe-one" src="frame-child.html" title="Subframe 1"></iframe>
+      <iframe id="iframe-two" src="frame-child.html" title="Subframe 2"></iframe>
+    </div>
+  </main>
+</body>
+</html>
