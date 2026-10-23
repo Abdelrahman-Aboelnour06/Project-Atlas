@@ -386,6 +386,167 @@ async function runSuite() {
     const navServicesMinusOne = bgMinusOneResult.nodes.find((n) => (n.resolved_label || '').includes('Services'));
     record('z-index: -1: Navigation links are not blocked', navServicesMinusOne && navServicesMinusOne.blocked_by_modal === false);
 
+    // ────────────────────────────────────────────────────────────────────────
+    // TEST 7: WS12 Lane D: Exact Click Activations & Target Resolution (portal-click-counters.html)
+    // ────────────────────────────────────────────────────────────────────────
+    console.log('\n[Test 7] WS12-D1: Exact Click Activations & Target Resolution...');
+    await page.goto(`${baseUrl}/portal-click-counters.html`, { waitUntil: 'domcontentloaded' });
+    await page.addScriptTag({ path: path.join(ROOT_DIR, 'client-script/dom-serializer.js') });
+    await page.addScriptTag({ path: path.join(ROOT_DIR, 'client-script/executor.js') });
+
+    // 7.1 Plain button: exactly 1 click and 1 activation
+    console.log('  [7.1] Testing plain button single click...');
+    const plainBtnId = await page.evaluate(() => {
+      return window.AtlasSerializer.serialize().find(n => n.inner_text === 'Plain Button')?.id;
+    });
+    const plainRes = await page.evaluate(async (id) => {
+      return await window.AtlasExecutor.execute({ action: 'click', element_id: id }, { skipConfirmation: true });
+    }, plainBtnId);
+    const plainCounters = await page.evaluate(() => window.__atlasCounters);
+    record('Plain button execute returned ok: true', plainRes?.ok === true);
+    record('Plain button received exactly 1 click event', plainCounters.plainBtnClicks === 1, `got ${plainCounters.plainBtnClicks}`);
+    record('Plain button received exactly 1 activation', plainCounters.plainBtnActivations === 1, `got ${plainCounters.plainBtnActivations}`);
+
+    // 7.2 Direct link: exactly 1 click and 1 activation
+    console.log('  [7.2] Testing direct link single click...');
+    const linkId = await page.evaluate(() => {
+      return window.AtlasSerializer.serialize().find(n => n.inner_text === 'Direct Link')?.id;
+    });
+    const linkRes = await page.evaluate(async (id) => {
+      return await window.AtlasExecutor.execute({ action: 'click', element_id: id }, { skipConfirmation: true });
+    }, linkId);
+    const linkCounters = await page.evaluate(() => window.__atlasCounters);
+    record('Direct link execute returned ok: true', linkRes?.ok === true);
+    record('Direct link received exactly 1 click event', linkCounters.linkDirectClicks === 1, `got ${linkCounters.linkDirectClicks}`);
+    record('Direct link received exactly 1 activation', linkCounters.linkDirectActivations === 1, `got ${linkCounters.linkDirectActivations}`);
+
+    // 7.3 Span inside link: exactly 1 click event on span, 1 on link, 0 duplicate anchor click
+    console.log('  [7.3] Testing span inside link...');
+    const spanRes = await page.evaluate(async () => {
+      return await window.AtlasExecutor.execute({ action: 'click', element_id: 'span_nested_el' }, { skipConfirmation: true });
+    });
+    const spanCounters = await page.evaluate(() => window.__atlasCounters);
+    record('Span in link execute returned ok: true', spanRes?.ok === true);
+    record('Span received exactly 1 click event', spanCounters.spanNestedClicks === 1, `got ${spanCounters.spanNestedClicks}`);
+    record('Parent link received exactly 1 click event from bubbling (no extra click)', spanCounters.linkNestedClicks === 1, `got ${spanCounters.linkNestedClicks}`);
+
+    // 7.4 Div[role=button] containing child link: div gets 1 click, child link gets 0 clicks
+    console.log('  [7.4] Testing div[role=button] with child link...');
+    const divBtnId = await page.evaluate(() => {
+      return window.AtlasSerializer.serialize().find(n => n.role === 'button' && (n.inner_text || '').includes('Div Button Container'))?.id;
+    });
+    const divBtnRes = await page.evaluate(async (id) => {
+      return await window.AtlasExecutor.execute({ action: 'click', element_id: id }, { skipConfirmation: true });
+    }, divBtnId);
+    const divBtnCounters = await page.evaluate(() => window.__atlasCounters);
+    record('Div[role=button] execute returned ok: true', divBtnRes?.ok === true);
+    record('Div[role=button] received exactly 1 click event', divBtnCounters.divBtnClicks === 1, `got ${divBtnCounters.divBtnClicks}`);
+    record('Child link inside div[role=button] received 0 clicks', divBtnCounters.childLinkClicks === 0, `got ${divBtnCounters.childLinkClicks}`);
+
+    // 7.5 Checkbox: exactly 1 click event and 1 checked-state flip
+    console.log('  [7.5] Testing checkbox single click & state flip...');
+    const chkId = await page.evaluate(() => {
+      return window.AtlasSerializer.serialize().find(n => n.tag === 'input' && (n.type === 'checkbox' || n.role === 'checkbox'))?.id;
+    });
+    const chkRes = await page.evaluate(async (id) => {
+      return await window.AtlasExecutor.execute({ action: 'click', element_id: id }, { skipConfirmation: true });
+    }, chkId);
+    const chkState = await page.evaluate(() => ({
+      checked: document.getElementById('chk-toggle').checked,
+      clicks: window.__atlasCounters.chkClicks,
+      changes: window.__atlasCounters.chkChanges,
+    }));
+    record('Checkbox execute returned ok: true', chkRes?.ok === true);
+    record('Checkbox received exactly 1 click event', chkState.clicks === 1, `got ${chkState.clicks}`);
+    record('Checkbox received exactly 1 change event', chkState.changes === 1, `got ${chkState.changes}`);
+    record('Checkbox is checked after single click (exactly 1 flip)', chkState.checked === true);
+
+    // 7.6 Rule 1: Wrapper Resolution
+    console.log('  [7.6] Testing Rule 1 target resolution...');
+    const tileLinkId = await page.evaluate(() => {
+      const tile = document.getElementById('tile-with-link');
+      tile.setAttribute('data-atlas-id', 'tile_link_wrap');
+      return 'tile_link_wrap';
+    });
+    await page.evaluate(async (id) => {
+      return await window.AtlasExecutor.execute({ action: 'click', element_id: id }, { skipConfirmation: true });
+    }, tileLinkId);
+    const tileLinkCount = await page.evaluate(() => window.__atlasCounters.tileLinkClicks);
+    record('Tile wrapping link delegates to child link: exactly 1 click', tileLinkCount === 1, `got ${tileLinkCount}`);
+
+    const tileBtnId = await page.evaluate(() => {
+      const tile = document.getElementById('tile-with-button');
+      tile.setAttribute('data-atlas-id', 'tile_btn_wrap');
+      return 'tile_btn_wrap';
+    });
+    await page.evaluate(async (id) => {
+      return await window.AtlasExecutor.execute({ action: 'click', element_id: id }, { skipConfirmation: true });
+    }, tileBtnId);
+    const tileBtnCount = await page.evaluate(() => window.__atlasCounters.tileButtonClicks);
+    record('Tile wrapping button delegates to child button: exactly 1 click', tileBtnCount === 1, `got ${tileBtnCount}`);
+
+    // 7.7 Toggle Popup Button: stays OPEN and reports modal_opened: true, added_visible_count > 0
+    console.log('  [7.7] Testing toggle button opening popup modal...');
+    const toggleBtnId = await page.evaluate(() => {
+      return window.AtlasSerializer.serialize().find(n => (n.inner_text || '').includes('Toggle Service Modal'))?.id;
+    });
+    const toggleRes = await page.evaluate(async (id) => {
+      return await window.AtlasExecutor.execute({ action: 'click', element_id: id }, { skipConfirmation: true });
+    }, toggleBtnId);
+    const modalOpenState = await page.evaluate(() => ({
+      isOpen: document.getElementById('service-popup-modal').classList.contains('is-open'),
+      toggleClicks: window.__atlasCounters.toggleBtnClicks,
+    }));
+    record('Toggle button returned ok: true', toggleRes?.ok === true);
+    record('Toggle button reports modal_opened: true', toggleRes?.modal_opened === true, `got ${toggleRes?.modal_opened}`);
+    record('Toggle button reports added_visible_count > 0', (toggleRes?.added_visible_count || 0) > 0, `got ${toggleRes?.added_visible_count}`);
+    record('Modal dialog element is-open class is preserved (stays open)', modalOpenState.isOpen === true);
+    record('Toggle button received exactly 1 click', modalOpenState.toggleClicks === 1, `got ${modalOpenState.toggleClicks}`);
+
+    // Close modal after verifying it stayed open so subsequent non-modal elements are accessible
+    await page.evaluate(() => {
+      document.getElementById('service-popup-modal').classList.remove('is-open');
+      document.getElementById('btn-toggle-popup').setAttribute('aria-expanded', 'false');
+    });
+
+    // 7.8 History Back Button: navigates back exactly 1 page
+    console.log('  [7.8] Testing history back button...');
+    await page.evaluate(() => {
+      window.history.pushState({ page: 1 }, 'Page 1', '#history-step-1');
+      window.history.pushState({ page: 2 }, 'Page 2', '#history-step-2');
+    });
+    const backBtnId = await page.evaluate(() => {
+      return window.AtlasSerializer.serialize().find(n => (n.inner_text || '').includes('Go Back'))?.id;
+    });
+    await page.evaluate(async (id) => {
+      return await window.AtlasExecutor.execute({ action: 'click', element_id: id }, { skipConfirmation: true });
+    }, backBtnId);
+    await page.waitForFunction(() => window.location.hash === '#history-step-1');
+    const currentHash = await page.evaluate(() => window.location.hash);
+    record('History.back() button goes back exactly 1 history state', currentHash === '#history-step-1', `got ${currentHash}`);
+
+    // 7.9 Double Click & Change 3 Link Protection
+    console.log('  [7.9] Testing double click & Change 3 link protection...');
+    const dblBtnId = await page.evaluate(() => {
+      return window.AtlasSerializer.serialize().find(n => (n.inner_text || '').includes('Double Click Target'))?.id;
+    });
+    await page.evaluate(async (id) => {
+      return await window.AtlasExecutor.execute({ action: 'double_click', element_id: id, click_count: 2 }, { skipConfirmation: true });
+    }, dblBtnId);
+    const dblBtnCounters = await page.evaluate(() => window.__atlasCounters);
+    record('Button double_click with click_count 2 produces exactly 2 clicks', dblBtnCounters.btnDblClicks === 2, `got ${dblBtnCounters.btnDblClicks}`);
+    record('Button double_click dispatches 1 dblclick event', dblBtnCounters.btnDblClickEvents === 1, `got ${dblBtnCounters.btnDblClickEvents}`);
+
+    // Change 3: <a href> target under action "open" produces exactly 1 activation
+    const dblLinkId = await page.evaluate(() => {
+      return window.AtlasSerializer.serialize().find(n => (n.inner_text || '').includes('Double Click Link Target'))?.id;
+    });
+    await page.evaluate(async (id) => {
+      return await window.AtlasExecutor.execute({ action: 'open', element_id: id }, { skipConfirmation: true });
+    }, dblLinkId);
+    const dblLinkCounters = await page.evaluate(() => window.__atlasCounters);
+    record('Link target under action "open" produces exactly 1 click activation (Change 3)', dblLinkCounters.linkDblClicks === 1, `got ${dblLinkCounters.linkDblClicks}`);
+
   } finally {
     if (browser) await browser.close();
     server.close();
