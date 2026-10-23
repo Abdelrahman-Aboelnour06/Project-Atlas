@@ -13,6 +13,11 @@ for _p in _env_candidates:
         load_dotenv(dotenv_path=_p)
         break
 
+import sys
+_backend_dir = str(Path(__file__).resolve().parent.parent)
+if _backend_dir not in sys.path:
+    sys.path.insert(0, _backend_dir)
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -65,3 +70,8 @@ app.include_router(audit.router,   prefix="/v1") # POST /v1/audit/log
 app.include_router(chat.router,    prefix="/v1") # POST /v1/chat
 app.include_router(tenant.router,  prefix="/v1") # GET/DELETE /v1/tenant/*
 app.include_router(config.router,  prefix="/v1") # GET  /v1/config
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("app.main:app", host="127.0.0.1", port=int(os.getenv("PORT", "8000")), reload=True)
