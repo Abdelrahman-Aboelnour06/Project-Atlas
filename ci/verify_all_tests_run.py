@@ -33,6 +33,7 @@ CI_E2E_SUITES = {
     "run_multi_tab_suite.js",
     "test_portal_fixtures_e2e.js",
     "test_latent_reveal_e2e.js",
+    "test_ws5_portal_router_e2e.js",
 }
 
 
