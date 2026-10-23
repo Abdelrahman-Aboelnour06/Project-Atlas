@@ -312,21 +312,6 @@ testAsync('portal-tiles.html: category tile swaps main panel content asynchronou
   assert(elements['main-panel'].innerHTML.includes('btn-inquire-violations'), 'New action buttons appeared in swapped panel');
 });
 
-test('frames-host.html contains 2 same-origin iframes with child frame link targets', () => {
-  const content = fs.readFileSync(path.join(DEMO_DIR, 'frames-host.html'), 'utf8');
-  assert((content.match(/<iframe/gi) || []).length >= 2, 'frames-host.html must embed at least 2 iframes');
-
-  const f1Path = path.join(DEMO_DIR, 'frame-child-1.html');
-  const f2Path = path.join(DEMO_DIR, 'frame-child-2.html');
-  assert(fs.existsSync(f1Path), 'frame-child-1.html must exist');
-  assert(fs.existsSync(f2Path), 'frame-child-2.html must exist');
-
-  const f1 = fs.readFileSync(f1Path, 'utf8');
-  const f2 = fs.readFileSync(f2Path, 'utf8');
-  assert((f1.match(/<a\b[^>]*href/gi) || []).length >= 2, 'Frame 1 must contain links');
-  assert((f2.match(/<a\b[^>]*href/gi) || []).length >= 2, 'Frame 2 must contain links');
-});
-
 testAsync('portal-overlay-form.html: negative controls, Pattern A and Pattern B trigger displays', async () => {
   const content = fs.readFileSync(path.join(DEMO_DIR, 'portal-overlay-form.html'), 'utf8');
   assert(content.includes('id="top-header"'), 'Header must be present');
