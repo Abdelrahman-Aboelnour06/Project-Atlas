@@ -622,6 +622,59 @@
       const userInputs = {};
       const origin = window.location.origin || "";
 
+      // Clear any prior inline errors
+      form.querySelectorAll(".atlas-inline-error").forEach((el) => el.remove());
+      form.querySelectorAll(".atlas-input-field").forEach((el) => {
+        el.style.borderColor = "#cbd5e1";
+      });
+
+      const activeLang = window.AtlasSidebar?.getLanguage?.() || "en-US";
+      const isArabic = activeLang.startsWith("ar");
+      let hasError = false;
+
+      // Validate all fields client-side before tokenizing or submitting
+      for (const field of awaitingRequest.fields) {
+        const safeRef = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(field.ref) : field.ref.replace(/["\\]/g, "\\$&");
+        const input = form.querySelector(`[data-field-ref="${safeRef}"]`);
+        const rawVal = input ? input.value.trim() : "";
+
+        let errorMsg = null;
+        if (field.required && !rawVal) {
+          errorMsg = isArabic ? "هذا الحقل مطلوب." : "This field is required.";
+        } else if (rawVal && field.maxlength && rawVal.length > field.maxlength) {
+          errorMsg = isArabic
+            ? `الحد الأقصى ${field.maxlength} أحرف.`
+            : `Maximum length is ${field.maxlength} characters.`;
+        } else if (rawVal && field.pattern) {
+          try {
+            const regex = new RegExp(`^(?:${field.pattern})$`);
+            if (!regex.test(rawVal)) {
+              errorMsg = isArabic ? "القيمة المدخلة غير صحيحة." : "Invalid format.";
+            }
+          } catch (_) {}
+        }
+
+        if (errorMsg && input) {
+          hasError = true;
+          input.style.borderColor = "#dc2626";
+          const errDiv = document.createElement("div");
+          errDiv.className = "atlas-inline-error";
+          errDiv.style.cssText = "color: #dc2626; font-size: 11px; margin-top: 2px;";
+          errDiv.textContent = errorMsg;
+          const container = input.parentNode || input.parentElement || form;
+          container.appendChild(errDiv);
+        }
+      }
+
+      if (hasError) {
+        btn.disabled = false;
+        const firstErr = form.querySelector(".atlas-inline-error");
+        if (firstErr && firstErr.previousElementSibling) {
+          firstErr.previousElementSibling.focus?.();
+        }
+        return;
+      }
+
       for (const field of awaitingRequest.fields) {
         const safeRef = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(field.ref) : field.ref.replace(/["\\]/g, "\\$&");
         const input = form.querySelector(`[data-field-ref="${safeRef}"]`);

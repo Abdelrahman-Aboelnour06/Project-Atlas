@@ -45,8 +45,70 @@ const SENSITIVE_KEYWORD_REGEX =
 const SENSITIVE_AUTOCOMPLETE_REGEX =
   /cc-|current-password|new-password|one-time-code|bday/i;
 
-const isSensitiveField = (el) => {
+const IDENTITY_KEYWORDS = [
+  "national id",
+  "national_id",
+  "national-id",
+  "civil id",
+  "civil_id",
+  "civil-id",
+  "passport",
+  "الرقم القومي",
+  "رقم الهوية",
+  "جواز السفر",
+  "بطاقة الرقم القومي",
+];
+
+const ID_LIKE_LABEL_KEYWORDS = [
+  "id",
+  "identity",
+  "identification",
+  "رقم",
+  "هوية",
+  "قومي",
+];
+
+const isIdentityField = (el, resolvedLabel = "") => {
   if (!el) return false;
+  const name = (el.getAttribute?.("name") || el.name || "").toLowerCase();
+  const id = (el.id || el.getAttribute?.("id") || "").toLowerCase();
+  const aria = (el.getAttribute?.("aria-label") || "").toLowerCase();
+  const placeholder = (el.getAttribute?.("placeholder") || el.placeholder || "").toLowerCase();
+  const autocomplete = (el.getAttribute?.("autocomplete") || el.autocomplete || "").toLowerCase();
+  const title = (el.getAttribute?.("title") || "").toLowerCase();
+  const label = (resolvedLabel || "").toLowerCase();
+  const combined = `${autocomplete} ${name} ${id} ${aria} ${placeholder} ${title} ${label}`.toLowerCase();
+
+  if (IDENTITY_KEYWORDS.some((kw) => combined.includes(kw))) {
+    return true;
+  }
+
+  const pattern = el.getAttribute?.("pattern") || "";
+  const maxlengthAttr = el.getAttribute?.("maxlength");
+  const maxlength = (el.maxLength > 0 && el.maxLength < 100000) ? el.maxLength : (maxlengthAttr ? parseInt(maxlengthAttr, 10) : null);
+  const type = (el.getAttribute?.("type") || el.type || "").toLowerCase();
+  const inputmode = (el.getAttribute?.("inputmode") || "").toLowerCase();
+
+  let patternLength = null;
+  if (pattern) {
+    const m = pattern.match(/\{(\d+)(?:,\s*(\d*))?\}/);
+    if (m) patternLength = parseInt(m[1], 10);
+  }
+
+  const isNumeric = type === "number" || type === "tel" || pattern.includes("0-9") || pattern.includes("\\d") || inputmode === "numeric";
+  const effectiveLength = (maxlength && !isNaN(maxlength)) ? maxlength : patternLength;
+  const hasIdLabel = ID_LIKE_LABEL_KEYWORDS.some((kw) => combined.includes(kw));
+
+  if (isNumeric && effectiveLength && effectiveLength >= 9 && hasIdLabel) {
+    return true;
+  }
+
+  return false;
+};
+
+const isSensitiveField = (el, label = "") => {
+  if (!el) return false;
+  if (el.hasAttribute?.("data-atlas-token")) return true;
   const type = (el.getAttribute?.("type") || el.type || "").toLowerCase();
   if (SENSITIVE_INPUT_TYPES.has(type)) return true;
   const autocomplete = (el.getAttribute?.("autocomplete") || el.autocomplete || "").toLowerCase();
@@ -55,11 +117,13 @@ const isSensitiveField = (el) => {
   const id = el.id || el.getAttribute?.("id") || "";
   const aria = el.getAttribute?.("aria-label") || "";
   const placeholder = el.getAttribute?.("placeholder") || el.placeholder || "";
-  return SENSITIVE_KEYWORD_REGEX.test(`${name} ${id} ${aria} ${placeholder}`);
+  if (SENSITIVE_KEYWORD_REGEX.test(`${name} ${id} ${aria} ${placeholder}`)) return true;
+  return isIdentityField(el, label);
 };
 
 const classifySensitiveField = (el) => {
   if (!el) return null;
+  if (el.hasAttribute?.("data-atlas-token")) return "secret";
   const type = (el.getAttribute?.("type") || el.type || "").toLowerCase();
   const autocomplete = (el.getAttribute?.("autocomplete") || el.autocomplete || "").toLowerCase();
   const name = (el.getAttribute?.("name") || el.name || "").toLowerCase();
@@ -67,6 +131,8 @@ const classifySensitiveField = (el) => {
   const aria = (el.getAttribute?.("aria-label") || "").toLowerCase();
   const placeholder = (el.getAttribute?.("placeholder") || el.placeholder || "").toLowerCase();
   const combined = `${autocomplete} ${name} ${id} ${aria} ${placeholder}`;
+
+  if (isIdentityField(el)) return "secret";
 
   // If none of the sensitive signals trigger, return null
   // Note: type="email" and type="tel" are PII for isSensitiveField DOM masking,
@@ -896,13 +962,14 @@ const NOISE_TEXT_PATTERNS = [
         el.removeAttribute(ATLAS_REVEAL_VIA_ATTR);
       }
 
-      const sensitive = isSensitiveField(el);
+      const atlasToken = el.getAttribute?.("data-atlas-token") || null;
+      const sensitive = Boolean(atlasToken || isSensitiveField(el, label));
       const groupLabel = detectGroupLabel(el);
       const sectionLabel = detectSectionLabel(el);
       const tag = el.tagName.toLowerCase();
       const type = el.getAttribute("type") || null;
       const innerText = sensitive ? null : truncate(el.innerText || el.textContent);
-      const placeholder = el.getAttribute("placeholder") || null;
+      const placeholder = sensitive ? null : (el.getAttribute("placeholder") || null);
       const ariaLabel = el.getAttribute("aria-label") || null;
       const href = el.getAttribute("href") || null;
       const name = el.getAttribute("name") || null;
@@ -921,7 +988,9 @@ const NOISE_TEXT_PATTERNS = [
       const maxlength = (el.maxLength > 0 && el.maxLength < 100000) ? el.maxLength : (parseInt(el.getAttribute("maxlength"), 10) || null);
       const inputmode = el.getAttribute("inputmode") || null;
       const autocomplete = el.getAttribute("autocomplete") || null;
-      const currentValue = sensitive ? null : (el.value != null && el.value !== "" ? String(el.value) : null);
+      const currentValue = atlasToken
+        ? atlasToken
+        : (sensitive ? null : (el.value != null && el.value !== "" ? String(el.value) : null));
 
       // Disambiguate identical tuples using ordinal
       const basisKey = [tag, role || "", type || "", normaliseLabel(label), formId || ""].join("|");

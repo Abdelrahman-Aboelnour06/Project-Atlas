@@ -10,7 +10,7 @@
 
 const HIGHLIGHT_CLASS = 'atlas-glow-highlight'
 const HIGHLIGHT_DURATION_MS = 2000
-const TOKEN_REGEX = /^\{(password|cc_number|cc_cvv|cc_expiry|cc_name|ssn|otp|pin|secret|profile\.[a-z0-9_]+)(_\d+)?\}$/
+const TOKEN_REGEX = /^\{(?:vault:[a-zA-Z0-9_]+|password|cc_number|cc_cvv|cc_expiry|cc_name|ssn|otp|pin|secret|national_id|profile\.[a-z0-9_]+)(?:_\d+)?\}$/
 
 // Tracks the pending "remove highlight" timeout per element so that
 // re-glowing the same element within the highlight window resets the
@@ -940,17 +940,29 @@ const execute = async (actionResponse, options = {}) => {
                 break;
             case 'fill': {
                 let fillValue = value;
-                if (typeof fillValue === 'string' && TOKEN_REGEX.test(fillValue.trim())) {
-                    const tokenToResolve = fillValue.trim();
+                const isToken = typeof fillValue === 'string' && TOKEN_REGEX.test(fillValue.trim());
+                let tokenString = null;
+                if (isToken) {
+                    tokenString = fillValue.trim();
                     const vault = window.AtlasSecretVault || (typeof secretVault !== 'undefined' ? secretVault : null);
                     const currentOrigin = (typeof location !== 'undefined' && location.origin) ? location.origin : '';
-                    const resolved = vault ? await vault.resolve(currentOrigin, tokenToResolve) : null;
+                    const resolved = vault ? await vault.resolve(currentOrigin, tokenString) : null;
                     if (!resolved) {
                         return { ok: false, message: "That value isn't saved — please say it again." };
                     }
                     fillValue = resolved;
                 }
                 doFill(el, fillValue);
+                if (isToken && tokenString) {
+                    el.setAttribute?.('data-atlas-token', tokenString);
+                    const onUserEdit = () => {
+                        el.removeAttribute?.('data-atlas-token');
+                        el.removeEventListener?.('input', onUserEdit);
+                    };
+                    el.addEventListener?.('input', onUserEdit);
+                } else {
+                    el.removeAttribute?.('data-atlas-token');
+                }
                 break;
             }
             case 'select_option':

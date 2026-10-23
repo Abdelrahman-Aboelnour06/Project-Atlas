@@ -15,9 +15,9 @@ import secrets
 from typing import Any, Dict, List, Optional, Set, Union
 
 from app.agent import llm_client
-from app.i18n import resolve_reply_language
+from app.i18n import resolve_reply_language, t
 from app.models.dom import DomNode
-from app.models.goal import FieldPlan, FormPlan
+from app.models.goal import FieldPlan, FormPlan, InputField, InputFieldKind
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +97,251 @@ def _is_consent_checkbox(node: Dict[str, Any]) -> bool:
     return any(kw in combined for kw in CONSENT_TERMS_KEYWORDS)
 
 
+TOKEN_REGEX = re.compile(
+    r"^\{(?:vault:[a-zA-Z0-9_]+|password|cc_number|cc_cvv|cc_expiry|cc_name|ssn|otp|pin|secret|national_id|profile\.[a-z0-9_]+)(?:_\d+)?\}$"
+)
+TOKEN_FIND_REGEX = re.compile(
+    r"\{(?:vault:[a-zA-Z0-9_]+|password|cc_number|cc_cvv|cc_expiry|cc_name|ssn|otp|pin|secret|national_id|profile\.[a-z0-9_]+)(?:_\d+)?\}"
+)
+
+IDENTITY_KEYWORDS = (
+    "national id",
+    "national_id",
+    "national-id",
+    "civil id",
+    "civil_id",
+    "civil-id",
+    "passport",
+    "الرقم القومي",
+    "رقم الهوية",
+    "جواز السفر",
+    "بطاقة الرقم القومي",
+)
+
+ID_LIKE_LABEL_KEYWORDS = (
+    "id",
+    "identity",
+    "identification",
+    "رقم",
+    "هوية",
+    "قومي",
+)
+
+
+def _is_sensitive_field(node: Dict[str, Any]) -> bool:
+    """
+    Universal classifier for sensitive fields adhering strictly to the Prime Directive.
+    Rule 2:
+      Sensitive = existing classifySensitiveField categories
+                + identity-number keywords (national id/civil id/passport/الرقم القومي/رقم الهوية/جواز السفر)
+                + numeric-only fields with maxlength or pattern length >= 9 and an id-like label.
+    """
+    if node.get("sensitive") is True:
+        return True
+
+    tag = (node.get("tag") or "").lower()
+    node_type = (node.get("type") or "").lower()
+    if node_type == "password":
+        return True
+
+    name = (node.get("name") or "").lower()
+    label = (node.get("resolved_label") or node.get("aria_label") or node.get("inner_text") or "").lower()
+    placeholder = (node.get("placeholder") or "").lower()
+    autocomplete = (node.get("autocomplete") or "").lower()
+    combined = f"{autocomplete} {name} {label} {placeholder}".lower()
+
+    if any(kw in combined for kw in (
+        "password", "passwd",
+        "cc-number", "card-number", "card_number", "credit-card", "credit card", "cc_number",
+        "cvv", "cvc", "csc",
+        "cc-exp", "expiry", "expiration",
+        "cardholder",
+        "ssn", "social security", "social-security",
+        "one-time-code", "otp", "2fa", "mfa", "verification-code", "verification_code", "رمز التحقق",
+        "pin", "secret",
+    )):
+        return True
+
+    if any(kw in combined for kw in IDENTITY_KEYWORDS):
+        return True
+
+    pattern = str(node.get("pattern") or "")
+    maxlength = node.get("maxlength") or node.get("max_length")
+    has_id_label = any(kw in combined for kw in ID_LIKE_LABEL_KEYWORDS)
+
+    pattern_length = None
+    if pattern:
+        m_len = re.search(r"\{(\d+)(?:,\s*(\d*))?\}", pattern)
+        if m_len:
+            pattern_length = int(m_len.group(1))
+
+    is_numeric = (
+        node_type in ("number", "tel")
+        or "0-9" in pattern
+        or r"\d" in pattern
+        or node.get("inputmode") == "numeric"
+    )
+
+    effective_length = maxlength if (maxlength and isinstance(maxlength, int)) else pattern_length
+    if is_numeric and effective_length and effective_length >= 9 and has_id_label:
+        return True
+
+    return False
+
+
+def _determine_field_kind(node: Dict[str, Any]) -> InputFieldKind:
+    tag = (node.get("tag") or "").lower()
+    node_type = (node.get("type") or "").lower()
+    name = (node.get("name") or "").lower()
+    combined = f"{name} {node.get('resolved_label', '')} {node.get('autocomplete', '')}".lower()
+
+    if node_type == "password" or "password" in combined:
+        return "password"
+    if "otp" in combined or "one-time-code" in combined or "رمز التحقق" in combined:
+        return "otp"
+    if tag == "select":
+        return "select"
+    if node_type == "email" or "email" in combined:
+        return "email"
+    if node_type in ("tel", "phone") or "phone" in combined:
+        return "phone"
+    if node_type == "date" or "date" in combined:
+        return "date"
+    if node_type == "number":
+        return "number"
+    return "text"
+
+
+def extract_required_form_fields(
+    dom_nodes: List[Union[DomNode, Dict[str, Any]]]
+) -> List[InputField]:
+    """
+    Universally discovers required form inputs from dom_nodes.
+    Stateless: recomputed from the live DOM on every hop.
+    """
+    raw_nodes = _convert_dom_nodes_to_dicts(dom_nodes)
+    required_fields: List[InputField] = []
+
+    for n in raw_nodes:
+        ref = n.get("ref") or n.get("id")
+        if not ref:
+            continue
+
+        tag = (n.get("tag") or "").lower()
+        node_type = (n.get("type") or "").lower()
+
+        if node_type in ("submit", "hidden") or tag == "button":
+            continue
+
+        is_req = bool(n.get("required") or n.get("aria_required") in (True, "true"))
+        if not is_req:
+            continue
+
+        if _is_consent_checkbox(n):
+            continue
+
+        label = (
+            n.get("resolved_label")
+            or n.get("aria_label")
+            or n.get("inner_text")
+            or n.get("placeholder")
+            or n.get("name")
+            or ref
+        )
+        label = re.sub(r"\s*\*+$", "", str(label)).strip()
+
+        sensitive = _is_sensitive_field(n)
+        kind = _determine_field_kind(n)
+        pattern = n.get("pattern")
+        maxlength = n.get("maxlength") or n.get("max_length")
+
+        opts: List[str] = []
+        if n.get("options"):
+            opts = [
+                o.get("value") if isinstance(o, dict) else (o.value if hasattr(o, "value") else str(o))
+                for o in n["options"][:20]
+            ]
+
+        required_fields.append(
+            InputField(
+                ref=ref,
+                label=label,
+                kind=kind,
+                sensitive=sensitive,
+                pattern=str(pattern) if pattern else None,
+                maxlength=int(maxlength) if maxlength is not None else None,
+                required=True,
+                options=opts,
+            )
+        )
+
+    return required_fields
+
+
+def extract_tokens_from_goal(
+    goal: str, required_fields: List[InputField]
+) -> Dict[str, str]:
+    """
+    Extracts tokens already present in the user goal (any TOKEN_REGEX match).
+    CRITICAL (Rule 1): The backend NEVER extracts raw sensitive digits or values.
+    Only tokens already present in the goal text may be matched to fields.
+    """
+    if not goal:
+        return {}
+
+    tokens_in_goal = TOKEN_FIND_REGEX.findall(goal)
+    if not tokens_in_goal:
+        return {}
+
+    extracted: Dict[str, str] = {}
+    used_tokens: Set[str] = set()
+
+    for field in required_fields:
+        if not field.sensitive:
+            continue
+        for token in tokens_in_goal:
+            if token in used_tokens:
+                continue
+            extracted[field.ref] = token
+            used_tokens.add(token)
+            break
+
+    return extracted
+
+
+def format_missing_fields_prompt(
+    fields: List[InputField],
+    language: Optional[str] = None
+) -> str:
+    """
+    Formats localized prompt in user's language using the page's own labels.
+    Arabic: "محتاج الرقم القومي ورقم اللوحة للمتابعة."
+    English: "Please provide National ID and plate numbers to proceed."
+    """
+    if not fields:
+        return ""
+
+    reply_lang = resolve_reply_language(language, None)
+    labels = [f.label or f.ref for f in fields]
+
+    if reply_lang == "ar-EG":
+        if len(labels) == 1:
+            joined = labels[0]
+        elif len(labels) == 2:
+            joined = f"{labels[0]} و{labels[1]}"
+        else:
+            joined = "، ".join(labels[:-1]) + f" و{labels[-1]}"
+        return t("form_missing_fields_prompt", reply_lang, fields=joined)
+    else:
+        if len(labels) == 1:
+            joined = labels[0]
+        elif len(labels) == 2:
+            joined = f"{labels[0]} and {labels[1]}"
+        else:
+            joined = ", ".join(labels[:-1]) + f", and {labels[-1]}"
+        return t("form_missing_fields_prompt", reply_lang, fields=joined)
+
+
 def _convert_dom_nodes_to_dicts(dom_nodes: List[Union[DomNode, Dict[str, Any]]]) -> List[Dict[str, Any]]:
     """Normalizes a list of DomNode instances or dicts into uniform dict representations."""
     raw_nodes: List[Dict[str, Any]] = []
@@ -130,16 +375,53 @@ async def plan_form_fill(
     submit_candidates: List[str] = []
     consent_refs: Set[str] = set()
 
+    SUBMIT_KEYWORDS = (
+        "submit",
+        "register",
+        "sign up",
+        "signup",
+        "complete",
+        "send",
+        "استعلام",
+        "إرسال",
+        "ارسال",
+        "عرض",
+        "تسجيل",
+        "بحث",
+        "دخول",
+        "تأكيد",
+        "تاكيد",
+    )
+
     for n in raw_nodes:
         ref = n.get("ref") or n.get("id")
         if not ref:
             continue
+
+        tag = (n.get("tag") or "").lower()
+        node_type = (n.get("type") or "").lower()
+        role = (n.get("role") or "").lower()
+        lbl = (n.get("resolved_label") or n.get("aria_label") or n.get("inner_text") or "").lower()
+
+        is_control = (
+            tag in ("input", "select", "textarea")
+            or role in ("textbox", "combobox", "searchbox", "spinbutton", "slider", "checkbox", "radio", "listbox")
+        )
+
+        is_submit_btn = (
+            node_type == "submit"
+            or (tag in ("button", "input") and (node_type in ("button", "submit") or any(k in lbl for k in SUBMIT_KEYWORDS)))
+            or (role in ("button", "submit") and any(k in lbl for k in SUBMIT_KEYWORDS))
+            or (tag == "button" and not is_control)
+        )
+
+        if not (is_control or is_submit_btn or n.get("required")):
+            continue
+
         valid_refs[ref] = n
 
         # Identify submit buttons
-        tag = (n.get("tag") or "").lower()
-        node_type = (n.get("type") or "").lower()
-        if node_type == "submit" or (tag == "button" and ("submit" in (n.get("resolved_label", "") or "").lower() or "register" in (n.get("resolved_label", "") or "").lower() or "sign up" in (n.get("resolved_label", "") or "").lower() or "complete" in (n.get("resolved_label", "") or "").lower())):
+        if is_submit_btn:
             submit_candidates.append(ref)
 
         # Identify terms/consent checkboxes
@@ -240,9 +522,10 @@ FORM PLAN JSON:"""
         source = f.get("source", "user")
 
         # RULE 3 (Privacy): Sensitive fields get vault or profile tokens, never literal passwords
-        if node.get("sensitive"):
-            if not (isinstance(val, str) and val.startswith("{") and val.endswith("}")):
-                val = "{password}"
+        is_sensitive = bool(node.get("sensitive") or _is_sensitive_field(node))
+        if is_sensitive:
+            if not (isinstance(val, str) and TOKEN_REGEX.match(val)):
+                val = "{password}" if (node.get("type") == "password" or "pass" in str(node.get("name", "")).lower()) else "{secret}"
                 source = "vault"
 
         # RULE 5: Check if required field lacks value or was fabricated without profile hint
@@ -272,6 +555,13 @@ FORM PLAN JSON:"""
     for cr in consent_refs:
         if valid_refs[cr].get("required"):
             missing_required.add(cr)
+
+    # Ensure all required fields from DOM that have no assigned value are surfaced in missing_required
+    dom_required = extract_required_form_fields(dom_nodes)
+    field_refs_with_values = {f.ref for f in sanitized_fields if f.value}
+    for req_field in dom_required:
+        if req_field.ref not in field_refs_with_values:
+            missing_required.add(req_field.ref)
 
     return FormPlan(
         form_id=form_id,
