@@ -1320,12 +1320,29 @@ async def goal_step_endpoint(
             has_val = (f.ref in user_inputs) or (f.ref in tokens_from_goal)
             if not has_val:
                 node_val = None
+                node_sensitive = f.sensitive
                 for node in payload.dom_map:
-                    nid = getattr(node, "id", None) or getattr(node, "ref", None)
+                    nid = getattr(node, "id", None) or getattr(node, "ref", None) or (node.get("id") if isinstance(node, dict) else (node.get("ref") if isinstance(node, dict) else None))
                     if nid == f.ref:
-                        node_val = getattr(node, "current_value", None) or getattr(node, "value", None) or (node.get("current_value") if isinstance(node, dict) else (node.get("value") if isinstance(node, dict) else None))
+                        node_val = getattr(node, "current_value", None) or (node.get("current_value") if isinstance(node, dict) else None)
+                        if getattr(node, "sensitive", None) is not None or (isinstance(node, dict) and "sensitive" in node):
+                            node_sensitive = bool(getattr(node, "sensitive", False) or (node.get("sensitive") if isinstance(node, dict) else False))
                         break
-                if not node_val:
+
+                is_filled = False
+                if node_val:
+                    val_str = str(node_val).strip()
+                    if node_sensitive or f.sensitive:
+                        # A current_value matching TOKEN_REGEX counts as filled
+                        if TOKEN_REGEX.match(val_str):
+                            is_filled = True
+                        else:
+                            is_filled = False
+                    else:
+                        is_filled = bool(val_str)
+
+                # Sensitive fields with null current_value and no token count as missing
+                if not is_filled:
                     missing_fields.append(f)
 
         if missing_fields:
@@ -1372,14 +1389,19 @@ async def goal_step_endpoint(
             for field in form_plan.fields:
                 if field.ref not in filled_refs:
                     node_already_has_val = False
+                    is_fillable = False
                     for node in payload.dom_map:
                         nid = getattr(node, "id", None) or getattr(node, "ref", None) or (node.get("id") if isinstance(node, dict) else (node.get("ref") if isinstance(node, dict) else None))
                         if nid == field.ref:
+                            tag = (getattr(node, "tag", None) or (node.get("tag") if isinstance(node, dict) else "") or "").lower()
+                            role = (getattr(node, "role", None) or (node.get("role") if isinstance(node, dict) else "") or "").lower()
+                            if tag in ("input", "textarea", "select") or role in ("textbox", "combobox", "searchbox", "spinbutton", "slider", "checkbox", "radio", "listbox"):
+                                is_fillable = True
                             cval = getattr(node, "current_value", None) or getattr(node, "value", None) or (node.get("current_value") if isinstance(node, dict) else (node.get("value") if isinstance(node, dict) else None))
                             if cval:
                                 node_already_has_val = True
                             break
-                    if not node_already_has_val:
+                    if is_fillable and not node_already_has_val:
                         form_steps.append(
                             PlanStep(
                                 action=field.action,

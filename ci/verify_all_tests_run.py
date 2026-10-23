@@ -34,6 +34,7 @@ CI_E2E_SUITES = {
     "test_portal_fixtures_e2e.js",
     "test_latent_reveal_e2e.js",
     "test_ws5_portal_router_e2e.js",
+    "test_ws7_slots_e2e.js",
 }
 
 

@@ -375,16 +375,53 @@ async def plan_form_fill(
     submit_candidates: List[str] = []
     consent_refs: Set[str] = set()
 
+    SUBMIT_KEYWORDS = (
+        "submit",
+        "register",
+        "sign up",
+        "signup",
+        "complete",
+        "send",
+        "استعلام",
+        "إرسال",
+        "ارسال",
+        "عرض",
+        "تسجيل",
+        "بحث",
+        "دخول",
+        "تأكيد",
+        "تاكيد",
+    )
+
     for n in raw_nodes:
         ref = n.get("ref") or n.get("id")
         if not ref:
             continue
+
+        tag = (n.get("tag") or "").lower()
+        node_type = (n.get("type") or "").lower()
+        role = (n.get("role") or "").lower()
+        lbl = (n.get("resolved_label") or n.get("aria_label") or n.get("inner_text") or "").lower()
+
+        is_control = (
+            tag in ("input", "select", "textarea")
+            or role in ("textbox", "combobox", "searchbox", "spinbutton", "slider", "checkbox", "radio", "listbox")
+        )
+
+        is_submit_btn = (
+            node_type == "submit"
+            or (tag in ("button", "input") and (node_type in ("button", "submit") or any(k in lbl for k in SUBMIT_KEYWORDS)))
+            or (role in ("button", "submit") and any(k in lbl for k in SUBMIT_KEYWORDS))
+            or (tag == "button" and not is_control)
+        )
+
+        if not (is_control or is_submit_btn or n.get("required")):
+            continue
+
         valid_refs[ref] = n
 
         # Identify submit buttons
-        tag = (n.get("tag") or "").lower()
-        node_type = (n.get("type") or "").lower()
-        if node_type == "submit" or (tag == "button" and ("submit" in (n.get("resolved_label", "") or "").lower() or "register" in (n.get("resolved_label", "") or "").lower() or "sign up" in (n.get("resolved_label", "") or "").lower() or "complete" in (n.get("resolved_label", "") or "").lower())):
+        if is_submit_btn:
             submit_candidates.append(ref)
 
         # Identify terms/consent checkboxes

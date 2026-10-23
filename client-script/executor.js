@@ -865,8 +865,6 @@ const execute = async (actionResponse, options = {}) => {
                             } catch (_) {}
                         }
                     }
-                        }
-                    }
                     return { ok: false, message: `Could not reveal menu: ${revealRes.message}` };
                 }
             }
@@ -942,17 +940,29 @@ const execute = async (actionResponse, options = {}) => {
                 break;
             case 'fill': {
                 let fillValue = value;
-                if (typeof fillValue === 'string' && TOKEN_REGEX.test(fillValue.trim())) {
-                    const tokenToResolve = fillValue.trim();
+                const isToken = typeof fillValue === 'string' && TOKEN_REGEX.test(fillValue.trim());
+                let tokenString = null;
+                if (isToken) {
+                    tokenString = fillValue.trim();
                     const vault = window.AtlasSecretVault || (typeof secretVault !== 'undefined' ? secretVault : null);
                     const currentOrigin = (typeof location !== 'undefined' && location.origin) ? location.origin : '';
-                    const resolved = vault ? await vault.resolve(currentOrigin, tokenToResolve) : null;
+                    const resolved = vault ? await vault.resolve(currentOrigin, tokenString) : null;
                     if (!resolved) {
                         return { ok: false, message: "That value isn't saved — please say it again." };
                     }
                     fillValue = resolved;
                 }
                 doFill(el, fillValue);
+                if (isToken && tokenString) {
+                    el.setAttribute?.('data-atlas-token', tokenString);
+                    const onUserEdit = () => {
+                        el.removeAttribute?.('data-atlas-token');
+                        el.removeEventListener?.('input', onUserEdit);
+                    };
+                    el.addEventListener?.('input', onUserEdit);
+                } else {
+                    el.removeAttribute?.('data-atlas-token');
+                }
                 break;
             }
             case 'select_option':

@@ -406,7 +406,7 @@ class TestGoalStepSlotsAndFormsIntegration:
                 node_id="el_nid",
                 name="national_id",
                 resolved_label="الرقم القومي",
-                value="[FILLED]",
+                value="{vault:el_nid}",
                 required=True,
             ),
             make_serializer_node(
@@ -461,6 +461,84 @@ class TestGoalStepSlotsAndFormsIntegration:
             assert len(resp2.steps) == 1
             assert resp2.steps[0].action == "click"
             assert resp2.steps[0].element_id == "el_submit"
+
+    async def test_sensitive_field_current_value_token_versus_null_missing_check(self, mock_db):
+        """Item 3: current_value matching TOKEN_REGEX counts as filled; null or non-token counts as missing."""
+        # Case A: Sensitive field has null current_value -> counts as missing, returns awaiting_user_input
+        dom_map_missing = [
+            make_serializer_node(
+                node_id="el_nid",
+                name="national_id",
+                resolved_label="National ID",
+                value=None,
+                required=True,
+                sensitive=True,
+            ),
+            make_serializer_node(
+                node_id="el_submit",
+                tag="button",
+                node_type="submit",
+                resolved_label="Submit",
+            ),
+        ]
+        state = GoalState(
+            goal="submit request",
+            status="in_progress",
+            page_kind="form",
+            language="en-US",
+            milestones=[Milestone(id="m1", description="submit form", status="active")],
+            active_milestone_id="m1",
+        )
+        req_missing = GoalStepRequest(
+            goal=state.goal,
+            current_url="https://portal.example.org/form.html",
+            dom_map=dom_map_missing,
+            goal_state=state,
+            api_key="valid_test_key",
+            contract_version=3,
+        )
+        with patch("app.db.connection.validate_api_key", new_callable=AsyncMock) as mock_auth, \
+             patch("app.routes.chat.rate_limiter.check", return_value=True):
+            mock_auth.return_value = "tenant-1"
+            resp_missing = await goal_step_endpoint(payload=req_missing, db=mock_db)
+            assert resp_missing.status == "awaiting_user_input"
+            assert resp_missing.goal_state.awaiting is not None
+            assert len(resp_missing.goal_state.awaiting.fields) == 1
+            assert resp_missing.goal_state.awaiting.fields[0].ref == "el_nid"
+
+        # Case B: Sensitive field has valid TOKEN_REGEX current_value -> counts as filled, proceeds to confirmation
+        dom_map_filled = [
+            make_serializer_node(
+                node_id="el_nid",
+                name="national_id",
+                resolved_label="National ID",
+                value="{vault:el_nid}",
+                required=True,
+                sensitive=True,
+            ),
+            make_serializer_node(
+                node_id="el_submit",
+                tag="button",
+                node_type="submit",
+                resolved_label="Submit",
+            ),
+        ]
+        req_filled = GoalStepRequest(
+            goal=state.goal,
+            current_url="https://portal.example.org/form.html",
+            dom_map=dom_map_filled,
+            goal_state=state,
+            api_key="valid_test_key",
+            contract_version=3,
+        )
+        with patch("app.db.connection.validate_api_key", new_callable=AsyncMock) as mock_auth, \
+             patch("app.routes.chat.rate_limiter.check", return_value=True):
+            mock_auth.return_value = "tenant-1"
+            resp_filled = await goal_step_endpoint(payload=req_filled, db=mock_db)
+            assert resp_filled.status == "requires_confirmation"
+            assert resp_filled.requires_confirmation is True
+            assert resp_filled.pending_step is not None
+            assert resp_filled.pending_step.element_id == "el_submit"
 
 
 @pytest.mark.asyncio

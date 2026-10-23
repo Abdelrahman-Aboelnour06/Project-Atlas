@@ -472,6 +472,115 @@ async function runTests() {
     }
   }
 
+  // =========================================================================
+  // 5. data-atlas-token Stamping & Serializer Token Output (Fix Round)
+  // =========================================================================
+  console.log("\n[Test Suite 5: data-atlas-token Stamping & Serializer Token Output]");
+  {
+    const serializer = require("./dom-serializer.js");
+
+    const origin = "https://portal.example.org";
+    const token = await secretVault.store(origin, "secret", "national_id", "00000000000000");
+
+    let attrMap = {};
+    const inputListeners = [];
+    const mockEl = {
+      tagName: "INPUT",
+      type: "text",
+      value: "",
+      focus: () => {},
+      scrollIntoView: () => {},
+      classList: { add: () => {}, remove: () => {} },
+      getAttribute: (k) => attrMap[k] || null,
+      setAttribute: (k, v) => {
+        attrMap[k] = String(v);
+      },
+      removeAttribute: (k) => {
+        delete attrMap[k];
+      },
+      hasAttribute: (k) => k in attrMap,
+      addEventListener: (evt, fn) => {
+        if (evt === "input") inputListeners.push(fn);
+      },
+      removeEventListener: (evt, fn) => {
+        if (evt === "input") {
+          const idx = inputListeners.indexOf(fn);
+          if (idx !== -1) inputListeners.splice(idx, 1);
+        }
+      },
+      dispatchEvent: () => {},
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 200, height: 30 }),
+    };
+
+    global.window.AtlasSerializer = {
+      getElementByAtlasId: (id) => (id === "nid_field" ? mockEl : null),
+    };
+
+    // 1. Token fill stamps data-atlas-token
+    await executor.executeStep(
+      { action: "fill", element_id: "nid_field", value: token },
+      mockEl,
+      { skipConfirmation: true }
+    );
+
+    testAssert(
+      mockEl.getAttribute("data-atlas-token") === token,
+      `executor stamps data-atlas-token="${token}" after token fill`
+    );
+
+    // 2. User edit removes data-atlas-token
+    for (const listener of [...inputListeners]) {
+      listener({ type: "input" });
+    }
+    testAssert(
+      mockEl.getAttribute("data-atlas-token") === null,
+      "User input event removes data-atlas-token attribute"
+    );
+
+    // 3. Filling non-token value clears data-atlas-token
+    mockEl.setAttribute("data-atlas-token", token);
+    await executor.executeStep(
+      { action: "fill", element_id: "nid_field", value: "RegularText" },
+      mockEl,
+      { skipConfirmation: true }
+    );
+    testAssert(
+      mockEl.getAttribute("data-atlas-token") === null,
+      "Filling a non-token value removes data-atlas-token attribute"
+    );
+
+    // 4. Serializer isSensitiveField & classifySensitiveField with identity keywords
+    const identityEl = {
+      tagName: "INPUT",
+      type: "text",
+      name: "national_id",
+      value: "00000000000000",
+      getAttribute: (k) => {
+        if (k === "name") return "national_id";
+        if (k === "pattern") return "[0-9]{14}";
+        if (k === "maxlength") return "14";
+        return null;
+      },
+      hasAttribute: () => false,
+    };
+    testAssert(
+      serializer.isSensitiveField(identityEl) === true,
+      "dom-serializer isSensitiveField detects national_id as sensitive"
+    );
+    testAssert(
+      serializer.classifySensitiveField(identityEl) === "secret",
+      "dom-serializer classifySensitiveField classifies identity field as secret"
+    );
+
+    // 5. Serializer token attribute emits token as current_value
+    identityEl.hasAttribute = (k) => k === "data-atlas-token";
+    identityEl.getAttribute = (k) => (k === "data-atlas-token" ? token : null);
+    testAssert(
+      serializer.isSensitiveField(identityEl) === true,
+      "dom-serializer marks element with data-atlas-token as sensitive"
+    );
+  }
+
   console.log(`\nWS7 Slots and Forms Tests Complete: ${passed} passed, ${failed} failed.\n`);
   process.exit(failed > 0 ? 1 : 0);
 }
