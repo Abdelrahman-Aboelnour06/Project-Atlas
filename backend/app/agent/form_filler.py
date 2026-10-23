@@ -212,6 +212,49 @@ def _determine_field_kind(node: Dict[str, Any]) -> InputFieldKind:
     return "text"
 
 
+def is_search_or_filter_form(nodes: List[Dict[str, Any]]) -> bool:
+    """
+    Returns True if the nodes represent a site search box or filter bar,
+    which should never be treated as the service target form for submit confirmation (L6).
+    """
+    if not nodes:
+        return False
+
+    # 1. Explicit search role, type, or query parameter names
+    has_search = any(
+        (n.get("role") or "").lower() in ("search", "searchbox")
+        or (n.get("type") or "").lower() == "search"
+        or (n.get("name") or "").lower() in ("q", "query", "search", "s", "searchbox", "keyword")
+        for n in nodes
+    )
+    if has_search:
+        return True
+
+    # 2. Header or nav landmark with single text input + button
+    inputs = [
+        n for n in nodes
+        if (n.get("tag") or "").lower() in ("input", "textarea")
+        and (n.get("type") or "").lower() not in ("hidden", "submit", "button", "checkbox", "radio")
+    ]
+    if len(inputs) == 1:
+        inp = inputs[0]
+        landmark = (inp.get("landmark") or "").lower()
+        if landmark in ("header", "nav"):
+            return True
+
+    # 3. Filter/sort control bars
+    filter_keywords = ("filter", "sort", "تصفية", "ترتيب", "فلتر")
+    control_labels = " ".join(
+        (n.get("resolved_label") or n.get("aria_label") or n.get("inner_text") or "")
+        for n in nodes
+    ).lower()
+    if any(fk in control_labels for fk in filter_keywords) and not any(n.get("required") for n in nodes):
+        if len(inputs) <= 3 and not any(n.get("sensitive") for n in nodes):
+            return True
+
+    return False
+
+
 def extract_required_form_fields(
     dom_nodes: List[Union[DomNode, Dict[str, Any]]]
 ) -> List[InputField]:
@@ -220,7 +263,12 @@ def extract_required_form_fields(
     Stateless: recomputed from the live DOM on every hop.
     """
     raw_nodes = _convert_dom_nodes_to_dicts(dom_nodes)
+    # L7: Modal scoping: if any node has in_modal: True, only consider in_modal nodes until modal closes
+    if any(bool(n.get("in_modal")) for n in raw_nodes):
+        raw_nodes = [n for n in raw_nodes if bool(n.get("in_modal"))]
+
     required_fields: List[InputField] = []
+
 
     for n in raw_nodes:
         ref = n.get("ref") or n.get("id")
@@ -370,6 +418,10 @@ async def plan_form_fill(
     Guarantees privacy constraints and never auto-consents to terms.
     """
     raw_nodes = _convert_dom_nodes_to_dicts(dom_nodes)
+    # L7: Modal scoping: if any node has in_modal: True, only consider in_modal nodes until modal closes
+    if any(bool(n.get("in_modal")) for n in raw_nodes):
+        raw_nodes = [n for n in raw_nodes if bool(n.get("in_modal"))]
+
     profile_keys = profile_hints or []
     valid_refs: Dict[str, Dict[str, Any]] = {}
     submit_candidates: List[str] = []

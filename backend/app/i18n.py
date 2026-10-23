@@ -85,7 +85,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "action_cancelled_next": "Action cancelled. What would you like to do next?",
         "confirmation_received_executing": "Confirmation received. Executing confirmed step now.",
         "popup_blocked_prompt": "Browser popup was blocked. Please click the button to open the window.",
-        "cross_origin_detected": "Notice: Cross-origin window detected on {host}. Do you want to proceed?",
+        "cross_origin_detected": "Notice: Cross-origin window detected on '{host}'. Do you want to proceed?",
         "child_tab_closed_returning": "Child popup workflow complete. Closing child tab and returning to opener tab.",
         "goal_completed_success": "Goal completed successfully!",
         "goal_completed_all_milestones": "Goal completed successfully! All milestones finished.",
@@ -165,18 +165,18 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "cancel_no_problem": "ولا يهمك، لغيت ده علشانك.",
 
         # Page Inquiries
-        "page_inquiry_domain": "أنا شايف صفحة {domain}.",
+        "page_inquiry_domain": "أنا شايف صفحة '{domain}'.",
         "page_inquiry_webpage": "أنا شايف الصفحة الحالية.",
-        "page_inquiry_nav": "في شريط التنقل، عندك {items}.",
+        "page_inquiry_nav": "في شريط التنقل، عندك '{items}'.",
         "page_inquiry_folders": "المجلدات الموجودة فيها '{items}'.",
-        "page_inquiry_files": "الملفات الظاهرة تشمل {items}.",
-        "page_inquiry_search": "فيه مربع بحث ({input_name}).",
+        "page_inquiry_files": "الملفات الظاهرة تشمل '{items}'.",
+        "page_inquiry_search": "فيه مربع بحث ('{input_name}').",
         "page_inquiry_actions": "العمليات المتاحة تشمل '{items}'.",
         "page_inquiry_snippet": "أنا شايف الصفحة دي: {snippet}...",
         "page_inquiry_fallback": "أنا متابع الصفحة دي. قولي تحب تضغط على إيه، تبحث عن إيه، أو تفتح إيه!",
 
         # Errors / Fallbacks in planner
-        "llm_auth_error_401": "خدمة الذكاء الاصطناعي رجعت خطأ في المصادقة (401). يرجى ضبط LLM_API_KEY في backend/.env. في الوقت الحالي، تقدر تطلب مني الضغط على أو فتح الأزرار الظاهرة في الصفحة!",
+        "llm_auth_error_401": "خدمة الذكاء الاصطناعي رجعت خطأ في المصادقة (401). يرجى ضبط 'LLM_API_KEY' في 'backend/.env'. في الوقت الحالي، تقدر تطلب مني الضغط على أو فتح الأزرار الظاهرة في الصفحة!",
         "no_match_with_samples": "راجعت الصفحة، بس ملقتش عنصر يطابق '{user_message}'. في الشاشة دي، تقدر تضغط على عناصر زي '{samples}'، أو تقولي تبحث عن إيه.",
         "no_match_without_samples": "ملقتش '{user_message}' في الصفحة دي. تقدر تقولي اضغط على أي زرار ظاهر، أنزل في الصفحة، أو أكتب في مربع البحث.",
 
@@ -185,7 +185,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "ai_service_trouble": "عندي مشكلة في الاتصال بخدمة الذكاء الاصطناعي دلوقتي. جرب كمان شوية.",
         "unexpected_issue": "معلش، واجهت مشكلة غير متوقعة أثناء معالجة سؤالك.",
         "summary_fallback": "أهلاً بيك في الصفحة دي. تقدر تتصفح، تبحث، أو تقولي اضغط على إيه.",
-        "summary_fallback_domain": "دي صفحة {domain}. تقدر تبحث، تتصفح المحتوى، أو تطلب من أطلس التنقل بين عناصر الصفحة.",
+        "summary_fallback_domain": "دي صفحة '{domain}'. تقدر تبحث، تتصفح المحتوى، أو تطلب من أطلس التنقل بين عناصر الصفحة.",
 
         # Goal step replies
         "hop_limit_reached": "تم إيقاف تنفيذ الهدف: تم الوصول للحد الأقصى للخطوات ({max_hops}).",
@@ -194,21 +194,21 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "action_cancelled_next": "تم إلغاء العملية. تحب نعمل إيه بعد كده؟",
         "confirmation_received_executing": "تم استلام التأكيد. جاري تنفيذ الخطوة المؤكدة دلوقتي.",
         "popup_blocked_prompt": "المتصفح منع فتح النافذة المنبثقة. يرجى الضغط على الزر لفتح النافذة.",
-        "cross_origin_detected": "تنبيه: تم رصد نافذة من نطاق مختلف على {host}. تحب تكمل؟",
+        "cross_origin_detected": "تنبيه: تم رصد نافذة من نطاق مختلف على '{host}'. تحب تكمل؟",
         "child_tab_closed_returning": "تم اكتمال مسار النافذة المنبثقة. جاري إغلاق التبويب والرجوع للتبويب الرئيسي.",
         "goal_completed_success": "تم اكتمال الهدف بنجاح!",
         "goal_completed_all_milestones": "تم اكتمال الهدف بنجاح! اكتملت كل المراحل.",
         "goal_completed_result": "تم اكتمال الهدف بنجاح! {result}",
         "child_tab_milestone_complete": "اكتملت مرحلة التبويب الفرعي. جاري إغلاق التبويب والرجوع للتبويب الرئيسي.",
         "goal_failed_with_reason": "فشل الهدف: {reason}",
-        "captcha_detected_prompt": "تم رصد اختبار كابتشا (CAPTCHA). يرجى حله في المتصفح للمتابعة.",
-        "captcha_detected_reply": "تم رصد اختبار كابتشا (CAPTCHA). يرجى حله للمتابعة.",
-        "otp_required_prompt": "مطلوب رمز تحقق لمرة واحدة (OTP). يرجى إدخاله للمتابعة.",
-        "otp_required_reply": "مطلوب رمز تحقق لمرة واحدة (OTP). يرجى إدخاله للمتابعة.",
-        "captcha_form_prompt": "تم رصد اختبار كابتشا (CAPTCHA) في النموذج. يرجى حله للمتابعة.",
-        "captcha_form_reply": "تم رصد اختبار كابتشا (CAPTCHA) في النموذج. يرجى حله للمتابعة.",
-        "otp_form_prompt": "مطلوب رمز تحقق لمرة واحدة (OTP). يرجى إدخاله للمتابعة.",
-        "otp_form_reply": "مطلوب رمز تحقق لمرة واحدة (OTP). يرجى إدخاله للمتابعة.",
+        "captcha_detected_prompt": "تم رصد اختبار كابتشا ('CAPTCHA'). يرجى حله في المتصفح للمتابعة.",
+        "captcha_detected_reply": "تم رصد اختبار كابتشا ('CAPTCHA'). يرجى حله للمتابعة.",
+        "otp_required_prompt": "مطلوب رمز تحقق لمرة واحدة ('OTP'). يرجى إدخاله للمتابعة.",
+        "otp_required_reply": "مطلوب رمز تحقق لمرة واحدة ('OTP'). يرجى إدخاله للمتابعة.",
+        "captcha_form_prompt": "تم رصد اختبار كابتشا ('CAPTCHA') في النموذج. يرجى حله للمتابعة.",
+        "captcha_form_reply": "تم رصد اختبار كابتشا ('CAPTCHA') في النموذج. يرجى حله للمتابعة.",
+        "otp_form_prompt": "مطلوب رمز تحقق لمرة واحدة ('OTP'). يرجى إدخاله للمتابعة.",
+        "otp_form_reply": "مطلوب رمز تحقق لمرة واحدة ('OTP'). يرجى إدخاله للمتابعة.",
         "max_hops_fallback": "تم الوصول للحد الأقصى للخطوات.",
         "batch_form_fill_prepared": "تم تجهيز ملء {count} حقول في النموذج.",
         "form_missing_fields_prompt": "محتاج {fields} للمتابعة.",
@@ -218,7 +218,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
 
         # Navigator
         "nav_cancelled_action": "ولا يهمك، لغيت العملية دي علشانك.",
-        "nav_interacting_with": "جاري التفاعل مع {label}.",
+        "nav_interacting_with": "جاري التفاعل مع '{label}'.",
         "nav_heuristic_found": "لقيت '{lbl}' في الصفحة. هضغط على '{lbl}' علشانك دلوقتي.",
         "nav_confirm_sensitive": "العملية دي هتقوم بـ {desc}. تحب تكمل؟",
         "nav_confirm_generic": "تحب تكمل العملية دي؟",
@@ -228,7 +228,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "nav_max_hops_tried": "معرفتش أوصل للخدمة المطلوبة خلال الحد الأقصى للخطوات. وده اللي جربت أعمله: {tried}",
         "nav_exploration_exhausted": "معرفتش ألاقي الخدمة المطلوبة في الموقع ده. وده اللي جربت أعمله: {tried}",
         "nav_deadend_backtrack": "وصلت لطريق مسدود في الصفحة دي. برجع علشان أجرب خيارات تانية.",
-        "nav_exploring_menu": "بفتح قائمة '{toggle}' علشان أشوف {target}.",
+        "nav_exploring_menu": "بفتح قائمة '{toggle}' علشان أشوف '{target}'.",
         "nav_search_query": "ببحث في الموقع عن '{query}'.",
 
         # Router & Loop (WS5)
@@ -288,10 +288,31 @@ def t(key: str, lang: Optional[str] = None, **kwargs: Any) -> str:
     template = table.get(key) or STRINGS["en"].get(key, key)
 
     if not kwargs:
-        return template
+        res = template
+    else:
+        if target_lang == "ar-EG":
+            for param in ("result", "snippet", "desc"):
+                val = kwargs.get(param)
+                if isinstance(val, str) and val and re.search(r"[a-zA-Z]", val):
+                    kwargs[param] = re.sub(r"(?:^|(?<=[^\w'\"«»“”]))([a-zA-Z]+)(?=[^\w'\"«»“”]|$)", r"'\1'", val)
 
-    try:
-        return template.format(**kwargs)
-    except Exception:
-        # Fallback to key or simple substitution without throwing
-        return template
+        if target_lang == "ar-EG" and key == "goal_failed_with_reason":
+            raw_reason = kwargs.get("reason", "")
+            raw_str = str(raw_reason).lower()
+            if "captcha" in raw_str:
+                kwargs["reason"] = "الموقع يتطلب التحقق الأمني (CAPTCHA)"
+            elif any(kw in raw_str for kw in ("max hops", "limit reached", "exhausted")):
+                kwargs["reason"] = "تم الوصول للحد الأقصى لعدد الخطوات"
+            elif any(kw in raw_str for kw in ("no change", "did not navigate", "after retries", "stuck")):
+                kwargs["reason"] = "تعذر إكمال الخطوة المطلوبة بعد عدة محاولات"
+            elif any(kw in raw_str for kw in ("network", "port closed", "500", "502", "503", "backend")):
+                kwargs["reason"] = "حدث خطأ غير متوقع أثناء معالجة الطلب"
+            elif bool(re.search(r"[a-zA-Z]", str(raw_reason))):
+                kwargs["reason"] = "تعذر إكمال الخطوة المطلوبة بعد عدة محاولات"
+        try:
+            res = template.format(**kwargs)
+        except Exception:
+            res = template
+
+    return res
+

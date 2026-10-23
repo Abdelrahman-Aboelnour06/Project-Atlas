@@ -38,6 +38,7 @@ CI_E2E_SUITES = {
     "test_wave3_ppo_flow_e2e.js",
     "test_ws11_frames_e2e.js",
     "test_ws11_perception_e2e.js",
+    "test_wave4_live_patterns_e2e.js",
 }
 
 
