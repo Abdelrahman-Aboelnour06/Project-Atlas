@@ -89,6 +89,46 @@ class TestHealth:
         with patch("app.agent.llm_client.ping_llm", new=AsyncMock(return_value=False)):
             r = client.get("/health")
         assert r.json()["llm"] == "unavailable"
+        assert r.json()["limited_mode"] is True
+
+    def test_health_reports_provider_and_clean_health_metadata(self, client):
+        from app.agent import llm_client
+        llm_client.reset_llm_health()
+
+        r = client.get("/health")
+        data = r.json()
+        assert "provider" in data
+        assert "limited_mode" in data
+        assert data["limited_mode"] is False
+        assert data["last_error_class"] is None
+        assert data["last_error_time"] is None
+
+    def test_health_shows_limited_mode_after_failure_without_leaking_message(self, client):
+        import httpx
+        from app.agent import llm_client
+        llm_client.reset_llm_health()
+
+        # Simulate failure
+        llm_client.record_llm_failure(
+            provider="groq",
+            model="llama-3.3-70b-versatile",
+            exc=httpx.TimeoutException("SECRET_URL_OR_ERROR_MESSAGE_THAT_MUST_NOT_APPEAR"),
+            status_code=None,
+        )
+
+        with patch("app.agent.llm_client.LLM_PROVIDER", "groq"):
+            r = client.get("/health")
+        data = r.json()
+        assert data["limited_mode"] is True
+        assert data["provider"] == "groq"
+        assert data["model"] == "llama-3.3-70b-versatile"
+        assert data["last_error_class"] == "TimeoutException"
+        assert data["last_error_time"] is not None
+
+        # Verify raw message is NOT leaked anywhere in response body
+        assert "SECRET_URL_OR_ERROR_MESSAGE_THAT_MUST_NOT_APPEAR" not in r.text
+
+        llm_client.reset_llm_health()
 
 
 # ── POST /v1/session/start ────────────────────────────────────────────────────
