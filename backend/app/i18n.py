@@ -288,10 +288,23 @@ def t(key: str, lang: Optional[str] = None, **kwargs: Any) -> str:
     template = table.get(key) or STRINGS["en"].get(key, key)
 
     if not kwargs:
-        return template
+        res = template
+    else:
+        if target_lang == "ar-EG" and key == "goal_failed_with_reason":
+            raw_reason = kwargs.get("reason", "")
+            if raw_reason and bool(re.search(r"[a-zA-Z]", str(raw_reason))):
+                # When English reason leaks in Arabic mode, replace with generic Arabic message (L5)
+                kwargs["reason"] = "تعذر إكمال الخطوة المطلوبة بعد عدة محاولات"
+        try:
+            res = template.format(**kwargs)
+        except Exception:
+            res = template
 
-    try:
-        return template.format(**kwargs)
-    except Exception:
-        # Fallback to key or simple substitution without throwing
-        return template
+    if target_lang == "ar-EG":
+        # Ensure zero unquoted Latin characters leak into Arabic user replies (L5)
+        pattern = r'(\"[^\"]*\"|\'[^\']*\'|«[^»]*»|“[^”]*”)|([a-zA-Z]+)'
+        res = re.sub(pattern, lambda m: m.group(1) if m.group(1) else "", res)
+        res = re.sub(r"\s+", " ", res).strip()
+
+    return res
+

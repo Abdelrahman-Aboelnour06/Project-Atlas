@@ -11,7 +11,7 @@ import logging
 import re
 from typing import Any, Dict, List, Literal, Optional, Set
 from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.connection import get_db
@@ -28,8 +28,10 @@ from app.agent.form_filler import (
     extract_required_form_fields,
     extract_tokens_from_goal,
     format_missing_fields_prompt,
+    is_search_or_filter_form,
     TOKEN_REGEX,
 )
+from app.agent.intent_synonyms import score_text_similarity
 from app.i18n import resolve_reply_language, is_mostly_non_arabic, t
 from app.models.goal import (
     GoalState,
@@ -138,6 +140,16 @@ class ChatRequest(BaseModel):
     history: Optional[List[Dict[str, str]]] = None
     language: Optional[str] = Field(default=None, max_length=32, description="Preferred language locale e.g. 'ar-EG'")
     contract_version: int = Field(default=2, description="Contract version: 1 (legacy), 2 (multi-tab aware), 3 (exploration & rich inputs/routing)")
+
+    @field_validator("dom_map", mode="before")
+    @classmethod
+    def _validate_dom_map(cls, v: Any) -> Optional[List[Dict[str, Any]]]:
+        if v is None:
+            return None
+        from app.models.dom import coerce_dom_map
+        nodes = coerce_dom_map(v)
+        return [n.model_dump() for n in nodes]
+
 
 
 class ChatResponse(BaseModel):
@@ -557,6 +569,13 @@ def _get_url_origin(url: Optional[str]) -> str:
     return f"{scheme}://{netloc}" if netloc else ""
 
 
+def _url_changed(u1: Optional[str], u2: Optional[str]) -> bool:
+    """Checks if two URLs represent a distinct navigation transition."""
+    if not u1 or not u2:
+        return False
+    return u1.split("#")[0].rstrip("/") != u2.split("#")[0].rstrip("/")
+
+
 def _apply_capability_and_tab_gating(
     resp: GoalStepResponse,
     multitab_enabled: bool,
@@ -594,6 +613,95 @@ def _apply_capability_and_tab_gating(
         resp.close_tab = None
 
     return resp
+
+
+def _is_form_relevant(
+    goal: str,
+    dom_nodes: List[Any],
+    page_text: Optional[str],
+    goal_state: Optional[GoalState],
+    milestone: Optional[Milestone],
+) -> bool:
+    """
+    Determines whether the form controls on the page are relevant to the user's goal (L6).
+    Excludes site search boxes and filter bars unconditionally.
+    Accepts real service forms even if field labels are generic (e.g. ID, name),
+    provided page title/headings, breadcrumbs, page text, or prior navigation path align with goal.
+    """
+    node_dicts = [
+        n.model_dump() if hasattr(n, "model_dump") else (n if isinstance(n, dict) else vars(n))
+        for n in (dom_nodes or [])
+    ]
+    # 1. Search box / filter bar exclusion is absolute (L6)
+    if is_search_or_filter_form(node_dicts):
+        return False
+
+    form_inputs = [
+        n for n in node_dicts
+        if (n.get("tag") or "").lower() in ("input", "select", "textarea")
+        and (n.get("type") or "").lower() not in ("hidden", "submit", "button")
+        and (n.get("role") or "").lower() not in ("search", "searchbox")
+    ]
+    if not form_inputs:
+        return False
+
+    # (a) Form field labels and buttons score against the goal
+    all_form_controls = [
+        n for n in node_dicts
+        if (n.get("tag") or "").lower() in ("input", "select", "textarea", "button")
+        and (n.get("type") or "").lower() != "hidden"
+        and (n.get("role") or "").lower() not in ("search", "searchbox")
+    ]
+    labels_text = " ".join(
+        str(n.get("resolved_label") or n.get("aria_label") or n.get("name") or n.get("inner_text") or "")
+        for n in all_form_controls
+    ).lower()
+
+    goal_lower = goal.lower()
+    goal_words = [w for w in re.findall(r"\w+", goal_lower) if len(w) > 2]
+    if any(w in labels_text for w in goal_words):
+        return True
+
+    if labels_text and score_text_similarity(goal, labels_text) >= 0.20:
+        return True
+
+    # Any form containing sensitive fields (e.g. password, card) is inherently a service/transaction form
+    if any(bool(n.get("sensitive")) or (n.get("type") or "").lower() == "password" for n in form_inputs):
+        return True
+
+    # (b) Page title / h1 / nearest heading / breadcrumb / page_text scores against goal
+    headings_text = " ".join(
+        str(n.get("resolved_label") or n.get("inner_text") or "")
+        for n in node_dicts
+        if (n.get("tag") or "").lower() in ("h1", "h2", "h3", "h4", "header")
+        or (n.get("role") or "").lower() in ("heading", "banner")
+    )
+    if headings_text and score_text_similarity(goal, headings_text) >= 0.25:
+        return True
+
+    breadcrumb_text = " ".join(
+        " ".join(n.get("breadcrumb") or [])
+        for n in node_dicts
+        if n.get("breadcrumb")
+    )
+    if breadcrumb_text and score_text_similarity(goal, breadcrumb_text) >= 0.25:
+        return True
+
+    if page_text and score_text_similarity(goal, page_text[:2000]) >= 0.25:
+        return True
+
+    # (c) Navigator reached this page by following a goal-relevant link in this goal (tried_labels / last step)
+    if goal_state and isinstance(goal_state.dom_state, dict):
+        tried_lbls = goal_state.dom_state.get("tried_labels", [])
+        if any(score_text_similarity(goal, lbl) >= 0.3 for lbl in tried_lbls):
+            return True
+
+    if milestone and milestone.description:
+        m_desc = milestone.description.lower()
+        if any(kw in m_desc for kw in ("form", "fill", "inquiry", "استعلام", "بيانات", "مخالفات", "خدمة")):
+            return True
+
+    return False
 
 
 @router.post("/chat/goal_step", response_model=GoalStepResponse)
@@ -812,6 +920,15 @@ async def goal_step_endpoint(
             confirmed_step = goal_state.pending_step
             goal_state.pending_step = None
             if confirmed_step:
+                # L3: Prefer same-tab navigation
+                confirmed_step.same_tab = True
+                if goal_state.dom_state is None:
+                    goal_state.dom_state = {}
+                confirmed_origins = goal_state.dom_state.setdefault("confirmed_origins", [])
+                pending_orig = goal_state.dom_state.pop("pending_target_origin", None)
+                if pending_orig and pending_orig not in confirmed_origins:
+                    confirmed_origins.append(pending_orig)
+
                 goal_state.plan_steps.append(confirmed_step)
                 goal_state.status = "in_progress"
                 goal_state.advance_hop()
@@ -1014,6 +1131,78 @@ async def goal_step_endpoint(
         prior_text = (goal_state.dom_state or {}).get("page_text", "")
         curr_text = payload.page_text or ""
 
+        # L11: Process structured change summary from last_action_result (url_changed, added_visible_count, text_changed, expanded_changed, modal_opened)
+        last_res_dict = last_result if isinstance(last_result, dict) else {}
+        url_changed_sig = bool(last_res_dict.get("url_changed")) or bool(prior_url and payload.current_url and _url_changed(prior_url, payload.current_url))
+        added_visible_sig = int(last_res_dict.get("added_visible_count", 0)) > 0
+        text_changed_sig = bool(last_res_dict.get("text_changed"))
+        expanded_changed_sig = bool(last_res_dict.get("expanded_changed"))
+        modal_opened_sig = bool(last_res_dict.get("modal_opened"))
+
+        has_change_summary = any(k in last_res_dict for k in ("url_changed", "added_visible_count", "text_changed", "expanded_changed", "modal_opened"))
+
+        curr_fingerprints = [
+            (
+                str(getattr(n, "tag", None) or (n.get("tag") if isinstance(n, dict) else "")),
+                str(getattr(n, "resolved_label", None) or (n.get("resolved_label") if isinstance(n, dict) else "")),
+                str(getattr(n, "inner_text", None) or (n.get("inner_text") if isinstance(n, dict) else "")),
+                str(getattr(n, "role", None) or (n.get("role") if isinstance(n, dict) else "")),
+                str(getattr(n, "href", None) or (n.get("href") if isinstance(n, dict) else "")),
+            )
+            for n in (payload.dom_map or [])
+        ]
+        prior_fingerprints = (goal_state.dom_state or {}).get("content_fingerprints", [])
+
+        if has_change_summary:
+            any_positive_change = bool(url_changed_sig or added_visible_sig or text_changed_sig or expanded_changed_sig or modal_opened_sig)
+        else:
+            fingerprints_changed = bool(prior_fingerprints and set(map(str, curr_fingerprints)) != set(map(str, prior_fingerprints)))
+            text_changed_fallback = bool(curr_text and prior_text and curr_text.strip() != prior_text.strip())
+            any_positive_change = bool(url_changed_sig or fingerprints_changed or text_changed_fallback)
+
+        if goal_state.dom_state is None:
+            goal_state.dom_state = {}
+        goal_state.dom_state["content_fingerprints"] = [list(fp) for fp in curr_fingerprints]
+
+        # L11: Positive change signal overrides verifier "no change" / false failures
+        if any_positive_change and verifier_res.status == "goal_failed":
+            verifier_res.status = "in_progress"
+            verifier_res.reason = "Page changed according to observable action result signals."
+            verifier_res.confidence = 0.85
+
+        # L4: A click with no detected change is NOT goal_failed (demote to in_progress)
+        # Only demote goal_failed to in_progress when the failure is about "no change/no navigation".
+        if verifier_res.status == "goal_failed":
+            reason_clean = (verifier_res.reason or "").lower()
+            is_no_change_failure = (
+                last_act == "click"
+                or any(kw in reason_clean for kw in ("no change", "did not navigate", "no new dom", "url remained", "no visible change", "remained", "state does not match", "state_mismatch"))
+            )
+            is_explicit_error = (
+                isinstance(last_result, dict)
+                and (
+                    last_result.get("status") == "error"
+                    or bool(last_result.get("error"))
+                )
+            )
+            is_structured_terminal = (
+                goal_state.hop_count >= goal_state.max_hops
+                or is_explicit_error
+                or any(kw in reason_clean for kw in ("captcha", "blocked", "access denied", "unauthorized", "exhausted", "limit reached", "declined", "card declined", "insufficient funds"))
+            )
+            if is_no_change_failure and not is_structured_terminal:
+                verifier_res.status = "in_progress"
+                if last_step and last_step.element_id:
+                    tried_list = goal_state.dom_state.setdefault("tried", [])
+                    eid_str = str(last_step.element_id)
+                    if eid_str not in tried_list:
+                        tried_list.append(eid_str)
+                    if f"click:{eid_str}" not in tried_list:
+                        tried_list.append(f"click:{eid_str}")
+                    tried_labels = goal_state.dom_state.setdefault("tried_labels", [])
+                    if last_step.description and last_step.description not in tried_labels:
+                        tried_labels.append(last_step.description)
+
         # Only demote goal_complete / milestone_complete, NEVER goal_failed (Fix 3)
         if verifier_res.status in ("goal_complete", "milestone_complete"):
             # Rule: only a step with reason "act" (a submit or the final action) can lead to goal_complete.
@@ -1152,14 +1341,22 @@ async def goal_step_endpoint(
                         )
         elif verifier_res.status == "goal_failed":
             goal_state.status = "goal_failed"
-            goal_state.error_message = verifier_res.reason
             goal_state.current_url = payload.current_url
             goal_state.advance_hop()
+            tried_summary = ""
+            if isinstance(goal_state.dom_state, dict):
+                labels = goal_state.dom_state.get("tried_labels") or []
+                if labels:
+                    tried_summary = "، ".join(f"'{l}'" for l in labels[-4:])
+            if not tried_summary:
+                tried_summary = f"'{goal_state.goal}'"
+            fail_reply = t("goal_failed_with_reason", reply_lang, reason=verifier_res.reason or "Unknown error")
+            goal_state.error_message = fail_reply
             return _apply_capability_and_tab_gating(
                 GoalStepResponse(
                     status="goal_failed",
                     goal_state=goal_state,
-                    reply=t("goal_failed_with_reason", reply_lang, reason=verifier_res.reason),
+                    reply=fail_reply,
                     steps=[],
                     requires_confirmation=False,
                     verifier_result=verifier_res,
@@ -1218,15 +1415,21 @@ async def goal_step_endpoint(
                 tab_ctx,
             )
 
+    # L7: Modal Scoping for Form Filler and Navigator
+    effective_dom_map = payload.dom_map
+    if any(getattr(n, "in_modal", False) for n in (payload.dom_map or [])):
+        effective_dom_map = [n for n in payload.dom_map if getattr(n, "in_modal", False)]
+
     # Form Filler execution if page is classified as form (Track 1m & WS7)
     form_steps: List[PlanStep] = []
-    milestone_desc = (active_milestone.description or "").lower() if active_milestone else ""
-    required_fields = extract_required_form_fields(payload.dom_map)
+    required_fields = extract_required_form_fields(effective_dom_map)
     has_required_form_fields = bool(required_fields)
-    is_form_relevant = (
-        has_required_form_fields
-        or not any(kw in milestone_desc for kw in ("download", "view", "read", "browse", "navigate to"))
-        or any(kw in milestone_desc for kw in ("form", "fill", "sign", "register", "login", "input", "account", "checkout", "details"))
+    is_form_relevant = _is_form_relevant(
+        goal=goal_state.goal,
+        dom_nodes=effective_dom_map,
+        page_text=payload.page_text,
+        goal_state=goal_state,
+        milestone=active_milestone,
     )
     if (goal_state.page_kind == "form" or has_required_form_fields) and is_form_relevant:
         default_profile_keys = [
@@ -1245,7 +1448,7 @@ async def goal_step_endpoint(
         target_form_id = scout_res.form_inventory[0] if (scout_res and scout_res.form_inventory) else "main-form"
         form_plan = await plan_form_fill(
             form_id=target_form_id,
-            dom_nodes=payload.dom_map,
+            dom_nodes=effective_dom_map,
             goal=goal_state.goal,
             profile_hints=default_profile_keys,
             language=goal_state.language,
@@ -1297,7 +1500,7 @@ async def goal_step_endpoint(
                 )
 
         # ── WS7 Slot Filling & Missing Field Orchestration ─────────────────
-        required_fields = extract_required_form_fields(payload.dom_map)
+        required_fields = extract_required_form_fields(effective_dom_map)
         tokens_from_goal = extract_tokens_from_goal(goal_state.goal, required_fields)
         user_inputs = dict(payload.user_inputs or {})
 
@@ -1519,7 +1722,12 @@ async def goal_step_endpoint(
             form_plan.submit_ref = submit_ref
 
         # If no fill steps are needed (e.g. form is already filled) but submit is present:
-        if not form_steps and submit_ref:
+        # L6: offer submit confirmation ONLY for a form that:
+        # (a) has at least one required input OR an input user provided a value for, and
+        # (b) is relevant to the goal (guaranteed by _is_form_relevant)
+        has_user_val = bool(user_inputs) or bool(tokens_from_goal)
+        can_confirm_submit = bool(submit_ref and is_form_relevant and (has_required_form_fields or has_user_val))
+        if not form_steps and can_confirm_submit:
             goal_state.status = "requires_confirmation"
             goal_state.requires_confirmation = True
             goal_state.pending_step = PlanStep(
@@ -1599,11 +1807,12 @@ async def goal_step_endpoint(
     plan = await plan_milestone_step(
         goal=goal_state.goal,
         milestone=active_milestone,
-        dom_map=payload.dom_map,
+        dom_map=effective_dom_map,
         current_url=payload.current_url,
         page_text=payload.page_text,
         user_response=payload.user_response,
         language=goal_state.language,
+        goal_state=goal_state,
     )
 
     # Update persistent DOM and URL tracking
@@ -1614,7 +1823,70 @@ async def goal_step_endpoint(
     goal_state.dom_state["ids"] = [str(getattr(node, "id", None) or getattr(node, "ref", None) or (node.get("id") if isinstance(node, dict) else node.get("ref"))) for node in payload.dom_map if getattr(node, "id", None) or getattr(node, "ref", None) or (isinstance(node, dict) and (node.get("id") or node.get("ref")))]
     goal_state.dom_state["page_text"] = page_text_clean
 
-    # Handle confirmation pause
+    # Candidate step origin and new-tab check (L3)
+    candidate_step = plan.pending_step or (plan.steps[0] if plan.steps else None)
+    if candidate_step and candidate_step.element_id:
+        target_node = None
+        for n in payload.dom_map:
+            nid = getattr(n, "id", None) or getattr(n, "ref", None) or (n.get("id") if isinstance(n, dict) else n.get("ref"))
+            if nid and str(nid) == str(candidate_step.element_id):
+                target_node = n
+                break
+
+        if target_node:
+            node_opens_tab = bool(getattr(target_node, "opens_new_tab", False) or (target_node.get("opens_new_tab") if isinstance(target_node, dict) else False))
+            curr_orig = _get_url_origin(payload.current_url)
+            raw_target_orig = getattr(target_node, "target_origin", None) or (target_node.get("target_origin") if isinstance(target_node, dict) else None)
+            raw_href = getattr(target_node, "href", None) or (target_node.get("href") if isinstance(target_node, dict) else None)
+            node_target_orig = raw_target_orig or (_get_url_origin(raw_href) if (raw_href and "://" in str(raw_href)) else curr_orig)
+
+            is_cross_origin = bool(node_target_orig and curr_orig and node_target_orig != curr_orig)
+
+            # L3: new tab on the SAME origin does not need confirmation. Just set same_tab=true.
+            if node_opens_tab and not is_cross_origin:
+                candidate_step.same_tab = True
+
+            # Ask only when target_origin differs from current origin
+            if is_cross_origin:
+                if goal_state.dom_state is None:
+                    goal_state.dom_state = {}
+                confirmed_origins = goal_state.dom_state.get("confirmed_origins", [])
+                if node_target_orig in confirmed_origins or (tab_ctx and tab_ctx.origin_confirmed):
+                    candidate_step.same_tab = True
+                else:
+                    # Require origin confirmation
+                    goal_state.status = "requires_origin_confirmation"
+                    goal_state.requires_confirmation = True
+                    goal_state.pending_step = candidate_step
+                    goal_state.dom_state["pending_target_origin"] = node_target_orig
+                    import urllib.parse
+                    target_host = urllib.parse.urlsplit(node_target_orig).netloc or node_target_orig
+                    prompt_msg = t("cross_origin_detected", reply_lang, host=target_host)
+                    goal_state.confirmation_prompt = prompt_msg
+                    goal_state.confirmation_options = [
+                        t("confirm_proceed_option", reply_lang),
+                        t("confirm_cancel_option", reply_lang),
+                    ]
+                    return _apply_capability_and_tab_gating(
+                        GoalStepResponse(
+                            status="requires_origin_confirmation",
+                            goal_state=goal_state,
+                            reply=prompt_msg,
+                            steps=[],
+                            requires_confirmation=True,
+                            requires_origin_confirmation=True,
+                            confirmation_prompt=prompt_msg,
+                            confirmation_options=goal_state.confirmation_options,
+                            pending_step=candidate_step,
+                            verifier_result=goal_state.verifier_result,
+                            contract_version=payload.contract_version,
+                        ),
+                        multitab_enabled,
+                        effective_capabilities,
+                        tab_ctx,
+                    )
+
+    # Handle confirmation pause (consequential action)
     if plan.requires_confirmation:
         goal_state.status = "requires_confirmation"
         goal_state.requires_confirmation = True
@@ -1642,9 +1914,11 @@ async def goal_step_endpoint(
 
     # Normal step progression
     if plan.steps:
+
         goal_state.plan_steps.extend(plan.steps)
         goal_state.status = "in_progress"
         goal_state.advance_hop()
+
         if goal_state.status == "goal_failed":
             tried_summary = ""
             if isinstance(goal_state.dom_state, dict):

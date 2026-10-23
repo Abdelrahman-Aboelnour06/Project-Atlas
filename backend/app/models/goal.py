@@ -13,10 +13,10 @@ Defines core Pydantic v2 contracts for goal-directed multi-step navigation:
 """
 
 from typing import Any, Dict, List, Literal, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr, field_validator, model_validator
 
 from app.models.action import ActionType
-from app.models.dom import DomNode
+from app.models.dom import DomNode, coerce_dom_map
 
 
 # ── Action & Step Definitions ──────────────────────────────────────────────────
@@ -35,6 +35,8 @@ class PlanStep(BaseModel):
     tab_id: Optional[int] = Field(default=None, description="Target browser tab ID for multi-tab actions (e.g. switch_tab)")
     reason: Optional[PlanStepReason] = Field(default=None, description="Exploration rationale: reveal_menu, navigate, search, backtrack, act")
     expect: Optional[str] = Field(default=None, description="Expected observable outcome or element appearance after step execution")
+    same_tab: Optional[bool] = Field(default=None, description="Prefer navigating within the same tab")
+
 
 
 class AgenticPlan(BaseModel):
@@ -94,6 +96,7 @@ GoalOverallStatus = Literal[
     "goal_failed",
     "requires_confirmation",
     "awaiting_user_input",
+    "requires_origin_confirmation",
 ]
 
 
@@ -289,6 +292,27 @@ class GoalStepRequest(BaseModel):
     )
     tab_context: Optional[TabContext] = Field(default=None, description="Multi-tab session context")
 
+    @field_validator("dom_map", mode="before")
+    @classmethod
+    def _validate_dom_map(cls, v: Any) -> List[DomNode]:
+        return coerce_dom_map(v)
+
+    @classmethod
+    def model_json_schema(cls, *args: Any, **kwargs: Any) -> Dict[str, Any]:
+        schema = super().model_json_schema(*args, **kwargs)
+        defs = schema.get("$defs", {})
+        if "PlanStep" in defs:
+            defs["PlanStep"]["properties"].pop("same_tab", None)
+        if "DomNode" in defs:
+            for k in ("opens_new_tab", "target_origin", "in_modal", "blocked_by_modal"):
+                defs["DomNode"]["properties"].pop(k, None)
+        if "GoalState" in defs and "status" in defs["GoalState"]["properties"]:
+            enum_list = defs["GoalState"]["properties"]["status"].get("enum", [])
+            if "requires_origin_confirmation" in enum_list:
+                enum_list.remove("requires_origin_confirmation")
+        return schema
+
+
 
 class GoalStepResponse(BaseModel):
     """Response payload returned by POST /v1/chat/goal_step to the browser client."""
@@ -307,3 +331,22 @@ class GoalStepResponse(BaseModel):
     switch_tab_id: Optional[int] = Field(default=None, description="Directive to switch active tab")
     requires_origin_confirmation: bool = Field(default=False, description="Gate for cross-origin confirmation")
     assisted_click: Optional[Dict[str, Any]] = Field(default=None, description="Assisted click prompt configuration")
+
+    @classmethod
+    def model_json_schema(cls, *args: Any, **kwargs: Any) -> Dict[str, Any]:
+        schema = super().model_json_schema(*args, **kwargs)
+        defs = schema.get("$defs", {})
+        if "PlanStep" in defs:
+            defs["PlanStep"]["properties"].pop("same_tab", None)
+        if "DomNode" in defs:
+            for k in ("opens_new_tab", "target_origin", "in_modal", "blocked_by_modal"):
+                defs["DomNode"]["properties"].pop(k, None)
+        if "GoalState" in defs and "status" in defs["GoalState"]["properties"]:
+            enum_list = defs["GoalState"]["properties"]["status"].get("enum", [])
+            if "requires_origin_confirmation" in enum_list:
+                enum_list.remove("requires_origin_confirmation")
+        if "status" in schema.get("properties", {}):
+            enum_list = schema["properties"]["status"].get("enum", [])
+            if "requires_origin_confirmation" in enum_list:
+                enum_list.remove("requires_origin_confirmation")
+        return schema

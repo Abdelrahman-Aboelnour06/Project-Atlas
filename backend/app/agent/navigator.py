@@ -370,6 +370,9 @@ async def plan_milestone_step(
     """
     reply_lang = resolve_reply_language(language or (goal_state.language if goal_state else None), goal)
     raw_nodes = _convert_dom_nodes_to_dicts(dom_map)
+    # L7: Modal scoping: if any node has in_modal: True, only consider in_modal nodes until modal closes
+    if any(bool(n.get("in_modal")) for n in raw_nodes):
+        raw_nodes = [n for n in raw_nodes if bool(n.get("in_modal"))]
     safe_dom = strip_pii_from_dom(raw_nodes)
 
     valid_ids: Set[str] = {str(n["id"]) for n in safe_dom if n.get("id")}
@@ -573,7 +576,14 @@ JSON RESPONSE:"""
         except Exception as exc:
             logger.warning("Navigator LLM call or JSON parsing failed: %s. Using universal exploration.", exc)
 
-    # Validate LLM Steps with zero hallucination enforcement
+    # Validate LLM Steps with zero hallucination enforcement and tried element suppression (L4)
+    tried_set: Set[str] = set()
+    for item in nav_state.get("tried", []):
+        if isinstance(item, str):
+            if ":" in item:
+                tried_set.add(item.split(":")[-1])
+            tried_set.add(item)
+
     validated_steps: List[PlanStep] = []
     for s in raw_steps:
         action = str(s.get("action", "click")).lower().strip()
@@ -581,6 +591,11 @@ JSON RESPONSE:"""
             action = "click"
         raw_id = s.get("element_id")
         eid = str(raw_id).strip() if raw_id is not None else None
+
+        # Filter out steps on elements already attempted without change (L4)
+        if eid and (eid in tried_set or f"{action}:{eid}" in tried_set):
+            logger.info("Ignoring LLM step on already-tried element: %s", eid)
+            continue
 
         reason: Optional[PlanStepReason] = s.get("reason")
         if reason not in ("reveal_menu", "navigate", "search", "backtrack", "act"):
@@ -617,6 +632,9 @@ JSON RESPONSE:"""
             matched_node, score = find_heuristic_match(desc, concise_dom)
             if matched_node and str(matched_node.get("id")) in valid_ids and score >= 0.5:
                 recovered_id = str(matched_node["id"])
+                if recovered_id in tried_set or f"{action}:{recovered_id}" in tried_set:
+                    logger.info("Ignoring LLM recovered step on already-tried element: %s", recovered_id)
+                    continue
                 validated_steps.append(PlanStep(
                     action=action,
                     element_id=recovered_id,
