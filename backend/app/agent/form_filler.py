@@ -485,9 +485,10 @@ FORM PLAN JSON:"""
         source = f.get("source", "user")
 
         # RULE 3 (Privacy): Sensitive fields get vault or profile tokens, never literal passwords
-        if node.get("sensitive"):
-            if not (isinstance(val, str) and val.startswith("{") and val.endswith("}")):
-                val = "{password}"
+        is_sensitive = bool(node.get("sensitive") or _is_sensitive_field(node))
+        if is_sensitive:
+            if not (isinstance(val, str) and TOKEN_REGEX.match(val)):
+                val = "{password}" if (node.get("type") == "password" or "pass" in str(node.get("name", "")).lower()) else "{secret}"
                 source = "vault"
 
         # RULE 5: Check if required field lacks value or was fabricated without profile hint
@@ -517,6 +518,13 @@ FORM PLAN JSON:"""
     for cr in consent_refs:
         if valid_refs[cr].get("required"):
             missing_required.add(cr)
+
+    # Ensure all required fields from DOM that have no assigned value are surfaced in missing_required
+    dom_required = extract_required_form_fields(dom_nodes)
+    field_refs_with_values = {f.ref for f in sanitized_fields if f.value}
+    for req_field in dom_required:
+        if req_field.ref not in field_refs_with_values:
+            missing_required.add(req_field.ref)
 
     return FormPlan(
         form_id=form_id,

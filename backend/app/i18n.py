@@ -101,6 +101,9 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "otp_form_reply": "A one-time verification code (OTP) is required. Please enter it to continue.",
         "max_hops_fallback": "Reached maximum hops limit.",
         "batch_form_fill_prepared": "Prepared batch form fill for {count} fields.",
+        "form_missing_fields_prompt": "Please provide {fields} to proceed.",
+        "form_validation_error_reask": "Please check and re-enter a valid {field}.",
+        "form_confirm_submit": "Ready to submit the form. Do you want to proceed?",
 
         # Navigator
         "nav_cancelled_action": "No problem, I've cancelled that action for you.",
@@ -109,6 +112,12 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "nav_confirm_sensitive": "This action will {desc}. Would you like to proceed?",
         "nav_confirm_generic": "Would you like to proceed with this action?",
         "nav_confirm_desc": "Would you like to confirm: {desc}?",
+
+        # Exploration & Navigation (WS6)
+        "nav_max_hops_tried": "I couldn't reach the requested service within the step limit. Here is what I tried: {tried}",
+        "nav_deadend_backtrack": "Reached a dead-end on this page. Backtracking to explore other navigation options.",
+        "nav_exploring_menu": "Opening menu '{toggle}' to check for {target}.",
+        "nav_search_query": "Searching the site for '{query}'.",
 
         # Router & Loop (WS5)
         "router_goal_ack": "I'm on it! Starting to work towards your goal: '{goal}'",
@@ -198,6 +207,9 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "otp_form_reply": "مطلوب رمز تحقق لمرة واحدة (OTP). يرجى إدخاله للمتابعة.",
         "max_hops_fallback": "تم الوصول للحد الأقصى للخطوات.",
         "batch_form_fill_prepared": "تم تجهيز ملء {count} حقول في النموذج.",
+        "form_missing_fields_prompt": "محتاج {fields} للمتابعة.",
+        "form_validation_error_reask": "يرجى التأكد من صحة {field} وإعادة إدخاله.",
+        "form_confirm_submit": "جاهز لإرسال النموذج. تحب تكمل؟",
 
         # Navigator
         "nav_cancelled_action": "ولا يهمك، لغيت العملية دي علشانك.",
@@ -206,6 +218,12 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "nav_confirm_sensitive": "العملية دي هتقوم بـ {desc}. تحب تكمل؟",
         "nav_confirm_generic": "تحب تكمل العملية دي؟",
         "nav_confirm_desc": "تحب تأكد: {desc}؟",
+
+        # Exploration & Navigation (WS6)
+        "nav_max_hops_tried": "معرفتش أوصل للخدمة المطلوبة خلال الحد الأقصى للخطوات. وده اللي جربت أعمله: {tried}",
+        "nav_deadend_backtrack": "وصلت لطريق مسدود في الصفحة دي. برجع علشان أجرب خيارات تانية.",
+        "nav_exploring_menu": "بفتح قائمة '{toggle}' علشان أشوف {target}.",
+        "nav_search_query": "ببحث في الموقع عن '{query}'.",
 
         # Router & Loop (WS5)
         "router_goal_ack": "تمام، جاري العمل على تحقيق هدفك: '{goal}'",

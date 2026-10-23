@@ -10,7 +10,7 @@
 
 const HIGHLIGHT_CLASS = 'atlas-glow-highlight'
 const HIGHLIGHT_DURATION_MS = 2000
-const TOKEN_REGEX = /^\{(password|cc_number|cc_cvv|cc_expiry|cc_name|ssn|otp|pin|secret|profile\.[a-z0-9_]+)(_\d+)?\}$/
+const TOKEN_REGEX = /^\{(?:vault:[a-zA-Z0-9_]+|password|cc_number|cc_cvv|cc_expiry|cc_name|ssn|otp|pin|secret|national_id|profile\.[a-z0-9_]+)(?:_\d+)?\}$/
 
 // Tracks the pending "remove highlight" timeout per element so that
 // re-glowing the same element within the highlight window resets the
@@ -848,6 +848,29 @@ const execute = async (actionResponse, options = {}) => {
             if (toggle) {
                 const revealRes = await doReveal(toggle, elementId);
                 if (!revealRes.ok) {
+                    const href = el.getAttribute?.('href') || el.href;
+                    const tag = (el.tagName || el.nodeName || '').toUpperCase();
+                    if (tag === 'A' && href && !href.startsWith('#') && !href.startsWith('javascript:')) {
+                        let isSameOrigin = true;
+                        try {
+                            if (typeof window !== 'undefined' && window.location) {
+                                const parsed = new URL(href, window.location.href);
+                                isSameOrigin = parsed.origin === window.location.origin;
+                            }
+                        } catch (e) {
+                            isSameOrigin = !href.includes('://');
+                        }
+                        if (isSameOrigin) {
+                            try {
+                                if (typeof el.click === 'function') {
+                                    el.click();
+                                    return { ok: true, message: `Navigated to ${href} via fallback link click after reveal timed out` };
+                                }
+                            } catch (clickErr) {
+                                // fall through to failure message
+                            }
+                        }
+                    }
                     return { ok: false, message: `Could not reveal menu: ${revealRes.message}` };
                 }
             }

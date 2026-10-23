@@ -661,7 +661,8 @@
           errDiv.className = "atlas-inline-error";
           errDiv.style.cssText = "color: #dc2626; font-size: 11px; margin-top: 2px;";
           errDiv.textContent = errorMsg;
-          input.parentNode.appendChild(errDiv);
+          const container = input.parentNode || input.parentElement || form;
+          container.appendChild(errDiv);
         }
       }
 

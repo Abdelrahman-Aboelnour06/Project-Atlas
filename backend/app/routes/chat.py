@@ -22,7 +22,13 @@ from app.agent.navigator import plan_milestone_step
 from app.agent.verifier import verify_step_outcome
 from app.agent.planner import plan_goal
 from app.agent.scout import classify_page, ScoutResult
-from app.agent.form_filler import plan_form_fill
+from app.agent.form_filler import (
+    plan_form_fill,
+    extract_required_form_fields,
+    extract_tokens_from_goal,
+    format_missing_fields_prompt,
+    TOKEN_REGEX,
+)
 from app.i18n import resolve_reply_language, is_mostly_non_arabic, t
 from app.models.goal import (
     GoalState,
@@ -781,7 +787,7 @@ async def goal_step_endpoint(
     # Handle confirmation response from user if state was paused for confirmation
     if goal_state.requires_confirmation and payload.user_response:
         resp_clean = payload.user_response.strip().lower()
-        if any(neg in resp_clean for neg in ("no", "cancel", "stop", "abort", "never mind")):
+        if any(neg in resp_clean for neg in ("no", "cancel", "stop", "abort", "never mind", "لا", "الغي", "إلغاء", "وقف")):
             goal_state.requires_confirmation = False
             goal_state.pending_step = None
             goal_state.status = "in_progress"
@@ -798,7 +804,7 @@ async def goal_step_endpoint(
                 effective_capabilities,
                 tab_ctx,
             )
-        elif any(pos in resp_clean for pos in ("yes", "sure", "proceed", "confirm", "go ahead", "ok")):
+        elif any(pos in resp_clean for pos in ("yes", "sure", "proceed", "confirm", "go ahead", "ok", "أيوة", "ايوة", "نعم", "تمام", "موافق", "أكد", "تاكيد")):
             goal_state.requires_confirmation = False
             if tab_ctx:
                 tab_ctx.origin_confirmed = True
@@ -1129,14 +1135,17 @@ async def goal_step_endpoint(
                 tab_ctx,
             )
 
-    # Form Filler execution if page is classified as form (Track 1m)
+    # Form Filler execution if page is classified as form (Track 1m & WS7)
     form_steps: List[PlanStep] = []
     milestone_desc = (active_milestone.description or "").lower() if active_milestone else ""
+    required_fields = extract_required_form_fields(payload.dom_map)
+    has_required_form_fields = bool(required_fields)
     is_form_relevant = (
-        not any(kw in milestone_desc for kw in ("download", "view", "read", "browse", "navigate to"))
+        has_required_form_fields
+        or not any(kw in milestone_desc for kw in ("download", "view", "read", "browse", "navigate to"))
         or any(kw in milestone_desc for kw in ("form", "fill", "sign", "register", "login", "input", "account", "checkout", "details"))
     )
-    if goal_state.page_kind == "form" and is_form_relevant:
+    if (goal_state.page_kind == "form" or has_required_form_fields) and is_form_relevant:
         default_profile_keys = [
             "email",
             "full_name",
@@ -1150,7 +1159,7 @@ async def goal_step_endpoint(
             "postal_code",
             "country",
         ]
-        target_form_id = scout_res.form_inventory[0] if scout_res.form_inventory else "main-form"
+        target_form_id = scout_res.form_inventory[0] if (scout_res and scout_res.form_inventory) else "main-form"
         form_plan = await plan_form_fill(
             form_id=target_form_id,
             dom_nodes=payload.dom_map,
@@ -1204,17 +1213,236 @@ async def goal_step_endpoint(
                     tab_ctx,
                 )
 
-        if form_plan.fields:
-            for field in form_plan.fields:
+        # ── WS7 Slot Filling & Missing Field Orchestration ─────────────────
+        required_fields = extract_required_form_fields(payload.dom_map)
+        tokens_from_goal = extract_tokens_from_goal(goal_state.goal, required_fields)
+        user_inputs = dict(payload.user_inputs or {})
+
+        # If user provided user_response instead of user_inputs dict:
+        if payload.user_response and not user_inputs:
+            resp_tokens = re.findall(
+                r"\{(?:vault:[a-zA-Z0-9_]+|password|cc_number|cc_cvv|cc_expiry|cc_name|ssn|otp|pin|secret|national_id|profile\.[a-z0-9_]+)(?:_\d+)?\}",
+                payload.user_response,
+            )
+            for tok in resp_tokens:
+                for rf in required_fields:
+                    if rf.sensitive and rf.ref not in user_inputs:
+                        user_inputs[rf.ref] = tok
+                        break
+            if not resp_tokens:
+                non_sens = [rf for rf in required_fields if not rf.sensitive and rf.ref not in user_inputs]
+                if len(non_sens) == 1:
+                    user_inputs[non_sens[0].ref] = payload.user_response.strip()
+
+        # Validation (Rule 5): Backend validates non-sensitive values and checks that sensitive ones are tokens
+        for f in required_fields:
+            if f.ref in user_inputs:
+                val = str(user_inputs[f.ref]).strip()
+                if f.sensitive:
+                    if not TOKEN_REGEX.match(val):
+                        reask_prompt = t("form_validation_error_reask", reply_lang, field=f.label or f.ref)
+                        goal_state.status = "awaiting_user_input"
+                        goal_state.awaiting = UserInputRequest(
+                            kind="missing_field",
+                            prompt=reask_prompt,
+                            fields=[f],
+                            resumable=True,
+                        )
+                        return _apply_capability_and_tab_gating(
+                            GoalStepResponse(
+                                status="awaiting_user_input",
+                                goal_state=goal_state,
+                                reply=reask_prompt,
+                                steps=[],
+                                requires_confirmation=False,
+                                verifier_result=goal_state.verifier_result,
+                                contract_version=payload.contract_version,
+                            ),
+                            multitab_enabled,
+                            effective_capabilities,
+                            tab_ctx,
+                        )
+                else:
+                    if f.maxlength and len(val) > f.maxlength:
+                        reask_prompt = t("form_validation_error_reask", reply_lang, field=f.label or f.ref)
+                        goal_state.status = "awaiting_user_input"
+                        goal_state.awaiting = UserInputRequest(
+                            kind="missing_field",
+                            prompt=reask_prompt,
+                            fields=[f],
+                            resumable=True,
+                        )
+                        return _apply_capability_and_tab_gating(
+                            GoalStepResponse(
+                                status="awaiting_user_input",
+                                goal_state=goal_state,
+                                reply=reask_prompt,
+                                steps=[],
+                                requires_confirmation=False,
+                                verifier_result=goal_state.verifier_result,
+                                contract_version=payload.contract_version,
+                            ),
+                            multitab_enabled,
+                            effective_capabilities,
+                            tab_ctx,
+                        )
+                    if f.pattern:
+                        try:
+                            if not re.search(f.pattern, val):
+                                reask_prompt = t("form_validation_error_reask", reply_lang, field=f.label or f.ref)
+                                goal_state.status = "awaiting_user_input"
+                                goal_state.awaiting = UserInputRequest(
+                                    kind="missing_field",
+                                    prompt=reask_prompt,
+                                    fields=[f],
+                                    resumable=True,
+                                )
+                                return _apply_capability_and_tab_gating(
+                                    GoalStepResponse(
+                                        status="awaiting_user_input",
+                                        goal_state=goal_state,
+                                        reply=reask_prompt,
+                                        steps=[],
+                                        requires_confirmation=False,
+                                        verifier_result=goal_state.verifier_result,
+                                        contract_version=payload.contract_version,
+                                    ),
+                                    multitab_enabled,
+                                    effective_capabilities,
+                                    tab_ctx,
+                                )
+                        except Exception:
+                            pass
+
+        # Identify missing required fields
+        missing_fields: List[InputField] = []
+        for f in required_fields:
+            has_val = (f.ref in user_inputs) or (f.ref in tokens_from_goal)
+            if not has_val:
+                node_val = None
+                for node in payload.dom_map:
+                    nid = getattr(node, "id", None) or getattr(node, "ref", None)
+                    if nid == f.ref:
+                        node_val = getattr(node, "current_value", None) or getattr(node, "value", None) or (node.get("current_value") if isinstance(node, dict) else (node.get("value") if isinstance(node, dict) else None))
+                        break
+                if not node_val:
+                    missing_fields.append(f)
+
+        if missing_fields:
+            prompt_msg = format_missing_fields_prompt(missing_fields, goal_state.language or payload.language)
+            goal_state.status = "awaiting_user_input"
+            goal_state.awaiting = UserInputRequest(
+                kind="missing_field",
+                prompt=prompt_msg,
+                fields=missing_fields,
+                resumable=True,
+            )
+            return _apply_capability_and_tab_gating(
+                GoalStepResponse(
+                    status="awaiting_user_input",
+                    goal_state=goal_state,
+                    reply=prompt_msg,
+                    steps=[],
+                    requires_confirmation=False,
+                    verifier_result=goal_state.verifier_result,
+                    contract_version=payload.contract_version,
+                ),
+                multitab_enabled,
+                effective_capabilities,
+                tab_ctx,
+            )
+
+        # All required fields satisfied: build fill steps
+        filled_refs = set()
+        for f in required_fields:
+            val = user_inputs.get(f.ref) or tokens_from_goal.get(f.ref)
+            if val:
                 form_steps.append(
                     PlanStep(
-                        action=field.action,
-                        element_id=field.ref,
-                        value=field.value,
-                        description=f"Fill {field.ref} ({field.source}): {field.value}",
+                        action="fill",
+                        element_id=f.ref,
+                        value=val,
+                        description=f"Fill {f.label or f.ref}: {val}",
                         delay_ms=300,
                     )
                 )
+                filled_refs.add(f.ref)
+
+        if form_plan and form_plan.fields:
+            for field in form_plan.fields:
+                if field.ref not in filled_refs:
+                    node_already_has_val = False
+                    for node in payload.dom_map:
+                        nid = getattr(node, "id", None) or getattr(node, "ref", None) or (node.get("id") if isinstance(node, dict) else (node.get("ref") if isinstance(node, dict) else None))
+                        if nid == field.ref:
+                            cval = getattr(node, "current_value", None) or getattr(node, "value", None) or (node.get("current_value") if isinstance(node, dict) else (node.get("value") if isinstance(node, dict) else None))
+                            if cval:
+                                node_already_has_val = True
+                            break
+                    if not node_already_has_val:
+                        form_steps.append(
+                            PlanStep(
+                                action=field.action,
+                                element_id=field.ref,
+                                value=field.value,
+                                description=f"Fill {field.ref} ({field.source}): {field.value}",
+                                delay_ms=300,
+                            )
+                        )
+                        filled_refs.add(field.ref)
+
+        # Identify submit button
+        submit_ref = form_plan.submit_ref if form_plan else None
+        submit_label = "Submit"
+        if not submit_ref and payload.dom_map:
+            for node in payload.dom_map:
+                nid = getattr(node, "id", None) or getattr(node, "ref", None)
+                tag = (getattr(node, "tag", None) or "").lower()
+                ntype = (getattr(node, "type", None) or "").lower()
+                lbl = (getattr(node, "resolved_label", None) or getattr(node, "inner_text", None) or "").lower()
+                if ntype == "submit" or (tag == "button" and any(k in lbl for k in ("submit", "register", "complete", "استعلام", "إرسال", "ارسال", "عرض", "تسجيل"))):
+                    submit_ref = str(nid)
+                    submit_label = getattr(node, "resolved_label", None) or getattr(node, "inner_text", None) or "Submit"
+                    break
+        elif submit_ref and payload.dom_map:
+            for node in payload.dom_map:
+                nid = getattr(node, "id", None) or getattr(node, "ref", None)
+                if str(nid) == str(submit_ref):
+                    submit_label = getattr(node, "resolved_label", None) or getattr(node, "inner_text", None) or "Submit"
+                    break
+
+        # If no fill steps are needed (e.g. form is already filled) but submit is present:
+        if not form_steps and submit_ref:
+            goal_state.status = "requires_confirmation"
+            goal_state.requires_confirmation = True
+            goal_state.pending_step = PlanStep(
+                action="click",
+                element_id=submit_ref,
+                description=f"Submit form ({submit_label})",
+            )
+            confirm_prompt = t("form_confirm_submit", reply_lang)
+            goal_state.confirmation_prompt = confirm_prompt
+            goal_state.confirmation_options = [
+                t("confirm_proceed_option", reply_lang),
+                t("confirm_cancel_option", reply_lang),
+            ]
+            return _apply_capability_and_tab_gating(
+                GoalStepResponse(
+                    status="requires_confirmation",
+                    goal_state=goal_state,
+                    reply=confirm_prompt,
+                    steps=[],
+                    requires_confirmation=True,
+                    confirmation_prompt=confirm_prompt,
+                    confirmation_options=goal_state.confirmation_options,
+                    pending_step=goal_state.pending_step,
+                    verifier_result=goal_state.verifier_result,
+                    contract_version=payload.contract_version,
+                ),
+                multitab_enabled,
+                effective_capabilities,
+                tab_ctx,
+            )
 
     if form_steps:
         goal_state.plan_steps.extend(form_steps)
