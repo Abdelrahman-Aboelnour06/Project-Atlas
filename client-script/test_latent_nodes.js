@@ -298,6 +298,36 @@ class MockElement {
     };
   }
 
+  get isConnected() {
+    let curr = this;
+    while (curr) {
+      if (curr.tagName === 'HTML' || (curr.parentElement === null && curr === global.document?.documentElement)) {
+        return true;
+      }
+      if (curr.parentElement === null) {
+        return false;
+      }
+      curr = curr.parentElement;
+    }
+    return false;
+  }
+
+  checkVisibility(opts) {
+    if (!this.isConnected) return false;
+    let curr = this;
+    while (curr) {
+      if (curr.style.display === 'none' || curr.style.visibility === 'hidden' || curr.hidden) return false;
+      if (curr.tagName === 'DETAILS' && !curr.open && this.tagName !== 'SUMMARY') return false;
+      if (curr.tagName === 'DIALOG' && !curr.open) return false;
+      curr = curr.parentElement;
+    }
+    return true;
+  }
+
+  getClientRects() {
+    return this.checkVisibility() ? [{ width: 10, height: 10 }] : [];
+  }
+
   get offsetParent() {
     let curr = this;
     while (curr) {
@@ -750,6 +780,80 @@ testAsync('Executor execute self-healing: clicking latent node triggers reveal o
   assert.strictEqual(res.ok, true, 'Self-healing execute must succeed');
   assert.strictEqual(revealTriggered, true, 'Toggle must be revealed first');
   assert.strictEqual(childClicked, true, 'Target child must be clicked after reveal');
+});
+
+test('Breadcrumb isolation: real ancestor triggers only, never sibling menus', () => {
+  const { body } = setupMockDocument();
+
+  // nav > ul > li[button "About" + ul#sub1 > li > a "Team"]
+  //          > li[button "Services" + ul#sub2 > li > a "Vehicle fines"]
+  const nav = new MockElement('nav');
+  const ul = new MockElement('ul');
+
+  const liAbout = new MockElement('li');
+  const btnAbout = new MockElement('button', { id: 'btn-about', 'aria-controls': 'sub1' }, 'About');
+  const ulSub1 = new MockElement('ul', { id: 'sub1', style: 'display:none' });
+  const liTeam = new MockElement('li');
+  const aTeam = new MockElement('a', { href: '/team' }, 'Team');
+  liTeam.appendChild(aTeam);
+  ulSub1.appendChild(liTeam);
+  liAbout.appendChild(btnAbout);
+  liAbout.appendChild(ulSub1);
+
+  const liServices = new MockElement('li');
+  const btnServices = new MockElement('button', { id: 'btn-services', 'aria-controls': 'sub2' }, 'Services');
+  const ulSub2 = new MockElement('ul', { id: 'sub2', style: 'display:none' });
+  const liFines = new MockElement('li');
+  const aFines = new MockElement('a', { href: '/fines' }, 'Vehicle fines');
+  liFines.appendChild(aFines);
+  ulSub2.appendChild(liFines);
+  liServices.appendChild(btnServices);
+  liServices.appendChild(ulSub2);
+
+  ul.appendChild(liAbout);
+  ul.appendChild(liServices);
+  nav.appendChild(ul);
+  body.appendChild(nav);
+
+  const nodes = AtlasSerializer.serialize();
+  const nodeFines = nodes.find((n) => n.inner_text === 'Vehicle fines');
+  const nodeTeam = nodes.find((n) => n.inner_text === 'Team');
+
+  assert(nodeFines, 'Must serialize Vehicle fines');
+  assert(nodeTeam, 'Must serialize Team');
+  assert.deepStrictEqual(nodeFines.breadcrumb, ['Services'], 'Expected for nav > ul > li[button "Services" + ul#sub2 > li > a "Vehicle fines"]: ["Services"]');
+  assert.deepStrictEqual(nodeTeam.breadcrumb, ['About'], 'Team breadcrumb must only contain ["About"]');
+});
+
+test('isEffectivelyVisible: child element inside display:none parent is not visible even if display:inline', () => {
+  const { body } = setupMockDocument();
+
+  const container = new MockElement('div', { style: 'display:none' });
+  const link = new MockElement('a', { href: '/foo', style: 'display:inline' }, 'Hidden Link');
+  container.appendChild(link);
+  body.appendChild(container);
+
+  assert.strictEqual(AtlasExecutor.isEffectivelyVisible(link), false, 'Link inside display:none container must be effectively invisible');
+  assert.strictEqual(AtlasExecutor.isEffectivelyVisible(body), true, 'Body must be effectively visible');
+});
+
+testAsync('Executor doReveal: when target is given, decides only by target visibility (not aria-expanded alone)', async () => {
+  const { body } = setupMockDocument();
+
+  const toggle = new MockElement('button', { 'aria-expanded': 'true', id: 'toggle-btn', 'data-atlas-id': 'el_toggle' }, 'Menu');
+  const target = new MockElement('a', { href: '/item', id: 'target-item', 'data-atlas-id': 'el_target', style: 'display:none' }, 'Item');
+  body.appendChild(toggle);
+  body.appendChild(target);
+
+  let revealAttempted = false;
+  toggle.addEventListener('click', () => {
+    revealAttempted = true;
+    target.style.display = 'block';
+  });
+
+  const res = await AtlasExecutor.doReveal(toggle, 'el_target');
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(revealAttempted, true, 'doReveal must act to reveal target despite aria-expanded="true"');
 });
 
 // ── Prime Directive Universal Audit ──────────────────────────────────────────

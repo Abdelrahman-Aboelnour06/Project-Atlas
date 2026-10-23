@@ -560,6 +560,35 @@ const doWaitFor = async (value = 'settle') => {
     return { ok: true, message: 'Settled' };
 };
 
+const isEffectivelyVisible = (el) => {
+    if (!el || !el.isConnected) return false;
+    try {
+        if (typeof el.checkVisibility === 'function') {
+            return Boolean(el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }));
+        }
+        if (typeof el.getClientRects === 'function') {
+            const rects = el.getClientRects();
+            if (rects && rects.length > 0) {
+                if (typeof window !== 'undefined' && window.getComputedStyle) {
+                    return window.getComputedStyle(el).visibility !== 'hidden';
+                }
+                return true;
+            }
+            return false;
+        }
+        if (typeof window !== 'undefined' && window.getComputedStyle) {
+            let curr = el;
+            while (curr) {
+                const s = window.getComputedStyle(curr);
+                if (s && (s.display === 'none' || s.visibility === 'hidden')) return false;
+                curr = curr.parentElement;
+            }
+            return true;
+        }
+    } catch (_) {}
+    return false;
+};
+
 const doReveal = async (toggleEl, targetRefOrValue) => {
     if (!toggleEl) {
         return { ok: false, message: 'Toggle element not found' };
@@ -574,24 +603,17 @@ const doReveal = async (toggleEl, targetRefOrValue) => {
 
     // Helper to check if target or controlled element is visible or expanded
     const isRevealed = () => {
+        // When target is given, decide strictly by target's effective visibility
+        if (targetEl) {
+            return isEffectivelyVisible(targetEl);
+        }
         if (toggleEl.getAttribute?.('aria-expanded') === 'true') return true;
         if (toggleEl.parentElement?.tagName === 'DETAILS' && toggleEl.parentElement.open) return true;
-        if (targetEl) {
-            try {
-                if (targetEl.offsetParent !== null) return true;
-                const s = typeof window !== 'undefined' && window.getComputedStyle ? window.getComputedStyle(targetEl) : targetEl.style;
-                if (s && s.display !== 'none' && s.visibility !== 'hidden') return true;
-            } catch (_) {}
-        }
         const controlsId = toggleEl.getAttribute?.('aria-controls');
         if (controlsId && typeof document !== 'undefined') {
             const controlled = document.getElementById(controlsId);
             if (controlled) {
-                try {
-                    if (controlled.offsetParent !== null) return true;
-                    const s = typeof window !== 'undefined' && window.getComputedStyle ? window.getComputedStyle(controlled) : controlled.style;
-                    if (s && s.display !== 'none' && s.visibility !== 'hidden') return true;
-                } catch (_) {}
+                return isEffectivelyVisible(controlled);
             }
         }
         return false;
@@ -652,8 +674,19 @@ const doReveal = async (toggleEl, targetRefOrValue) => {
         !href.startsWith('javascript:');
 
     if (!isNavigatingLink) {
-        dispatchMouseSequence(toggleEl, 1);
-        if (typeof toggleEl.click === 'function') toggleEl.click();
+        const rect = toggleEl.getBoundingClientRect ? toggleEl.getBoundingClientRect() : { left: 0, top: 0, width: 20, height: 20 };
+        const clientX = rect.left + rect.width / 2;
+        const clientY = rect.top + rect.height / 2;
+        const eventInit = { bubbles: true, cancelable: true, view: typeof window !== 'undefined' ? window : null, clientX, clientY, buttons: 1 };
+        toggleEl.dispatchEvent(new PointerEvent('pointerdown', eventInit));
+        toggleEl.dispatchEvent(new MouseEvent('mousedown', eventInit));
+        toggleEl.dispatchEvent(new PointerEvent('pointerup', eventInit));
+        toggleEl.dispatchEvent(new MouseEvent('mouseup', eventInit));
+        if (typeof toggleEl.click === 'function') {
+            toggleEl.click();
+        } else {
+            toggleEl.dispatchEvent(new MouseEvent('click', eventInit));
+        }
     }
 
     // Poll up to 2,000 ms for target or menu to become visible / expanded
@@ -809,17 +842,7 @@ const execute = async (actionResponse, options = {}) => {
     const INTERACT_ACTIONS = ['click', 'open', 'double_click', 'dblclick', 'triple_click', 'tripleclick', 'fill'];
     if (INTERACT_ACTIONS.includes(action)) {
         const revealVia = el.getAttribute?.('data-atlas-reveal-via');
-        let elVisible = true;
-        try {
-            if (el.hidden || (el.style && (el.style.display === 'none' || el.style.visibility === 'hidden'))) {
-                elVisible = false;
-            } else if (typeof window !== 'undefined' && window.getComputedStyle) {
-                const s = window.getComputedStyle(el);
-                if (s.display === 'none' || s.visibility === 'hidden') elVisible = false;
-            }
-        } catch (_) {}
-
-        if (!elVisible && revealVia) {
+        if (!isEffectivelyVisible(el) && revealVia) {
             const toggle = window.AtlasSerializer?.getElementByAtlasId(revealVia) ||
                            (typeof document !== 'undefined' ? document.querySelector(`[data-atlas-id="${CSS.escape(revealVia)}"]`) : null);
             if (toggle) {
@@ -1111,6 +1134,7 @@ const executorApi = {
     doUploadFile,
     doWaitFor,
     doReveal,
+    isEffectivelyVisible,
     isCredentialField,
     requestNativeCredentials,
     TOKEN_REGEX,

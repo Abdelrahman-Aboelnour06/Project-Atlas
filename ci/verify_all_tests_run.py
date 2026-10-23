@@ -32,6 +32,7 @@ CI_E2E_SUITES = {
     "a11y_axe.js",
     "run_multi_tab_suite.js",
     "test_portal_fixtures_e2e.js",
+    "test_latent_reveal_e2e.js",
 }
 
 

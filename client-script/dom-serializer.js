@@ -700,54 +700,60 @@ const NOISE_TEXT_PATTERNS = [
     let curr = el.parentElement;
     let depth = 0;
 
-    while (curr && curr !== document.body && curr !== document.documentElement && depth < 10) {
+    while (curr && curr !== document.body && curr !== document.documentElement && depth < 12) {
       depth++;
       const tag = (curr.tagName || "").toLowerCase();
       const role = (curr.getAttribute?.("role") || "").toLowerCase();
 
       // Case A: <details> ancestor -> <summary>
       if (tag === "details") {
-        const summary = curr.firstElementChild && (curr.firstElementChild.tagName || "").toLowerCase() === "summary"
-          ? curr.firstElementChild
-          : (curr.querySelector ? curr.querySelector("summary") : null);
-        if (summary && summary !== el) {
-          const lbl = resolveLabel(summary);
+        const summary = Array.from(curr.children || []).find(
+          (c) => (c.tagName || "").toLowerCase() === "summary"
+        );
+        if (summary && summary !== el && curr.contains(el)) {
+          const lbl = summary.__atlas_lbl || (summary.__atlas_lbl = resolveLabel(summary));
           if (lbl && !breadcrumbLabels.includes(lbl)) {
             breadcrumbLabels.push(lbl);
           }
         }
       }
 
-      // Case B: ul/ol/nav/menu container with preceding toggle button/link
-      if (tag === "ul" || tag === "ol" || tag === "nav" || role === "menu" || role === "menubar") {
+      // Case B: aria-controls container target
+      if (curr.id && controlsMap && controlsMap.has(curr.id)) {
+        const ctrlToggle = controlsMap.get(curr.id);
+        if (ctrlToggle && ctrlToggle !== el && !curr.contains(ctrlToggle) && curr.contains(el)) {
+          const lbl = ctrlToggle.__atlas_lbl || (ctrlToggle.__atlas_lbl = resolveLabel(ctrlToggle));
+          if (lbl && !breadcrumbLabels.includes(lbl)) {
+            breadcrumbLabels.push(lbl);
+          }
+        }
+      }
+
+      // Case C: Adjacent toggle preceding container or parent <li> toggle
+      if (tag === "ul" || tag === "ol" || tag === "nav" || role === "menu" || role === "menubar" || (curr.className && /menu|dropdown|drawer/i.test(String(curr.className)))) {
         const prev = curr.previousElementSibling;
-        if (prev && prev !== el) {
+        if (prev && prev !== el && curr.contains(el)) {
           const pTag = (prev.tagName || "").toLowerCase();
           const pRole = (prev.getAttribute?.("role") || "").toLowerCase();
           if (pTag === "button" || pTag === "a" || pRole === "button" || pRole === "menuitem") {
-            const lbl = resolveLabel(prev);
+            const lbl = prev.__atlas_lbl || (prev.__atlas_lbl = resolveLabel(prev));
             if (lbl && !breadcrumbLabels.includes(lbl)) {
               breadcrumbLabels.push(lbl);
             }
           }
         } else if (curr.parentElement && (curr.parentElement.tagName || "").toLowerCase() === "li") {
-          const trigger = curr.parentElement.querySelector("button, a, [role='button'], [role='menuitem']");
-          if (trigger && trigger !== el && !curr.contains(trigger)) {
-            const lbl = resolveLabel(trigger);
+          const li = curr.parentElement;
+          const trigger = Array.from(li.children || []).find((c) => {
+            if (c === curr || c === el) return false;
+            const cT = (c.tagName || "").toLowerCase();
+            const cR = (c.getAttribute?.("role") || "").toLowerCase();
+            return cT === "button" || cT === "a" || cR === "button" || cR === "menuitem";
+          });
+          if (trigger && curr.contains(el)) {
+            const lbl = trigger.__atlas_lbl || (trigger.__atlas_lbl = resolveLabel(trigger));
             if (lbl && !breadcrumbLabels.includes(lbl)) {
               breadcrumbLabels.push(lbl);
             }
-          }
-        }
-      }
-
-      // Case C: Container referenced by aria-controls
-      if (curr.id && controlsMap && controlsMap.has(curr.id)) {
-        const ctrlToggle = controlsMap.get(curr.id);
-        if (ctrlToggle && ctrlToggle !== el && !curr.contains(ctrlToggle)) {
-          const lbl = resolveLabel(ctrlToggle);
-          if (lbl && !breadcrumbLabels.includes(lbl)) {
-            breadcrumbLabels.push(lbl);
           }
         }
       }
@@ -756,7 +762,6 @@ const NOISE_TEXT_PATTERNS = [
     }
 
     if (breadcrumbLabels.length === 0) return null;
-    // Walk was leaf-to-root; reverse so breadcrumb is root-to-leaf, capped at 3
     return breadcrumbLabels.reverse().slice(-3);
   };
 
@@ -773,16 +778,16 @@ const NOISE_TEXT_PATTERNS = [
 
       // 1. <details> ancestor -> <summary>
       if (tag === "details") {
-        const summary = curr.firstElementChild && (curr.firstElementChild.tagName || "").toLowerCase() === "summary"
-          ? curr.firstElementChild
-          : (curr.querySelector ? curr.querySelector("summary") : null);
-        if (summary && summary !== el) return summary;
+        const summary = Array.from(curr.children || []).find(
+          (c) => (c.tagName || "").toLowerCase() === "summary"
+        );
+        if (summary && summary !== el && curr.contains(el)) return summary;
       }
 
       // 2. Container ID mapped in controlsMap
       if (curr.id && controlsMap && controlsMap.has(curr.id)) {
         const ctrl = controlsMap.get(curr.id);
-        if (ctrl && ctrl !== el) return ctrl;
+        if (ctrl && ctrl !== el && !curr.contains(ctrl) && curr.contains(el)) return ctrl;
       }
 
       // 3. ul/ol/nav/menu preceding sibling or parent <li> trigger
@@ -792,10 +797,10 @@ const NOISE_TEXT_PATTERNS = [
         tag === "nav" ||
         role === "menu" ||
         role === "menubar" ||
-        (curr.className && /menu|dropdown|drawer/i.test(curr.className))
+        (curr.className && /menu|dropdown|drawer/i.test(String(curr.className)))
       ) {
         const prev = curr.previousElementSibling;
-        if (prev && prev !== el) {
+        if (prev && prev !== el && curr.contains(el)) {
           const pTag = (prev.tagName || "").toLowerCase();
           const pRole = (prev.getAttribute?.("role") || "").toLowerCase();
           if (pTag === "button" || pTag === "a" || pRole === "button" || pRole === "menuitem") {
@@ -803,8 +808,14 @@ const NOISE_TEXT_PATTERNS = [
           }
         }
         if (curr.parentElement && (curr.parentElement.tagName || "").toLowerCase() === "li") {
-          const trigger = curr.parentElement.querySelector("button, a, [role='button'], [role='menuitem']");
-          if (trigger && trigger !== el && !curr.contains(trigger)) {
+          const li = curr.parentElement;
+          const trigger = Array.from(li.children || []).find((c) => {
+            if (c === curr || c === el) return false;
+            const cT = (c.tagName || "").toLowerCase();
+            const cR = (c.getAttribute?.("role") || "").toLowerCase();
+            return cT === "button" || cT === "a" || cR === "button" || cR === "menuitem";
+          });
+          if (trigger && curr.contains(el)) {
             return trigger;
           }
         }
@@ -981,7 +992,7 @@ const NOISE_TEXT_PATTERNS = [
 
     if (!isGlobalHidden) {
       try {
-        const ancestorCache = new Map();
+        const parentInfoCache = new Map();
         for (let i = 0; i < hiddenCandidates.length; i++) {
           if (passedLatentElements.length >= 150) break; // Cap at 150
           const el = hiddenCandidates[i];
@@ -994,144 +1005,83 @@ const NOISE_TEXT_PATTERNS = [
           if (tag === "input" || tag === "select" || tag === "textarea") continue;
           if (isSensitiveField(el)) continue;
 
-          // 3. Single upward traversal: check blockers, valid container, toggle, landmark, breadcrumbs
-          let isBlocked = false;
-          let validContainer = false;
-          let toggleEl = null;
-          let landmark = null;
-          let formId = null;
-          const breadcrumbLabels = [];
+          let info = parentInfoCache.get(el.parentElement);
+          if (!info) {
+            let isBlocked = false;
+            let validContainer = false;
+            let landmark = null;
+            let formId = null;
 
-          let curr = el.parentElement;
-          let depth = 0;
-          const chain = [];
-          while (curr && curr !== document.body && curr !== document.documentElement && depth < 12) {
-            depth++;
-            if (ancestorCache.has(curr)) {
-              const cached = ancestorCache.get(curr);
-              if (cached.isBlocked) isBlocked = true;
-              if (cached.validContainer) validContainer = true;
-              if (!landmark && cached.landmark) landmark = cached.landmark;
-              if (!toggleEl && cached.toggleEl) toggleEl = cached.toggleEl;
-              if (!formId && cached.formId) formId = cached.formId;
-              for (let b = 0; b < cached.breadcrumbLabels.length; b++) {
-                const lbl = cached.breadcrumbLabels[b];
-                if (breadcrumbLabels.length < 3 && !breadcrumbLabels.includes(lbl)) {
-                  breadcrumbLabels.push(lbl);
-                }
+            let curr = el.parentElement;
+            let depth = 0;
+            while (curr && curr !== document.body && curr !== document.documentElement && depth < 12) {
+              depth++;
+              if (
+                curr.getAttribute?.("aria-hidden") === "true" ||
+                (curr.tagName === "DIALOG" && !curr.open && !curr.hasAttribute("open")) ||
+                curr.hasAttribute?.("inert") ||
+                curr.id === "atlas-sidebar-host" ||
+                curr.id === "atlas-sidebar-root"
+              ) {
+                isBlocked = true;
+                break;
               }
-              break;
-            }
 
-            chain.push(curr);
+              const cTag = (curr.tagName || "").toLowerCase();
+              const cRole = (curr.getAttribute?.("role") || "").toLowerCase();
+              const cClass = (curr.getAttribute?.("class") || "").toLowerCase();
+              const cId = curr.id || "";
 
-            if (
-              curr.getAttribute?.("aria-hidden") === "true" ||
-              (curr.tagName === "DIALOG" && !curr.open && !curr.hasAttribute("open")) ||
-              curr.hasAttribute?.("inert") ||
-              curr.id === "atlas-sidebar-host" ||
-              curr.id === "atlas-sidebar-root"
-            ) {
-              isBlocked = true;
-              break;
-            }
-
-            const cTag = (curr.tagName || "").toLowerCase();
-            const cRole = (curr.getAttribute?.("role") || "").toLowerCase();
-            const cClass = (curr.getAttribute?.("class") || "").toLowerCase();
-            const cId = curr.id || "";
-
-            if (cTag === "form" && !formId) {
-              formId = curr.id || curr.getAttribute?.("name") || curr.getAttribute?.(ATLAS_ID_ATTR) || "form_0";
-            }
-
-            // Container validation: nav, header, menu, menubar, navigation, details:not([open]), aside, drawer, controlsMap
-            if (
-              cTag === "nav" ||
-              cTag === "header" ||
-              cTag === "aside" ||
-              cTag === "details" ||
-              cRole === "menu" ||
-              cRole === "menubar" ||
-              cRole === "navigation" ||
-              cClass.includes("drawer") ||
-              cId.includes("drawer") ||
-              (cId && controlsMap.has(cId))
-            ) {
-              validContainer = true;
-            }
-
-            // Closest landmark
-            if (!landmark) {
-              if (cTag === "header" || cRole === "banner") landmark = "header";
-              else if (cTag === "nav" || cRole === "navigation") landmark = "nav";
-              else if (cTag === "main" || cRole === "main") landmark = "main";
-              else if (cTag === "footer" || cRole === "contentinfo") landmark = "footer";
-              else if (cTag === "aside" || cRole === "complementary") landmark = "aside";
-            }
-
-            // Nearest toggle and breadcrumbs
-            let trigger = null;
-            if (cTag === "details") {
-              const summary = Array.from(curr.children || []).find(
-                (c) => (c.tagName || "").toLowerCase() === "summary"
-              );
-              if (summary && summary !== el) trigger = summary;
-            } else if (cId && controlsMap.has(cId)) {
-              const ctrl = controlsMap.get(cId);
-              if (ctrl && ctrl !== el && !curr.contains(ctrl)) trigger = ctrl;
-            } else if (
-              cTag === "ul" ||
-              cTag === "ol" ||
-              cTag === "nav" ||
-              cRole === "menu" ||
-              cRole === "menubar" ||
-              cClass.includes("menu") ||
-              cClass.includes("dropdown") ||
-              cClass.includes("drawer")
-            ) {
-              const prev = curr.previousElementSibling;
-              if (prev && prev !== el) {
-                const pTag = (prev.tagName || "").toLowerCase();
-                const pRole = (prev.getAttribute?.("role") || "").toLowerCase();
-                if (pTag === "button" || pTag === "a" || pRole === "button" || pRole === "menuitem") {
-                  trigger = prev;
-                }
+              if (cTag === "form" && !formId) {
+                formId = curr.id || curr.getAttribute?.("name") || curr.getAttribute?.(ATLAS_ID_ATTR) || "form_0";
               }
-              if (!trigger && curr.parentElement && (curr.parentElement.tagName || "").toLowerCase() === "li") {
-                const liTrigger = Array.from(curr.parentElement.children || []).find((c) => {
-                  if (c === curr || c === el) return false;
-                  const cT = (c.tagName || "").toLowerCase();
-                  const cR = (c.getAttribute?.("role") || "").toLowerCase();
-                  return cT === "button" || cT === "a" || cR === "button" || cR === "menuitem";
-                });
-                if (liTrigger) trigger = liTrigger;
+
+              // Container validation: nav, header, menu, menubar, navigation, details:not([open]), aside, drawer, controlsMap
+              if (
+                cTag === "nav" ||
+                cTag === "header" ||
+                cTag === "aside" ||
+                cTag === "details" ||
+                cRole === "menu" ||
+                cRole === "menubar" ||
+                cRole === "navigation" ||
+                cClass.includes("drawer") ||
+                cId.includes("drawer") ||
+                (cId && controlsMap.has(cId))
+              ) {
+                validContainer = true;
               }
+
+              // Closest landmark
+              if (!landmark) {
+                if (cTag === "header" || cRole === "banner") landmark = "header";
+                else if (cTag === "nav" || cRole === "navigation") landmark = "nav";
+                else if (cTag === "main" || cRole === "main") landmark = "main";
+                else if (cTag === "footer" || cRole === "contentinfo") landmark = "footer";
+                else if (cTag === "aside" || cRole === "complementary") landmark = "aside";
+              }
+
+              curr = curr.parentElement;
             }
 
-            if (trigger) {
-              if (!toggleEl) toggleEl = trigger;
-              if (breadcrumbLabels.length < 3) {
-                const lbl = trigger.__atlas_lbl || (trigger.__atlas_lbl = resolveLabel(trigger));
-                if (lbl && !breadcrumbLabels.includes(lbl)) breadcrumbLabels.push(lbl);
-              }
-            }
+            const toggleEl = findNearestToggle(el, controlsMap);
+            const breadcrumb = detectBreadcrumb(el, controlsMap);
 
-            curr = curr.parentElement;
-          }
-
-          for (let c = 0; c < chain.length; c++) {
-            ancestorCache.set(chain[c], {
+            info = {
               isBlocked,
               validContainer,
-              toggleEl,
               landmark,
               formId,
-              breadcrumbLabels: [...breadcrumbLabels],
-            });
+              toggleEl,
+              breadcrumb,
+            };
+
+            if (el.parentElement) {
+              parentInfoCache.set(el.parentElement, info);
+            }
           }
 
-          if (isBlocked || !validContainer) continue;
+          if (info.isBlocked || !info.validContainer) continue;
           if (activeModal && !activeModal.contains(el)) continue;
           if (isStructuralNoise(el)) continue;
 
@@ -1145,25 +1095,26 @@ const NOISE_TEXT_PATTERNS = [
           if (isMachineLabel(el)) continue;
 
           // 5. Deduplication: shared seenLabels (cannot block visible elements)
-          if (isDuplicate(label, formId)) continue;
+          if (isDuplicate(label, info.formId)) continue;
 
           // 6. Ordinal and Ref: separate latentOrdinalCounter to prevent affecting visible refs
           const role = el.getAttribute("role") || null;
           const type = el.getAttribute("type") || null;
-          const basisKey = [tag, role || "", type || "", normaliseLabel(label), formId || ""].join("|");
+          const basisKey = [tag, role || "", type || "", normaliseLabel(label), info.formId || ""].join("|");
           const ordinal = latentOrdinalCounter.get(basisKey) || 0;
           latentOrdinalCounter.set(basisKey, ordinal + 1);
 
-          const ref = computeRef(el, label, formId, ordinal);
+          const ref = computeRef(el, label, info.formId, ordinal);
           const existingAtlasId = el.getAttribute(ATLAS_ID_ATTR);
 
           // 7. Reveal via ID
           let revealVia = null;
+          const toggleEl = info.toggleEl;
           if (toggleEl) {
             let toggleId = toggleEl.__atlas_id || toggleEl.getAttribute(ATLAS_ID_ATTR);
             if (!toggleId) {
               const tLbl = toggleEl.__atlas_lbl || (toggleEl.__atlas_lbl = resolveLabel(toggleEl));
-              const tRef = computeRef(toggleEl, tLbl || "toggle", formId, 0);
+              const tRef = computeRef(toggleEl, tLbl || "toggle", info.formId, 0);
               toggleId = tRef;
               toggleEl.__atlas_id = tRef;
               toggleEl.setAttribute(ATLAS_ID_ATTR, tRef);
@@ -1178,7 +1129,6 @@ const NOISE_TEXT_PATTERNS = [
           const href = el.getAttribute("href") || null;
           const name = el.getAttribute("name") || null;
           const menu = detectMenu(el);
-          const breadcrumb = breadcrumbLabels.length > 0 ? breadcrumbLabels.reverse().slice(-3) : null;
           const disabled = Boolean(el.disabled || el.getAttribute("aria-disabled") === "true");
 
           passedLatentElements.push({
@@ -1197,7 +1147,7 @@ const NOISE_TEXT_PATTERNS = [
             resolved_label: label,
             group_label: null,
             section_label: null,
-            form_id: formId,
+            form_id: info.formId,
             required: false,
             disabled,
             current_value: null,
@@ -1212,8 +1162,8 @@ const NOISE_TEXT_PATTERNS = [
             visible: false,
             reveal_via: revealVia,
             menu,
-            landmark,
-            breadcrumb,
+            landmark: info.landmark,
+            breadcrumb: info.breadcrumb,
           });
         }
       } catch (_) {}
