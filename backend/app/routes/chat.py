@@ -31,7 +31,14 @@ from app.agent.form_filler import (
     is_search_or_filter_form,
     TOKEN_REGEX,
 )
-from app.agent.intent_synonyms import score_text_similarity, COMMON_STOPWORDS, _normalize_text
+from app.agent.intent_synonyms import (
+    score_text_similarity,
+    COMMON_STOPWORDS,
+    _normalize_text,
+    _stem_word,
+    _is_generic_request_verb,
+    _is_structural_word,
+)
 from app.i18n import resolve_reply_language, is_mostly_non_arabic, t
 from app.models.goal import (
     GoalState,
@@ -712,24 +719,43 @@ def _is_form_relevant(
         for n in all_form_controls
     ).lower()
 
+    def _extract_content_stems(text: Optional[str]) -> List[str]:
+        if not text:
+            return []
+        tokens = re.findall(r"[\w]+", text.lower())
+        res = []
+        for tok in tokens:
+            norm = _normalize_text(tok)
+            st = _stem_word(tok)
+            if not norm or norm in COMMON_STOPWORDS or st in COMMON_STOPWORDS:
+                continue
+            if _is_generic_request_verb(tok) or _is_generic_request_verb(st):
+                continue
+            if _is_structural_word(tok) or _is_structural_word(st):
+                continue
+            # Only retain stems with length >= 4 after normalization and prefix stripping (C7)
+            if len(st) >= 4:
+                res.append(st)
+        return res
+
+    def _stems_match(stems_a: List[str], stems_b: List[str]) -> bool:
+        for sa in stems_a:
+            for sb in stems_b:
+                if sa == sb or (len(sa) >= 4 and len(sb) >= 4 and (sa[:4] == sb[:4] or sa in sb or sb in sa)):
+                    return True
+        return False
+
+    goal_stems = _extract_content_stems(goal)
+    label_stems = _extract_content_stems(labels_text)
+
+    # Stems/prefix matching on 4+ letter normalized stems without definite articles
+    label_matched = _stems_match(goal_stems, label_stems) or (labels_text and score_text_similarity(goal, labels_text) >= 0.25)
+
     goal_lower = goal.lower()
-    goal_words = [
-        w for w in re.findall(r"\w+", goal_lower)
-        if len(w) > 3 and _normalize_text(w) not in COMMON_STOPWORDS
-    ]
-
-    # Stems/prefix matching (e.g. register -> registration)
-    label_matched = any(
-        w in labels_text or (len(w) >= 4 and w[:4] in labels_text)
-        for w in goal_words
-    ) or (labels_text and score_text_similarity(goal, labels_text) >= 0.20)
-
     # If password form, require auth/account intent in the user goal, or context matching (C1)
     is_auth_goal = any(w in goal_lower for w in ("register", "signup", "sign-up", "login", "signin", "sign-in", "account", "تسجيل", "دخول", "حساب"))
     if label_matched and (not has_password_field or is_auth_goal):
         return True
-
-    goal_content_words = goal_words
 
     # (b) Page title / h1 / nearest heading / breadcrumb / page_text scores against goal
     context_relevant = False
@@ -739,7 +765,7 @@ def _is_form_relevant(
         if (n.get("tag") or "").lower() in ("h1", "h2", "h3", "h4", "header")
         or (n.get("role") or "").lower() in ("heading", "banner")
     )
-    if headings_text and (any(w in headings_text.lower() for w in goal_content_words) or score_text_similarity(goal, headings_text) >= 0.40):
+    if headings_text and (_stems_match(goal_stems, _extract_content_stems(headings_text)) or score_text_similarity(goal, headings_text) >= 0.40):
         context_relevant = True
 
     breadcrumb_text = " ".join(
@@ -747,17 +773,17 @@ def _is_form_relevant(
         for n in node_dicts
         if n.get("breadcrumb")
     )
-    if breadcrumb_text and (any(w in breadcrumb_text.lower() for w in goal_content_words) or score_text_similarity(goal, breadcrumb_text) >= 0.40):
+    if breadcrumb_text and (_stems_match(goal_stems, _extract_content_stems(breadcrumb_text)) or score_text_similarity(goal, breadcrumb_text) >= 0.40):
         context_relevant = True
 
-    if page_text and (any(w in page_text[:2000].lower() for w in goal_content_words) or score_text_similarity(goal, page_text[:2000]) >= 0.40):
+    if page_text and (_stems_match(goal_stems, _extract_content_stems(page_text[:2000])) or score_text_similarity(goal, page_text[:2000]) >= 0.40):
         context_relevant = True
 
     # (c) Navigator reached this page by following a goal-relevant link in this goal (tried_labels / last step)
     nav_relevant = False
     if goal_state and isinstance(goal_state.dom_state, dict):
         tried_lbls = goal_state.dom_state.get("tried_labels", [])
-        if any((any(w in lbl.lower() for w in goal_content_words) or score_text_similarity(goal, lbl) >= 0.40) for lbl in tried_lbls):
+        if any((_stems_match(goal_stems, _extract_content_stems(lbl)) or score_text_similarity(goal, lbl) >= 0.40) for lbl in tried_lbls):
             nav_relevant = True
 
     if context_relevant or nav_relevant:

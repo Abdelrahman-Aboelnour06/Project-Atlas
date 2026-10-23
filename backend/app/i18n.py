@@ -172,7 +172,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "page_inquiry_files": "الملفات الظاهرة تشمل '{items}'.",
         "page_inquiry_search": "فيه مربع بحث ('{input_name}').",
         "page_inquiry_actions": "العمليات المتاحة تشمل '{items}'.",
-        "page_inquiry_snippet": "أنا شايف الصفحة دي: '{snippet}'...",
+        "page_inquiry_snippet": "أنا شايف الصفحة دي: {snippet}...",
         "page_inquiry_fallback": "أنا متابع الصفحة دي. قولي تحب تضغط على إيه، تبحث عن إيه، أو تفتح إيه!",
 
         # Errors / Fallbacks in planner
@@ -198,7 +198,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "child_tab_closed_returning": "تم اكتمال مسار النافذة المنبثقة. جاري إغلاق التبويب والرجوع للتبويب الرئيسي.",
         "goal_completed_success": "تم اكتمال الهدف بنجاح!",
         "goal_completed_all_milestones": "تم اكتمال الهدف بنجاح! اكتملت كل المراحل.",
-        "goal_completed_result": "تم اكتمال الهدف بنجاح! '{result}'",
+        "goal_completed_result": "تم اكتمال الهدف بنجاح! {result}",
         "child_tab_milestone_complete": "اكتملت مرحلة التبويب الفرعي. جاري إغلاق التبويب والرجوع للتبويب الرئيسي.",
         "goal_failed_with_reason": "فشل الهدف: {reason}",
         "captcha_detected_prompt": "تم رصد اختبار كابتشا ('CAPTCHA'). يرجى حله في المتصفح للمتابعة.",
@@ -220,9 +220,9 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "nav_cancelled_action": "ولا يهمك، لغيت العملية دي علشانك.",
         "nav_interacting_with": "جاري التفاعل مع '{label}'.",
         "nav_heuristic_found": "لقيت '{lbl}' في الصفحة. هضغط على '{lbl}' علشانك دلوقتي.",
-        "nav_confirm_sensitive": "العملية دي هتقوم بـ '{desc}'. تحب تكمل؟",
+        "nav_confirm_sensitive": "العملية دي هتقوم بـ {desc}. تحب تكمل؟",
         "nav_confirm_generic": "تحب تكمل العملية دي؟",
-        "nav_confirm_desc": "تحب تأكد: '{desc}'؟",
+        "nav_confirm_desc": "تحب تأكد: {desc}؟",
 
         # Exploration & Navigation (WS6)
         "nav_max_hops_tried": "معرفتش أوصل للخدمة المطلوبة خلال الحد الأقصى للخطوات. وده اللي جربت أعمله: {tried}",
@@ -290,6 +290,12 @@ def t(key: str, lang: Optional[str] = None, **kwargs: Any) -> str:
     if not kwargs:
         res = template
     else:
+        if target_lang == "ar-EG":
+            for param in ("result", "snippet", "desc"):
+                val = kwargs.get(param)
+                if isinstance(val, str) and val and re.search(r"[a-zA-Z]", val):
+                    kwargs[param] = re.sub(r"(?:^|(?<=[^\w'\"«»“”]))([a-zA-Z]+)(?=[^\w'\"«»“”]|$)", r"'\1'", val)
+
         if target_lang == "ar-EG" and key == "goal_failed_with_reason":
             raw_reason = kwargs.get("reason", "")
             raw_str = str(raw_reason).lower()

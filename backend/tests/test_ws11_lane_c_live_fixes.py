@@ -728,6 +728,175 @@ class TestL7ModalScoping:
         data = resp.json()
         assert data["status"] in ("awaiting_user_input", "in_progress")
 
+    def test_arabic_newsletter_modal_with_definite_articles_dismissed(self, client):
+        """
+        C7: Goal 'اريد الاستفسار عن مخالفات المركبات' with a newsletter modal
+        (heading 'اشترك في النشرة البريدية', fields 'الاسم' and 'البريد الإلكتروني', button 'اشترك', close '×').
+        4-letter prefix on unnormalized words would falsely match 'الاستفسار' with 'الاسم' ('الاس')
+        and 'المركبات' with any 'المر...'.
+        With normalization and generic verb stripping, the modal is NOT relevant,
+        and the next step is the dismiss click on '×'.
+        """
+        arabic_newsletter_nodes = [
+            {
+                "id": "bg-inquiry-link",
+                "tag": "a",
+                "resolved_label": "الاستعلام عن مخالفات المركبات",
+                "href": "https://portal.gov.eg/inquiry",
+                "visible": True,
+                "in_modal": False,
+                "blocked_by_modal": True,
+            },
+            {
+                "id": "modal-dialog",
+                "tag": "div",
+                "role": "dialog",
+                "resolved_label": "اشترك في النشرة البريدية",
+                "visible": True,
+                "in_modal": True,
+                "blocked_by_modal": False,
+            },
+            {
+                "id": "modal-close-x",
+                "tag": "button",
+                "resolved_label": "إغلاق",
+                "aria_label": "إغلاق",
+                "inner_text": "×",
+                "visible": True,
+                "in_modal": True,
+                "blocked_by_modal": False,
+            },
+            {
+                "id": "input-name",
+                "tag": "input",
+                "type": "text",
+                "name": "subscriber_name",
+                "resolved_label": "الاسم",
+                "visible": True,
+                "in_modal": True,
+                "blocked_by_modal": False,
+            },
+            {
+                "id": "input-email",
+                "tag": "input",
+                "type": "email",
+                "name": "subscriber_email",
+                "resolved_label": "البريد الإلكتروني",
+                "visible": True,
+                "in_modal": True,
+                "blocked_by_modal": False,
+            },
+            {
+                "id": "btn-subscribe",
+                "tag": "button",
+                "resolved_label": "اشترك",
+                "visible": True,
+                "in_modal": True,
+                "blocked_by_modal": False,
+            },
+        ]
+
+        goal = "اريد الاستفسار عن مخالفات المركبات"
+        # 1. Direct unit test of _is_form_relevant on the modal nodes
+        modal_nodes = [n for n in arabic_newsletter_nodes if n.get("in_modal")]
+        modal_text = "اشترك في النشرة البريدية الاسم البريد الإلكتروني اشترك"
+        is_rel = _is_form_relevant(
+            goal=goal,
+            dom_nodes=modal_nodes,
+            page_text=modal_text,
+            goal_state=None,
+            milestone=None,
+        )
+        assert is_rel is False, "Arabic newsletter modal must NOT be considered relevant to vehicles/violations goal"
+
+        # 2. Endpoint integration test: Atlas dismisses popup modal
+        payload = {
+            "goal": goal,
+            "current_url": "https://portal.gov.eg/home",
+            "dom_map": arabic_newsletter_nodes,
+            "page_text": "بوابة الخدمات الإلكترونية اشترك في النشرة البريدية",
+            "goal_state": {
+                "goal": goal,
+                "status": "in_progress",
+                "current_url": "https://portal.gov.eg/home",
+                "hop_count": 0,
+                "max_hops": 8,
+            },
+            "api_key": DEMO_API_KEY,
+        }
+
+        resp = client.post("/v1/chat/goal_step", json=payload)
+        assert resp.status_code == 200
+        data = resp.json()
+
+        # Status remains in_progress and step dismisses modal (click on × or Escape)
+        assert data["status"] == "in_progress"
+        assert len(data["steps"]) >= 1
+        step = data["steps"][0]
+        assert step["action"] in ("click", "press_key")
+        if step["action"] == "click":
+            assert step["element_id"] == "modal-close-x"
+        else:
+            assert step["value"] == "Escape"
+
+    def test_positive_arabic_service_modal_stays_relevant(self, client):
+        """
+        C7: Positive test where an Arabic service modal matches the user's goal
+        (heading and labels match the goal), and remains relevant.
+        """
+        service_modal_nodes = [
+            {
+                "id": "modal-dialog",
+                "tag": "div",
+                "role": "dialog",
+                "resolved_label": "الاستعلام عن مخالفات المركبات",
+                "visible": True,
+                "in_modal": True,
+                "blocked_by_modal": False,
+            },
+            {
+                "id": "input-nid",
+                "tag": "input",
+                "type": "text",
+                "name": "national_id",
+                "resolved_label": "الرقم القومي",
+                "required": True,
+                "visible": True,
+                "in_modal": True,
+                "blocked_by_modal": False,
+            },
+            {
+                "id": "input-plate",
+                "tag": "input",
+                "type": "text",
+                "name": "plate_number",
+                "resolved_label": "رقم اللوحة",
+                "required": True,
+                "visible": True,
+                "in_modal": True,
+                "blocked_by_modal": False,
+            },
+            {
+                "id": "btn-inquire",
+                "tag": "button",
+                "resolved_label": "استعلام",
+                "visible": True,
+                "in_modal": True,
+                "blocked_by_modal": False,
+            },
+        ]
+
+        goal = "اريد الاستفسار عن مخالفات المركبات"
+        modal_text = "الاستعلام عن مخالفات المركبات الرقم القومي رقم اللوحة استعلام"
+        is_rel = _is_form_relevant(
+            goal=goal,
+            dom_nodes=service_modal_nodes,
+            page_text=modal_text,
+            goal_state=None,
+            milestone=None,
+        )
+        assert is_rel is True, "Service modal matching the goal must be considered relevant"
+
 
 # ── L8: Per-Node Coercion in /v1/chat, /v1/chat/goal_step & /v1/agent ─────────
 
