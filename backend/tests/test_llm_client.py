@@ -442,6 +442,33 @@ class TestJsonMode:
             third_call_payload = mock_post.call_args.kwargs.get("json", {})
             assert "response_format" not in third_call_payload
 
+    @pytest.mark.asyncio
+    async def test_timeout_timeout_then_json_mode_400_raises_llmerror(self):
+        fake_req = httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions")
+        fake_resp_400 = httpx.Response(400, request=fake_req, text="response_format not supported")
+
+        # attempt 0: timeout
+        # attempt 1: timeout
+        # attempt 2 (final attempt): 400 error with active_json_mode=True
+        mock_post = AsyncMock(side_effect=[
+            httpx.TimeoutException("timeout 1"),
+            httpx.TimeoutException("timeout 2"),
+            httpx.HTTPStatusError("400 Bad Request", request=fake_req, response=fake_resp_400),
+        ])
+
+        with patch("app.agent.llm_client.LLM_PROVIDER", "groq"), \
+             patch("app.agent.llm_client.LLM_MODEL", "model-exhaust"), \
+             patch("app.agent.llm_client.LLM_API_KEY", "test_key"), \
+             patch("httpx.AsyncClient.post", mock_post), \
+             patch("asyncio.sleep", AsyncMock()):
+
+            with pytest.raises(LLMError) as exc_info:
+                res = await call_llm(user_prompt="get json", json_mode=True)
+                assert res is not None
+
+            assert "exhausted retries" in str(exc_info.value).lower()
+            assert llm_client.is_limited_mode() is True
+
 
 # ── Limited Mode & Health State Transitions ───────────────────────────────────
 

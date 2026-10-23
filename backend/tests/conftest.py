@@ -60,13 +60,15 @@ WRONG_API_KEY = "atlas_thisiswrongdonotuse000000000000"
 @pytest.fixture(autouse=True)
 def isolate_mock_state_and_rate_limits():
     """
-    Guarantees mock LLM queue and rate limiter state are clean before and after every test.
+    Guarantees mock LLM queue, health state, and rate limiter state are clean before and after every test.
     """
     from app.agent import llm_client, rate_limiter
     llm_client.clear_mock_llm()
+    llm_client.reset_llm_health()
     rate_limiter.reset()
     yield
     llm_client.clear_mock_llm()
+    llm_client.reset_llm_health()
     rate_limiter.reset()
 
 

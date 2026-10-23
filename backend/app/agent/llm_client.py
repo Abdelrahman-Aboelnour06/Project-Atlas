@@ -784,6 +784,11 @@ async def call_llm(
             record_llm_failure(provider, effective_model, e, status_code=status_code)
             raise LLMError(f"Unexpected LLM error: {str(e)}") from e
 
+    # Exhausted all attempts (e.g. earlier timeouts followed by a 400 json_mode fallback on the final attempt)
+    exhaust_err = LLMError("LLM call exhausted retries")
+    record_llm_failure(provider, effective_model, exhaust_err, status_code=None)
+    raise exhaust_err
+
 
 async def repair_json(
     raw: str,
