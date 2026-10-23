@@ -317,10 +317,14 @@
 /* ── Header Actions (Reload, Collapse, TTS & Text Scaling) ── */
 #atlas-sidebar-root .atlas-header-actions {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 6px;
   margin-inline-start: auto;
-  flex-shrink: 0;
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 100%;
 }
 
 #atlas-sidebar-root .atlas-refresh-btn,

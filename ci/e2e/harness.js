@@ -32,17 +32,24 @@ async function runHarness() {
 
   let context;
   try {
-    const chromePath = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+    const chromePath = process.platform === 'win32'
+      ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
+      : undefined;
+    const chromeArgs = [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-gpu',
+      '--disable-dev-shm-usage',
+      `--disable-extensions-except=${extensionPath}`,
+      `--load-extension=${extensionPath}`,
+    ];
+    if (process.env.CI) {
+      chromeArgs.unshift('--headless=new');
+    }
     const launchOptions = {
       headless: false,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-gpu',
-        '--disable-dev-shm-usage',
-        `--disable-extensions-except=${extensionPath}`,
-        `--load-extension=${extensionPath}`,
-      ],
+      ...(chromePath && fs.existsSync(chromePath) ? { executablePath: chromePath } : {}),
+      args: chromeArgs,
     };
     context = await chromium.launchPersistentContext(userDataDir, launchOptions);
 

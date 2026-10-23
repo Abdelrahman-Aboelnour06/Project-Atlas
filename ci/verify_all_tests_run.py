@@ -255,6 +255,14 @@ def run_self_check(repo_root: Path, run_tests: bool = True) -> int:
         js_passed_total += passed
         js_failed_total += failed
         print(f"     Result: {passed} passed, {failed} failed (exit code {sub_res.returncode})")
+        if failed > 0 or sub_res.returncode != 0:
+            for line in out.splitlines():
+                if "✗" in line or "FAIL" in line:
+                    print(line)
+            if sub_res.stderr and sub_res.stderr.strip():
+                print("--- Last 40 lines of stderr ---")
+                for line in sub_res.stderr.splitlines()[-40:]:
+                    print(line)
 
     print(f"  Core JS Passed Tests: {js_passed_total} (Floor: {JS_TEST_FLOOR})")
     print(f"  Core JS Failed Tests: {js_failed_total}")
