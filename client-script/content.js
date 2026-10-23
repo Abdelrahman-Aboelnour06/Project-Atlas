@@ -74,6 +74,11 @@
   let isExecuting = false;
   let currentAbortController = null;
   let currentGoalState = null;
+  let pendingUserResponse = null;
+  let pendingUserInputs = null;
+  let lastActionResult = null;
+  let recentStepSignature = null;
+  let stepRepeatCount = 0;
 
   function interruptibleSleep(ms, signal) {
     return new Promise((resolve, reject) => {
@@ -110,8 +115,15 @@
       window.AtlasSpeech?.stop();
     } catch (_) {}
 
-    // 3. Clear pending human confirmations
+    // 3. Clear pending human confirmations & input state
     pendingConfirmation = null;
+    pendingUserResponse = null;
+    pendingUserInputs = null;
+    lastActionResult = null;
+    recentStepSignature = null;
+    stepRepeatCount = 0;
+    isHopInProgress = false;
+    currentGoalState = null;
 
     // 4. Clear GoalStore in session storage
     if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
@@ -160,6 +172,7 @@
 
   // ── Settle Window with 1s Quiet Period (§R2 / §H9) ─────────────────────────
   const waitForNavigationSettle = async (timeoutMs = 5000, signal = null) => {
+    if (typeof window !== "undefined" && window.__ATLAS_TEST_ENV__) return;
     if (typeof document === "undefined" || !document.readyState) return;
     const start = Date.now();
     // Wait for document.readyState === "complete"
@@ -521,6 +534,147 @@
     }
   };
 
+  const renderAwaitingUserInputForm = (awaitingRequest, onSubmitCallback) => {
+    if (!awaitingRequest || !Array.isArray(awaitingRequest.fields) || awaitingRequest.fields.length === 0) {
+      return;
+    }
+    const shadowRoot = window.AtlasSidebar?.getShadowRoot?.();
+    const chatLog = shadowRoot?.querySelector?.(".atlas-chat-log");
+    if (!chatLog) return;
+
+    const existing = chatLog.querySelector(".atlas-user-input-form-card");
+    if (existing) existing.remove();
+
+    const formCard = document.createElement("div");
+    formCard.className = "atlas-user-input-form-card";
+    formCard.setAttribute("dir", "auto");
+    formCard.style.cssText = "background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; margin: 8px 0; font-size: 13px;";
+
+    const form = document.createElement("form");
+    form.noValidate = true;
+
+    awaitingRequest.fields.forEach((field, idx) => {
+      const group = document.createElement("div");
+      group.style.cssText = "margin-bottom: 8px;";
+
+      const label = document.createElement("label");
+      label.setAttribute("dir", "auto");
+      label.style.cssText = "display: block; font-weight: 600; margin-bottom: 4px; color: #1e293b;";
+      label.textContent = field.label || field.ref || `Field ${idx + 1}`;
+      if (field.required) {
+        const reqSpan = document.createElement("span");
+        reqSpan.style.color = "#dc2626";
+        reqSpan.textContent = " *";
+        label.appendChild(reqSpan);
+      }
+      group.appendChild(label);
+
+      let inputEl;
+      const isSensitive = Boolean(field.sensitive || ["password", "otp", "pin", "ssn", "cc_number"].includes(field.kind));
+
+      if (field.kind === "select" && Array.isArray(field.options) && field.options.length > 0) {
+        inputEl = document.createElement("select");
+        field.options.forEach((opt) => {
+          const optEl = document.createElement("option");
+          optEl.value = opt;
+          optEl.textContent = opt;
+          inputEl.appendChild(optEl);
+        });
+      } else {
+        inputEl = document.createElement("input");
+        if (isSensitive) {
+          inputEl.type = "password";
+          inputEl.autocomplete = "off";
+        } else if (field.kind === "number") {
+          inputEl.type = "number";
+        } else if (field.kind === "email") {
+          inputEl.type = "email";
+        } else {
+          inputEl.type = "text";
+        }
+        if (field.pattern) inputEl.pattern = field.pattern;
+        if (field.maxlength) inputEl.maxLength = field.maxlength;
+      }
+
+      inputEl.setAttribute("dir", "auto");
+      inputEl.className = "atlas-input-field";
+      inputEl.dataset.fieldRef = field.ref;
+      inputEl.dataset.kind = field.kind || "text";
+      inputEl.dataset.sensitive = isSensitive ? "true" : "false";
+      inputEl.style.cssText = "width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 13px;";
+
+      group.appendChild(inputEl);
+      form.appendChild(group);
+    });
+
+    const btn = document.createElement("button");
+    btn.type = "submit";
+    btn.className = "atlas-form-submit-btn";
+    btn.setAttribute("dir", "auto");
+    const activeLang = window.AtlasSidebar?.getLanguage?.() || "en-US";
+    btn.textContent = activeLang.startsWith("ar") ? "إرسال البيانات" : "Submit Details";
+    btn.style.cssText = "width: 100%; background: #0284c7; color: #ffffff; border: none; padding: 8px; border-radius: 4px; font-weight: 600; cursor: pointer; margin-top: 4px;";
+    form.appendChild(btn);
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      btn.disabled = true;
+      const userInputs = {};
+      const origin = window.location.origin || "";
+
+      for (const field of awaitingRequest.fields) {
+        const safeRef = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(field.ref) : field.ref.replace(/["\\]/g, "\\$&");
+        const input = form.querySelector(`[data-field-ref="${safeRef}"]`);
+        const rawVal = input ? input.value.trim() : "";
+        const isSensitive = input?.dataset?.sensitive === "true";
+        const kind = input?.dataset?.kind || "text";
+
+        if (isSensitive) {
+          if (rawVal) {
+            if (!window.AtlasSecretVault?.store) {
+              const activeLang = window.AtlasSidebar?.getLanguage?.() || "en-US";
+              const vaultErrMsg = activeLang.startsWith("ar")
+                ? "تعذر تشفير وحفظ البيانات الحساسة: خدمة الخزنة غير متاحة."
+                : "Unable to secure sensitive data: Secret Vault is unavailable.";
+              window.AtlasSidebar?.setStatus?.("Vault unavailable", "error");
+              window.AtlasSidebar?.addChatMessage?.("agent", `⚠️ ${vaultErrMsg}`);
+              btn.disabled = false;
+              return;
+            }
+            try {
+              const category = ["password", "otp", "pin", "ssn", "cc_number"].includes(kind) ? kind : "secret";
+              const token = await window.AtlasSecretVault.store(origin, category, field.ref, rawVal);
+              userInputs[field.ref] = token;
+            } catch (err) {
+              const activeLang = window.AtlasSidebar?.getLanguage?.() || "en-US";
+              const vaultErrMsg = activeLang.startsWith("ar")
+                ? "فشل تشفير البيانات الحساسة داخل الخزنة."
+                : "Failed to encrypt sensitive data in Secret Vault.";
+              window.AtlasSidebar?.setStatus?.("Vault error", "error");
+              window.AtlasSidebar?.addChatMessage?.("agent", `⚠️ ${vaultErrMsg}`);
+              btn.disabled = false;
+              return;
+            }
+          }
+        } else {
+          userInputs[field.ref] = rawVal;
+        }
+
+        // Clear form inputs after submit (Defense in Depth)
+        if (input) input.value = "";
+      }
+
+      formCard.remove();
+      // Masked confirmation without logging or speaking raw values
+      window.AtlasSidebar?.addChatMessage?.("user", "•••••••• (Submitted)");
+      onSubmitCallback(userInputs);
+    });
+
+    formCard.appendChild(form);
+    chatLog.appendChild(formCard);
+    chatLog.scrollTop = chatLog.scrollHeight;
+  };
+
   let isHopInProgress = false;
 
   const executeGoalHop = async (goalState) => {
@@ -535,6 +689,25 @@
     const budget = goalState.budget || {};
     const maxHandoffs = budget.max_handoffs || 4;
     const handoffCount = budget.handoff_count || 0;
+    const maxHops = goalState.max_hops || 15;
+
+    if (goalState.hop_count && goalState.hop_count >= maxHops) {
+      const activeLang = window.AtlasSidebar?.getLanguage?.() || "en-US";
+      const limitMsg = activeLang.startsWith("ar")
+        ? `تم إيقاف الهدف: تم الوصول للحد الأقصى للخطوات (${maxHops}).`
+        : `Goal execution stopped: reached maximum allowed hops limit (${maxHops}).`;
+      window.AtlasSidebar?.setStatus?.("Goal stopped: Max hops reached", "error");
+      window.AtlasSidebar?.addChatMessage?.("agent", `🛑 ${limitMsg}`);
+      speakIfVoiceMode(limitMsg);
+      isExecuting = false;
+      isHopInProgress = false;
+      currentGoalState = null;
+      if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
+        chrome.runtime.sendMessage({ type: "ATLAS_GOAL_STORE_CLEAR" });
+      }
+      return;
+    }
+
     if (budget.max_llm_calls && budget.llm_calls >= budget.max_llm_calls) {
       window.AtlasSidebar?.setStatus("Goal stopped: LLM budget exceeded", "error");
       window.AtlasSidebar?.addChatMessage("agent", "🛑 Goal stopped: LLM budget exceeded.");
@@ -562,20 +735,47 @@
 
       const { apiKey, baseUrl } = await getStoredSettings();
       const domMap = window.AtlasSerializer.serialize();
+      const pageText = getPageText();
 
       // Clean URL before sending (§R2 / §H10)
       const rawUrl = typeof window !== "undefined" ? window.location.href : "";
       const currentUrl = redactUrl(rawUrl);
+      const activeLang = window.AtlasSidebar?.getLanguage?.() || window.AtlasSpeech?.getLanguage?.() || goalState.language || "en-US";
 
       const requestPayload = {
         goal: goalState.goal || "",
         current_url: currentUrl,
         url: currentUrl,
         dom_map: domMap,
+        page_text: pageText,
         goal_state: goalState,
-        contract_version: 2,
+        contract_version: 3,
+        language: activeLang,
         capabilities: ["switch_tab", "tab_context", "assisted_click"],
       };
+
+      if (pendingUserResponse !== null && pendingUserResponse !== undefined) {
+        requestPayload.user_response = pendingUserResponse;
+        pendingUserResponse = null;
+      }
+      if (pendingUserInputs && Object.keys(pendingUserInputs).length > 0) {
+        requestPayload.user_inputs = pendingUserInputs;
+        pendingUserInputs = null;
+      }
+      if (lastActionResult) {
+        requestPayload.last_action_result = lastActionResult;
+        lastActionResult = null;
+      }
+
+      // Sync goalState into background GoalStore before hop
+      if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
+        try {
+          chrome.runtime.sendMessage({
+            type: "ATLAS_GOAL_STORE_PUT",
+            goalState: goalState,
+          });
+        } catch (_) {}
+      }
 
       // Proxy request via background service worker (§R2 / §H5)
       let data = null;
@@ -622,27 +822,85 @@
         throw new Error("Atlas: Background service worker unavailable for goal_step");
       }
 
-
-
       if (!isExecuting || currentAbortController.signal.aborted) return;
 
       if (data.goal_state) {
         currentGoalState = data.goal_state;
         window.AtlasSidebar?.setGoalProgress(data.goal_state);
+        if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
+          try {
+            chrome.runtime.sendMessage({
+              type: "ATLAS_GOAL_STORE_PUT",
+              goalState: currentGoalState,
+            });
+          } catch (_) {}
+        }
       }
 
       if (!window.__atlasBaselineSnapshot) {
         window.__atlasBaselineSnapshot = captureSemanticSnapshot();
       }
 
-      if (data.action) {
+      // Step execution loop with 3-repetition safety guard
+      const stepsToExecute = Array.isArray(data.steps) && data.steps.length > 0
+        ? data.steps
+        : (data.action ? [data.action] : []);
+
+      if (stepsToExecute.length > 0) {
         window.AtlasSidebar?.setAutoHide?.(true);
         try {
-          await window.AtlasExecutor.executeStep(data.action);
+          for (let i = 0; i < stepsToExecute.length; i++) {
+            if (!isExecuting || currentAbortController.signal.aborted) break;
+            const step = stepsToExecute[i];
+            const computeDomHash = (nodes) => {
+              const visibleIds = (nodes || [])
+                .filter((n) => n && n.visible !== false && n.id != null)
+                .map((n) => n.id)
+                .join(",");
+              let hash = 5381;
+              for (let idx = 0; idx < visibleIds.length; idx++) {
+                hash = (hash << 5) + hash + visibleIds.charCodeAt(idx);
+                hash = hash & hash;
+              }
+              return (hash >>> 0).toString(16);
+            };
+            const pageHash = computeDomHash(domMap);
+            const stepTarget = step.element_id || step.target || "";
+            const sig = `${step.action}:${stepTarget}:${currentUrl}:${pageHash}`;
+
+            if (sig === recentStepSignature) {
+              stepRepeatCount++;
+              if (stepRepeatCount >= 3) {
+                console.warn("Atlas: Repeated step detected 3 times on same element, aborting loop.");
+                const activeLang = window.AtlasSidebar?.getLanguage?.() || "en-US";
+                const abortMsg = activeLang.startsWith("ar")
+                  ? "تم إيقاف تنفيذ الهدف: تكرر نفس الإجراء على العنصر 3 مرات دون تقدم."
+                  : "Goal execution stopped: the same action was repeated 3 times without progress.";
+                window.AtlasSidebar?.setStatus?.("Goal stopped", "error");
+                window.AtlasSidebar?.addChatMessage?.("agent", `🛑 ${abortMsg}`);
+                speakIfVoiceMode(abortMsg);
+                isExecuting = false;
+                isHopInProgress = false;
+                currentGoalState = null;
+                recentStepSignature = null;
+                stepRepeatCount = 0;
+                if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
+                  chrome.runtime.sendMessage({ type: "ATLAS_GOAL_STORE_CLEAR" });
+                }
+                return;
+              }
+            } else {
+              recentStepSignature = sig;
+              stepRepeatCount = 1;
+            }
+
+            const stepResult = await window.AtlasExecutor.executeStep(step);
+            lastActionResult = stepResult || null;
+            await interruptibleSleep(step.delay_ms || 600, currentAbortController.signal);
+          }
         } finally {
           window.AtlasSidebar?.setAutoHide?.(false);
         }
-        await interruptibleSleep(600, currentAbortController.signal);
       }
 
       // Handle tab switching if returned by backend and handoff budget permits
@@ -659,14 +917,98 @@
         }
       }
 
-      if (data.goal_state?.status === "goal_complete") {
+      // Terminal and interactive statuses
+      if (data.status === "goal_complete" || data.goal_state?.status === "goal_complete") {
         window.AtlasSidebar?.setStatus("Goal complete!", "ok");
-        window.AtlasSidebar?.addChatMessage("agent", data.reply || "Goal complete!");
+        const completeMsg = data.reply || "Goal complete!";
+        window.AtlasSidebar?.addChatMessage("agent", completeMsg);
+        speakIfVoiceMode(completeMsg);
         window.AtlasSidebar?.hideGoalProgress();
         isExecuting = false;
-        window.AtlasSidebar?.setExecuting(false);
+        isHopInProgress = false;
+        currentGoalState = null;
+        recentStepSignature = null;
+        stepRepeatCount = 0;
         window.__atlasBaselineSnapshot = null;
-      } else if (isExecuting && data.goal_state?.status === "in_progress") {
+        if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
+          chrome.runtime.sendMessage({ type: "ATLAS_GOAL_STORE_CLEAR" });
+        }
+        return;
+      }
+
+      if (data.status === "goal_failed" || data.goal_state?.status === "goal_failed") {
+        window.AtlasSidebar?.setStatus("Goal failed", "error");
+        const failMsg = data.reply || data.goal_state?.error_message || "Goal could not be completed.";
+        window.AtlasSidebar?.addChatMessage("agent", failMsg);
+        speakIfVoiceMode(failMsg);
+        window.AtlasSidebar?.hideGoalProgress();
+        isExecuting = false;
+        isHopInProgress = false;
+        currentGoalState = null;
+        recentStepSignature = null;
+        stepRepeatCount = 0;
+        window.__atlasBaselineSnapshot = null;
+        if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
+          chrome.runtime.sendMessage({ type: "ATLAS_GOAL_STORE_CLEAR" });
+        }
+        return;
+      }
+
+      if (data.status === "requires_confirmation" || data.requires_confirmation || data.goal_state?.requires_confirmation) {
+        if (currentGoalState) {
+          currentGoalState.requires_confirmation = true;
+        }
+        isExecuting = false;
+        isHopInProgress = false;
+        window.AtlasSidebar?.setExecuting?.(false);
+        const confirmText = data.confirmation_prompt || data.reply || "Would you like to proceed with this action?";
+        const options = data.confirmation_options || ["Yes, proceed", "No, cancel"];
+        window.AtlasSidebar?.setStatus?.("Awaiting confirmation", "info");
+        window.AtlasSidebar?.addChatMessage?.("agent", confirmText, {
+          actions: options,
+          onAction: (choice) => {
+            window.AtlasSidebar?.addChatMessage?.("user", choice);
+            // WS5: Decide by option index (options[0] = proceed), language-agnostic
+            const idx = options.findIndex((opt) => {
+              const label = typeof opt === "string" ? opt : (opt.value || opt.label);
+              return label === choice;
+            });
+            const isAffirmative = idx === 0;
+            if (currentGoalState) {
+              currentGoalState.requires_confirmation = false;
+            }
+            pendingUserResponse = isAffirmative ? "yes" : "no";
+            isExecuting = true;
+            window.AtlasSidebar?.setExecuting?.(true);
+            executeGoalHop(currentGoalState);
+          },
+        });
+        speakIfVoiceMode(confirmText);
+        return;
+      }
+
+      if (data.status === "awaiting_user_input" || data.goal_state?.status === "awaiting_user_input") {
+        isExecuting = false;
+        isHopInProgress = false;
+        window.AtlasSidebar?.setExecuting?.(false);
+        const awaitingReq = data.goal_state?.awaiting || data.awaiting;
+        const promptText = awaitingReq?.prompt || data.reply || "Please provide the required details:";
+        window.AtlasSidebar?.setStatus?.("Awaiting input", "info");
+        window.AtlasSidebar?.addChatMessage?.("agent", promptText);
+        speakIfVoiceMode(promptText);
+
+        if (awaitingReq && Array.isArray(awaitingReq.fields) && awaitingReq.fields.length > 0) {
+          renderAwaitingUserInputForm(awaitingReq, (userInputs) => {
+            pendingUserInputs = userInputs;
+            isExecuting = true;
+            window.AtlasSidebar?.setExecuting?.(true);
+            executeGoalHop(currentGoalState);
+          });
+        }
+        return;
+      }
+
+      if (isExecuting && data.goal_state?.status === "in_progress") {
         if ((data.goal_state?.budget?.handoff_count || 0) >= maxHandoffs) {
           window.AtlasSidebar?.setStatus("Goal stopped: Maximum tab handoffs reached", "error");
           window.AtlasSidebar?.addChatMessage("agent", "🛑 Goal stopped: Maximum tab handoffs reached.");
@@ -894,6 +1236,42 @@
     // Stop ongoing speech before handling new input
     window.AtlasTTS?.stop();
 
+    // WS5: While currentGoalState status is awaiting_user_input or requires_confirmation,
+    // typed or spoken chat goes to goal_step as user_response, not to /v1/chat.
+    // Covers captcha/otp prompts that have no fields ("done"/"خلصت" resumes).
+    if (
+      currentGoalState &&
+      (currentGoalState.status === "awaiting_user_input" || currentGoalState.requires_confirmation === true || pendingConfirmation)
+    ) {
+      let responseText = rawInput;
+      if (window.AtlasSecretVault?.tokenizeCommand) {
+        try {
+          const origin = typeof window !== "undefined" && window.location ? window.location.origin : "";
+          const domMap = window.AtlasSerializer?.serialize?.() || [];
+          const tokenized = await window.AtlasSecretVault.tokenizeCommand(origin, rawInput, domMap);
+          responseText = tokenized.command || rawInput;
+        } catch (_) {}
+      }
+      window.AtlasSidebar?.addChatMessage?.("user", responseText);
+
+      if (currentGoalState.requires_confirmation || pendingConfirmation) {
+        currentGoalState.requires_confirmation = false;
+        pendingConfirmation = null;
+        const norm = responseText.trim().toLowerCase();
+        const isAffirmative = /^(yes|sure|proceed|confirm|go ahead|ok|continue|y|yeah|yep|أيوة|ايوة|نعم|تمام|موافق|ماشي|تأكيد|استمر|كمل)\b/i.test(norm) || norm === "أيوة" || norm === "ايوة" || norm === "نعم";
+        const isNegative = /^(no|cancel|stop|abort|don't|dont|لا|الغي|إلغي|توقف|الغاء|إلغاء)\b/i.test(norm) || norm === "لا";
+        pendingUserResponse = isAffirmative ? "yes" : (isNegative ? "no" : responseText);
+      } else {
+        pendingUserResponse = responseText;
+      }
+
+      isExecuting = true;
+      window.AtlasSidebar?.setExecuting?.(true);
+      window.AtlasSidebar?.setStatus?.("Resuming goal...", "info");
+      await executeGoalHop(currentGoalState);
+      return;
+    }
+
     const lowerInput = rawInput.toLowerCase();
 
     // 1. Handle Pending Confirmation State
@@ -972,7 +1350,8 @@
         dom_map: domMap,
         history: trimmedHistory,
         api_key: apiKey || "",
-        language: window.AtlasSpeech?.getLanguage?.() || "en-US",
+        language: window.AtlasSidebar?.getLanguage?.() || window.AtlasSpeech?.getLanguage?.() || "en-US",
+        contract_version: 3,
       };
 
       let responseData = null;
@@ -1010,6 +1389,33 @@
       }
 
       window.AtlasSidebar.removeThinking();
+
+      // WS5: Route to closed goal loop if intent_route is 'goal'
+      if (responseData?.intent_route === "goal" || (responseData?.goal_state && responseData.goal_state.status === "in_progress" && !responseData.plan)) {
+        currentGoalState = responseData.goal_state;
+        recentStepSignature = null;
+        stepRepeatCount = 0;
+        isExecuting = true;
+        window.AtlasSidebar?.setExecuting?.(true);
+        if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
+          try {
+            chrome.runtime.sendMessage({
+              type: "ATLAS_GOAL_STORE_PUT",
+              goalState: currentGoalState,
+            });
+          } catch (_) {}
+        }
+        if (responseData.answer) {
+          conversationHistory.push({ role: "assistant", content: responseData.answer });
+          window.AtlasSidebar?.addChatMessage?.("agent", responseData.answer);
+          speakIfVoiceMode(responseData.answer);
+        }
+        if (currentGoalState) {
+          window.AtlasSidebar?.setGoalProgress?.(currentGoalState);
+        }
+        await executeGoalHop(currentGoalState);
+        return;
+      }
 
       const plan = responseData?.plan;
 
@@ -1173,6 +1579,7 @@
         window.AtlasSidebar.addChatThinking();
       }
 
+      const activeLang = window.AtlasSidebar?.getLanguage?.() || window.AtlasSpeech?.getLanguage?.() || "en-US";
       let summaryText = "";
       if (chrome?.runtime?.sendMessage) {
         const sRes = await new Promise((resolve, reject) => {
@@ -1181,7 +1588,7 @@
               type: "ATLAS_SUMMARY",
               baseUrl,
               apiKey: apiKey || "",
-              payload: { url: window.location.href, page_text: pageText, api_key: apiKey || "" },
+              payload: { url: window.location.href, page_text: pageText, api_key: apiKey || "", language: activeLang },
             },
             (res) => {
               if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
@@ -1198,7 +1605,7 @@
             "Content-Type": "application/json",
             "X-Atlas-Key": apiKey || "",
           },
-          body: JSON.stringify({ url: window.location.href, page_text: pageText, api_key: apiKey || "" }),
+          body: JSON.stringify({ url: window.location.href, page_text: pageText, api_key: apiKey || "", language: activeLang }),
         });
         if (sRes.ok) {
           const sData = await sRes.json();
@@ -1243,7 +1650,7 @@ const runCommand = async (command) => {
       const tokenized = await window.AtlasSecretVault.tokenizeCommand(origin, command, domMap);
       commandToSend = tokenized.command;
     }
-    const activeLang = window.AtlasSpeech?.getLanguage?.() || window.AtlasSidebar?.getVoiceLanguage?.() || "en-US";
+    const activeLang = window.AtlasSidebar?.getLanguage?.() || window.AtlasSpeech?.getLanguage?.() || window.AtlasSidebar?.getVoiceLanguage?.() || "en-US";
     const response = await window.AtlasSocket.sendCommand({
       url: window.location.href,
       domMap,
@@ -1563,11 +1970,13 @@ const handleElementClick = async (atlasId) => {
         const state = message.goalState;
         if (state && state.status === "in_progress") {
           currentGoalState = state;
-          isExecuting = true;
-          window.AtlasSidebar?.setExecuting(true);
-          window.AtlasSidebar?.setGoalProgress(state);
-          window.AtlasSidebar?.setStatus("Resuming goal...", "info");
-          executeGoalHop(state);
+          if (!isExecuting && !isHopInProgress) {
+            isExecuting = true;
+            window.AtlasSidebar?.setExecuting(true);
+            window.AtlasSidebar?.setGoalProgress(state);
+            window.AtlasSidebar?.setStatus("Resuming goal...", "info");
+            executeGoalHop(state);
+          }
         }
         sendResponse({ ok: true });
         return true;
@@ -1649,6 +2058,8 @@ const handleElementClick = async (atlasId) => {
       waitForNavigationSettle,
     };
     window.AtlasMultiTabOrchestration = {
+      activate,
+      deactivate,
       captureSemanticSnapshot,
       diffSemanticSnapshots,
       onHumanInteraction,
@@ -1662,10 +2073,16 @@ const handleElementClick = async (atlasId) => {
       setExecuting: (val) => { isExecuting = Boolean(val); },
       isExecuting: () => isExecuting,
       isHopInProgress: () => isHopInProgress,
+      getCurrentGoalState: () => currentGoalState,
+      setCurrentGoalState: (s) => { currentGoalState = s; },
+      handleChatInput,
+      renderAwaitingUserInputForm,
     };
   }
   if (typeof module !== "undefined" && module.exports) {
     module.exports = {
+      activate,
+      deactivate,
       AtlasLanguageSwitcher,
       stopGoalExecution,
       interruptibleSleep,
@@ -1687,6 +2104,10 @@ const handleElementClick = async (atlasId) => {
       setExecuting: (val) => { isExecuting = Boolean(val); },
       isExecuting: () => isExecuting,
       isHopInProgress: () => isHopInProgress,
+      getCurrentGoalState: () => currentGoalState,
+      setCurrentGoalState: (s) => { currentGoalState = s; },
+      handleChatInput,
+      renderAwaitingUserInputForm,
     };
   }
 })();

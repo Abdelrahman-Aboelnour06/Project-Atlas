@@ -109,6 +109,10 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "nav_confirm_sensitive": "This action will {desc}. Would you like to proceed?",
         "nav_confirm_generic": "Would you like to proceed with this action?",
         "nav_confirm_desc": "Would you like to confirm: {desc}?",
+
+        # Router & Loop (WS5)
+        "router_goal_ack": "I'm on it! Starting to work towards your goal: '{goal}'",
+        "loop_repeated_action_limit": "Goal execution stopped: the same action on element '{element}' was repeated 3 times without progress.",
     },
     "ar-EG": {
         # Search actions
@@ -202,6 +206,10 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "nav_confirm_sensitive": "العملية دي هتقوم بـ {desc}. تحب تكمل؟",
         "nav_confirm_generic": "تحب تكمل العملية دي؟",
         "nav_confirm_desc": "تحب تأكد: {desc}؟",
+
+        # Router & Loop (WS5)
+        "router_goal_ack": "تمام، جاري العمل على تحقيق هدفك: '{goal}'",
+        "loop_repeated_action_limit": "تم إيقاف تنفيذ الهدف: تكرر نفس الإجراء على العنصر '{element}' 3 مرات دون تقدم.",
     },
 }
 
