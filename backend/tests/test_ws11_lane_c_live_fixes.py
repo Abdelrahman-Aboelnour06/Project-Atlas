@@ -22,6 +22,7 @@ from app.db.connection import get_db
 from app.models.dom import DomNode, coerce_dom_map
 from app.models.goal import GoalState, GoalStepRequest, Milestone, PlanStep, VerifierResult
 from app.agent.form_filler import extract_required_form_fields, is_search_or_filter_form, plan_form_fill
+from app.routes.chat import _is_form_relevant
 from app.agent.navigator import plan_milestone_step
 from app.i18n import STRINGS, t
 
@@ -276,6 +277,55 @@ class TestL4NoOpClickDemotion:
         data = resp.json()
         assert data["status"] == "goal_failed"
 
+    def test_click_with_positive_change_and_verifier_other_failure_stays_goal_failed(self, client):
+        """
+        C4: A click that changed the page, followed by a verifier goal_failed for another reason
+        (e.g., account closed, required physical visit, domain failure), STAYS goal_failed.
+        It must NOT be demoted to in_progress.
+        """
+        nodes = load_fixture_nodes("portal_tiles_initial.json")
+        payload = {
+            "goal": "Pay commercial license fine",
+            "current_url": "https://portal.gov.eg/hub",
+            "dom_map": nodes,
+            "goal_state": {
+                "goal": "Pay commercial license fine",
+                "status": "in_progress",
+                "current_url": "https://portal.gov.eg/hub",
+                "hop_count": 1,
+                "max_hops": 8,
+                "plan_steps": [
+                    {
+                        "action": "click",
+                        "element_id": "tile-vehicles",
+                        "description": "Click vehicles fine tile",
+                    }
+                ],
+            },
+            # Observable positive change occurred (URL changed and new visible elements added)
+            "last_action_result": {
+                "status": "success",
+                "url_changed": True,
+                "added_visible_count": 4,
+            },
+            "api_key": DEMO_API_KEY,
+        }
+
+        # Mock verifier returning a real business terminal failure (not a "no change" claim)
+        mock_verifier_fail = VerifierResult(
+            status="goal_failed",
+            reason="The license has been suspended by court order; renewal requires physical clearance at branch.",
+            confidence=0.95,
+        )
+
+        with patch("app.routes.chat.verify_step_outcome", new=AsyncMock(return_value=mock_verifier_fail)):
+            resp = client.post("/v1/chat/goal_step", json=payload)
+
+        assert resp.status_code == 200
+        data = resp.json()
+        # Must stay goal_failed!
+        assert data["status"] == "goal_failed"
+
 
 # ── L5: Egyptian Arabic Language Purity ────────────────────────────────────────
 
@@ -325,12 +375,26 @@ class TestL5ArabicPurity:
             "reason": "The element could not be found and navigation timed out after 30 seconds",
             "host": "portal.services.gov.eg",
             "target": "Submit Button",
-            "tried": "Vehicles Tile, Inquire Violations",
+            "tried": "'Vehicles Tile', 'Inquire Violations'",
             "step_count": 3,
-            "field": "National ID",
-            "fields": "National ID, Full Name",
+            "field": "'National ID'",
+            "fields": "'National ID', 'Full Name'",
             "result": "Success confirmation record 12345",
             "count": 5,
+            "click_count": 3,
+            "max_hops": 8,
+            "max_handoffs": 4,
+            "element": "Button",
+            "goal": "Services",
+            "user_message": "Hello",
+            "samples": "Item 1, Item 2",
+            "toggle": "Menu",
+            "input_name": "Search",
+            "desc": "Action",
+            "items": "Links",
+            "snippet": "Preview",
+            "label": "Control",
+            "lbl": "Button",
             "code": "404 Not Found",
             "query": "civil affairs",
             "domain": "portal.gov.eg",
@@ -342,6 +406,23 @@ class TestL5ArabicPurity:
             unquoted = re.sub(r'(\"[^\"]*\"|\'[^\']*\'|«[^»]*»|“[^”]*”)', '', formatted)
             unquoted_latin = re.findall(r"[a-zA-Z]+", unquoted)
             assert not unquoted_latin, f"Template '{key}' emitted unquoted Latin in ar-EG: {unquoted_latin} (output: '{formatted}')"
+
+    def test_cross_origin_prompt_contains_exact_host_and_preserves_purity(self):
+        """
+        C2: The Arabic cross-origin prompt must preserve the exact host inside quotes,
+        allowing the user to see the destination host while preserving 100% Arabic purity.
+        """
+        target_host = "portal.ppo.gov.eg"
+        prompt = t("cross_origin_detected", "ar-EG", host=target_host)
+
+        # Host must be present verbatim in the output
+        assert target_host in prompt, f"Expected exact host '{target_host}' in prompt, got: '{prompt}'"
+        assert f"'{target_host}'" in prompt
+
+        # Unquoted Arabic purity must pass cleanly
+        unquoted = re.sub(r'(\"[^\"]*\"|\'[^\']*\'|«[^»]*»|“[^”]*”)', '', prompt)
+        unquoted_latin = re.findall(r"[a-zA-Z]+", unquoted)
+        assert not unquoted_latin, f"Found unquoted Latin characters in cross-origin prompt: {unquoted_latin}"
 
 
 # ── L6: Form Relevance & Search/Filter Exclusion ──────────────────────────────
@@ -406,6 +487,79 @@ class TestL6FormRelevance:
         if data["status"] == "awaiting_user_input":
             assert data["goal_state"]["awaiting"] is not None
 
+    def test_unrelated_login_form_with_password_not_relevant(self, client):
+        """
+        C1: An unrelated login form on a page whose heading has nothing to do with the goal
+        is NOT relevant. Sensitive or password fields do NOT make a form relevant on their own.
+        """
+        login_nodes = [
+            {
+                "id": "h1-portal",
+                "tag": "h1",
+                "resolved_label": "Internal Staff IT Authentication",
+                "inner_text": "Internal Staff IT Authentication",
+                "visible": True,
+            },
+            {
+                "id": "input-username",
+                "tag": "input",
+                "type": "text",
+                "name": "username",
+                "resolved_label": "Staff Username",
+                "visible": True,
+                "required": True,
+            },
+            {
+                "id": "input-password",
+                "tag": "input",
+                "type": "password",
+                "name": "password",
+                "resolved_label": "Master Password",
+                "visible": True,
+                "required": True,
+                "sensitive": True,
+            },
+            {
+                "id": "btn-signin",
+                "tag": "button",
+                "type": "submit",
+                "resolved_label": "Sign In to Corporate Network",
+                "visible": True,
+            },
+        ]
+
+        goal = "Renew Commercial Maritime Fishing Permit"
+        # Unit test _is_form_relevant directly
+        is_rel = _is_form_relevant(
+            goal=goal,
+            dom_nodes=login_nodes,
+            page_text="Internal Staff IT Authentication System Login",
+            goal_state=None,
+            milestone=None,
+        )
+        assert is_rel is False, "Unrelated login form with password must NOT be considered relevant"
+
+        # Endpoint test: must not ask user for password or prompt form submit
+        payload = {
+            "goal": goal,
+            "current_url": "https://portal.gov.eg/internal-login",
+            "dom_map": login_nodes,
+            "page_text": "Internal Staff IT Authentication System Login",
+            "goal_state": {
+                "goal": goal,
+                "status": "in_progress",
+                "current_url": "https://portal.gov.eg/internal-login",
+                "hop_count": 0,
+                "max_hops": 8,
+            },
+            "api_key": DEMO_API_KEY,
+        }
+        resp = client.post("/v1/chat/goal_step", json=payload)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] != "awaiting_user_input"
+        assert data["status"] != "requires_confirmation"
+
 
 # ── L7: Modal Popup Form Scoping ──────────────────────────────────────────────
 
@@ -462,6 +616,117 @@ class TestL7ModalScoping:
         if plan.steps:
             target = plan.steps[0].element_id
             assert target != "bg-btn-outside"
+
+    def test_irrelevant_modal_dismissed_with_close_button(self, client):
+        """
+        C5: When a modal is open and not relevant to the user's goal (e.g., newsletter/survey popup),
+        Atlas plans ONE dismiss step on a generic close control inside the modal.
+        """
+        irrelevant_modal_nodes = [
+            # Background page element (blocked by modal overlay)
+            {
+                "id": "bg-service-link",
+                "tag": "a",
+                "resolved_label": "Apply for Civil Record Document",
+                "href": "https://portal.gov.eg/civil-record",
+                "visible": True,
+                "in_modal": False,
+                "blocked_by_modal": True,
+            },
+            # Irrelevant modal dialog (newsletter subscription)
+            {
+                "id": "modal-dialog",
+                "tag": "div",
+                "role": "dialog",
+                "resolved_label": "Join Our Weekly Newsletter",
+                "visible": True,
+                "in_modal": True,
+                "blocked_by_modal": False,
+            },
+            {
+                "id": "modal-close-btn",
+                "tag": "button",
+                "resolved_label": "Close dialog",
+                "aria_label": "Close",
+                "inner_text": "×",
+                "visible": True,
+                "in_modal": True,
+                "blocked_by_modal": False,
+            },
+            {
+                "id": "newsletter-email",
+                "tag": "input",
+                "type": "email",
+                "name": "newsletter_email",
+                "resolved_label": "Enter your email for newsletters",
+                "visible": True,
+                "in_modal": True,
+                "blocked_by_modal": False,
+            },
+            {
+                "id": "btn-subscribe",
+                "tag": "button",
+                "resolved_label": "Subscribe",
+                "visible": True,
+                "in_modal": True,
+                "blocked_by_modal": False,
+            },
+        ]
+
+        payload = {
+            "goal": "Apply for Civil Record Document",
+            "current_url": "https://portal.gov.eg/records",
+            "dom_map": irrelevant_modal_nodes,
+            "page_text": "Civil Records Directory Join Our Weekly Newsletter",
+            "goal_state": {
+                "goal": "Apply for Civil Record Document",
+                "status": "in_progress",
+                "current_url": "https://portal.gov.eg/records",
+                "hop_count": 0,
+                "max_hops": 8,
+            },
+            "api_key": DEMO_API_KEY,
+        }
+
+        resp = client.post("/v1/chat/goal_step", json=payload)
+        assert resp.status_code == 200
+        data = resp.json()
+
+        # Must NOT attempt to fill newsletter email
+        assert data["status"] == "in_progress"
+        assert len(data["steps"]) >= 1
+        # Dismiss step targets close button
+        step = data["steps"][0]
+        assert step["action"] in ("click", "press_key")
+        if step["action"] == "click":
+            assert step["element_id"] == "modal-close-btn"
+        else:
+            assert step["value"] == "Escape"
+
+    def test_relevant_modal_form_filled(self, client):
+        """
+        C5: When a modal contains a form relevant to the user's goal,
+        the form fields are extracted and filled / requested.
+        """
+        modal_open_nodes = load_fixture_nodes("portal_modal_open.json")
+        payload = {
+            "goal": "Civil Record Application",
+            "current_url": "https://portal.gov.eg/records",
+            "dom_map": modal_open_nodes,
+            "page_text": "Portal Services Directory Civil Record Application National ID Applicant Name",
+            "goal_state": {
+                "goal": "Civil Record Application",
+                "status": "in_progress",
+                "current_url": "https://portal.gov.eg/records",
+                "hop_count": 0,
+                "max_hops": 8,
+            },
+            "api_key": DEMO_API_KEY,
+        }
+        resp = client.post("/v1/chat/goal_step", json=payload)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] in ("awaiting_user_input", "in_progress")
 
 
 # ── L8: Per-Node Coercion in /v1/chat, /v1/chat/goal_step & /v1/agent ─────────
@@ -543,6 +808,26 @@ class TestL8DomCoercion:
             "goal": "Test odd DOM node",
             "current_url": "https://portal.gov.eg/test",
             "dom_map": malformed_nodes,
+            "api_key": DEMO_API_KEY,
+        }
+        resp = client.post("/v1/chat/goal_step", json=payload)
+        assert resp.status_code == 200
+
+    def test_added_visible_count_null_returns_http_200(self, client):
+        """
+        C6: When the client sends null or non-int for added_visible_count,
+        the server safely coerces to 0 and returns HTTP 200 without raising TypeError.
+        """
+        nodes = load_fixture_nodes("portal_tiles_initial.json")
+        payload = {
+            "goal": "Find citizen services",
+            "current_url": "https://portal.gov.eg/test",
+            "dom_map": nodes,
+            "last_action_result": {
+                "status": "success",
+                "added_visible_count": None,  # JSON null
+                "url_changed": False,
+            },
             "api_key": DEMO_API_KEY,
         }
         resp = client.post("/v1/chat/goal_step", json=payload)

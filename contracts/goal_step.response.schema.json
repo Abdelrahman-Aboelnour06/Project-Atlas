@@ -388,7 +388,8 @@
             "goal_complete",
             "goal_failed",
             "requires_confirmation",
-            "awaiting_user_input"
+            "awaiting_user_input",
+            "requires_origin_confirmation"
           ],
           "title": "Status",
           "type": "string"
@@ -910,6 +911,19 @@
           "default": null,
           "description": "Expected observable outcome or element appearance after step execution",
           "title": "Expect"
+        },
+        "same_tab": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Prefer navigating within the same tab",
+          "title": "Same Tab"
         }
       },
       "required": [
@@ -1045,7 +1059,8 @@
         "goal_complete",
         "goal_failed",
         "requires_confirmation",
-        "awaiting_user_input"
+        "awaiting_user_input",
+        "requires_origin_confirmation"
       ],
       "title": "Status",
       "type": "string"

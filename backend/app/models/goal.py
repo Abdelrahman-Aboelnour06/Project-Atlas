@@ -297,21 +297,6 @@ class GoalStepRequest(BaseModel):
     def _validate_dom_map(cls, v: Any) -> List[DomNode]:
         return coerce_dom_map(v)
 
-    @classmethod
-    def model_json_schema(cls, *args: Any, **kwargs: Any) -> Dict[str, Any]:
-        schema = super().model_json_schema(*args, **kwargs)
-        defs = schema.get("$defs", {})
-        if "PlanStep" in defs:
-            defs["PlanStep"]["properties"].pop("same_tab", None)
-        if "DomNode" in defs:
-            for k in ("opens_new_tab", "target_origin", "in_modal", "blocked_by_modal"):
-                defs["DomNode"]["properties"].pop(k, None)
-        if "GoalState" in defs and "status" in defs["GoalState"]["properties"]:
-            enum_list = defs["GoalState"]["properties"]["status"].get("enum", [])
-            if "requires_origin_confirmation" in enum_list:
-                enum_list.remove("requires_origin_confirmation")
-        return schema
-
 
 
 class GoalStepResponse(BaseModel):
@@ -331,22 +316,3 @@ class GoalStepResponse(BaseModel):
     switch_tab_id: Optional[int] = Field(default=None, description="Directive to switch active tab")
     requires_origin_confirmation: bool = Field(default=False, description="Gate for cross-origin confirmation")
     assisted_click: Optional[Dict[str, Any]] = Field(default=None, description="Assisted click prompt configuration")
-
-    @classmethod
-    def model_json_schema(cls, *args: Any, **kwargs: Any) -> Dict[str, Any]:
-        schema = super().model_json_schema(*args, **kwargs)
-        defs = schema.get("$defs", {})
-        if "PlanStep" in defs:
-            defs["PlanStep"]["properties"].pop("same_tab", None)
-        if "DomNode" in defs:
-            for k in ("opens_new_tab", "target_origin", "in_modal", "blocked_by_modal"):
-                defs["DomNode"]["properties"].pop(k, None)
-        if "GoalState" in defs and "status" in defs["GoalState"]["properties"]:
-            enum_list = defs["GoalState"]["properties"]["status"].get("enum", [])
-            if "requires_origin_confirmation" in enum_list:
-                enum_list.remove("requires_origin_confirmation")
-        if "status" in schema.get("properties", {}):
-            enum_list = schema["properties"]["status"].get("enum", [])
-            if "requires_origin_confirmation" in enum_list:
-                enum_list.remove("requires_origin_confirmation")
-        return schema

@@ -483,6 +483,54 @@
           ],
           "default": null,
           "title": "Breadcrumb"
+        },
+        "opens_new_tab": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": false,
+          "title": "Opens New Tab"
+        },
+        "target_origin": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Origin"
+        },
+        "in_modal": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": false,
+          "title": "In Modal"
+        },
+        "blocked_by_modal": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": false,
+          "title": "Blocked By Modal"
         }
       },
       "required": [
@@ -674,7 +722,8 @@
             "goal_complete",
             "goal_failed",
             "requires_confirmation",
-            "awaiting_user_input"
+            "awaiting_user_input",
+            "requires_origin_confirmation"
           ],
           "title": "Status",
           "type": "string"
@@ -1238,6 +1287,19 @@
           "default": null,
           "description": "Expected observable outcome or element appearance after step execution",
           "title": "Expect"
+        },
+        "same_tab": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Prefer navigating within the same tab",
+          "title": "Same Tab"
         }
       },
       "required": [

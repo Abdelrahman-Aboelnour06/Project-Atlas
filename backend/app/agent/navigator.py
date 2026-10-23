@@ -370,6 +370,8 @@ async def plan_milestone_step(
     """
     reply_lang = resolve_reply_language(language or (goal_state.language if goal_state else None), goal)
     raw_nodes = _convert_dom_nodes_to_dicts(dom_map)
+    # Exclude elements blocked by modal overlay
+    raw_nodes = [n for n in raw_nodes if not bool(n.get("blocked_by_modal"))]
     # L7: Modal scoping: if any node has in_modal: True, only consider in_modal nodes until modal closes
     if any(bool(n.get("in_modal")) for n in raw_nodes):
         raw_nodes = [n for n in raw_nodes if bool(n.get("in_modal"))]
