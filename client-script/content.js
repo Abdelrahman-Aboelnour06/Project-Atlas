@@ -1,6 +1,28 @@
 (function () {
   // content.js — orchestrator
 
+  // ── L2 / Frame Isolation: Top-Frame Only Execution ─────────────────────────
+  // Only the TOP frame runs the goal loop, sidebar, shortcuts, router, and executor actions.
+  // Child frames remain completely idle to prevent duplicate actions, multiple sidebars,
+  // and duplicated goal hops when ensureContentScript injects with allFrames: true.
+  //
+  // KNOWN LIMITATION: Forms inside cross-origin or nested iframes (such as payment or auth
+  // modal iframes) are not reachable from the top frame after this change, until a dedicated
+  // cross-frame perception/serialization protocol is implemented.
+  let isTopFrame = true;
+  try {
+    if (typeof window !== "undefined" && window.top) {
+      isTopFrame = window.self === window.top;
+    }
+  } catch (_) {
+    // Accessing window.top can throw a SecurityError in restricted cross-origin frames -> definitely a child frame
+    isTopFrame = false;
+  }
+
+  if (typeof window !== "undefined") {
+    window.__atlasIsTopFrame = isTopFrame;
+  }
+
   const API_KEY_STORAGE_KEY = "atlasApiKey";
   const BASE_URL_STORAGE_KEY = "atlasBaseUrl";
   const DEFAULT_BASE_URL = "http://localhost:8000";
@@ -411,10 +433,38 @@
   const onHumanInteraction = (e) => {
     if (!e || !e.isTrusted || !isExecuting || isPausedForHuman) return;
 
-    // Filter Atlas internal UI events
+    // Filter Atlas internal UI events across closed Shadow DOM boundaries via composedPath() (L10)
+    const path = typeof e.composedPath === "function" ? e.composedPath() : [];
+    const sidebarHost =
+      (typeof document !== "undefined" && document.getElementById?.("atlas-sidebar-host")) ||
+      window.AtlasSidebar?.getHost?.();
+
+    const isAtlasInternal = path.some((node) => {
+      if (!node) return false;
+      if (node === sidebarHost) return true;
+      if (node.id === "atlas-sidebar-host" || node.id === "atlas-sidebar-root") return true;
+      if (typeof node.getAttribute === "function" && node.getAttribute("data-atlas-ui") !== null) return true;
+      if (node.classList && (
+        node.classList.contains("atlas-user-input-form-card") ||
+        node.classList.contains("atlas-confirmation-chips") ||
+        node.classList.contains("atlas-chat-container") ||
+        node.classList.contains("atlas-action-chip")
+      )) return true;
+      return false;
+    });
+
+    if (isAtlasInternal) return;
+
+    // Direct closest check fallback in light DOM
     const target = e.target;
     if (target && typeof target.closest === "function") {
-      if (target.closest("#atlas-sidebar-host") || target.closest("#atlas-sidebar-root")) {
+      if (
+        target.closest("#atlas-sidebar-host") ||
+        target.closest("#atlas-sidebar-root") ||
+        target.closest(".atlas-user-input-form-card") ||
+        target.closest(".atlas-confirmation-chips") ||
+        target.closest("[data-atlas-ui]")
+      ) {
         return;
       }
     }
@@ -781,20 +831,26 @@
 
     isExecuting = true;
     currentAbortController = new AbortController();
-    window.AtlasSidebar?.setExecuting(true);
-    window.AtlasSidebar?.setGoalProgress(goalState);
+    window.AtlasSidebar?.setExecuting?.(true);
+    window.AtlasSidebar?.setGoalProgress?.(goalState);
+
+    let hopBaseUrl = DEFAULT_BASE_URL;
 
     try {
       // Settle window: wait for navigation/redirects to quiet down before DOM perception
       await waitForNavigationSettle(5000, currentAbortController.signal);
       if (!isExecuting || currentAbortController.signal.aborted) return;
 
-      const { apiKey, baseUrl } = await getStoredSettings();
+      const settings = await getStoredSettings();
+      const apiKey = settings?.apiKey || "";
+      hopBaseUrl = settings?.baseUrl || DEFAULT_BASE_URL;
+      const baseUrl = hopBaseUrl;
+
       const domMap = window.AtlasSerializer.serialize();
       const pageText = getPageText();
 
       // Clean URL before sending (§R2 / §H10)
-      const rawUrl = typeof window !== "undefined" ? window.location.href : "";
+      const rawUrl = (typeof window !== "undefined" && window.location?.href) || "";
       const currentUrl = redactUrl(rawUrl);
       const activeLang = window.AtlasSidebar?.getLanguage?.() || window.AtlasSpeech?.getLanguage?.() || goalState.language || "en-US";
 
@@ -861,10 +917,23 @@
                 if (responded) return;
                 responded = true;
                 if (chrome.runtime.lastError) {
-                  return reject(new Error(chrome.runtime.lastError.message));
+                  const lastErrMsg = chrome.runtime.lastError.message || "";
+                  const isPortClosed = /message port closed|channel closed/i.test(lastErrMsg);
+                  const err = new Error(
+                    isPortClosed ? `Can't reach the Atlas backend at ${baseUrl}` : lastErrMsg
+                  );
+                  if (isPortClosed) {
+                    err.code = "BACKEND_UNREACHABLE";
+                    err.baseUrl = baseUrl;
+                  }
+                  return reject(err);
                 }
                 if (!res || !res.ok) {
-                  return reject(new Error(res?.error || "Goal step failed"));
+                  const errMsg = res?.error || "Goal step failed";
+                  const err = new Error(errMsg);
+                  if (res?.code) err.code = res.code;
+                  if (res?.baseUrl) err.baseUrl = res.baseUrl;
+                  return reject(err);
                 }
                 resolve(res.data);
               }
@@ -1077,11 +1146,75 @@
         return;
       }
     } catch (err) {
-      if (err.name === "AbortError" || !isExecuting) {
+      if (err.name === "AbortError") {
         console.log("Atlas: Goal step aborted");
       } else {
         console.error("Atlas: Goal step failed", err);
-        window.AtlasSidebar?.setStatus(`Goal error: ${err.message}`, "error");
+
+        // L9 / Approved Change 1: Stop the loop and clear executing flags,
+        // preserving currentGoalState and GoalStore entry so the user can Retry/Resume.
+        isExecuting = false;
+        isHopInProgress = false;
+
+        if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
+          try {
+            chrome.runtime.sendMessage({
+              type: "ATLAS_GOAL_STORE_SET_EXECUTING",
+              isExecuting: false,
+            });
+          } catch (_) {}
+        }
+
+        window.AtlasSidebar?.setExecuting?.(false);
+        window.AtlasSidebar?.hideGoalProgress?.();
+        window.AtlasSidebar?.setAutoHide?.(false);
+
+        const activeLang =
+          window.AtlasSidebar?.getLanguage?.() ||
+          window.AtlasSpeech?.getLanguage?.() ||
+          currentGoalState?.language ||
+          "en-US";
+        const isAr =
+          activeLang === "ar-EG" ||
+          (typeof activeLang === "string" && activeLang.startsWith("ar"));
+
+        const isUnreachable =
+          err.code === "BACKEND_UNREACHABLE" ||
+          /Can't reach the Atlas backend|message port closed|channel closed|Failed to fetch|fetch failed|econnrefused/i.test(
+            err.message || ""
+          );
+
+        const errBase = err.baseUrl || hopBaseUrl || DEFAULT_BASE_URL;
+        let displayMsg = "";
+        if (isUnreachable) {
+          displayMsg = isAr
+            ? `تعذر الوصول إلى خادم أطلس في ${errBase}`
+            : `Can't reach the Atlas backend at ${errBase}`;
+        } else {
+          displayMsg = isAr
+            ? `خطأ في تنفيذ الهدف: ${err.message}`
+            : `Goal error: ${err.message}`;
+        }
+
+        window.AtlasSidebar?.setStatus?.(displayMsg, "error");
+
+        const retryLabel = isAr ? "إعادة المحاولة" : "Retry";
+        window.AtlasSidebar?.addChatMessage?.("agent", `🛑 ${displayMsg}`, {
+          actions: [retryLabel],
+          onAction: () => {
+            if (currentGoalState && !isExecuting) {
+              isExecuting = true;
+              isHopInProgress = false;
+              window.AtlasSidebar?.setExecuting?.(true);
+              window.AtlasSidebar?.setStatus?.(
+                isAr ? "جارٍ إعادة المحاولة..." : "Retrying...",
+                "info"
+              );
+              executeGoalHop(currentGoalState);
+            }
+          },
+        });
+        speakIfVoiceMode(displayMsg);
       }
     } finally {
       isHopInProgress = false;
@@ -1817,6 +1950,7 @@ const handleElementClick = async (atlasId) => {
 
   // ── Activate / deactivate ─────────────────────────────────────────────────────
   const activate = async () => {
+    if (!isTopFrame) return; // Child frames never activate or mount sidebar
     if (active) return;
 
     const { apiKey, baseUrl } = await getStoredSettings();
@@ -2001,8 +2135,17 @@ const handleElementClick = async (atlasId) => {
 
   if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      // Child frames must NEVER mount sidebars, resume goals, or run actions (L2 multi-frame isolation)
+      if (!isTopFrame) {
+        if (message.type === "ATLAS_PING") {
+          sendResponse({ status: "ok", isTopFrame: false });
+          return true;
+        }
+        return false;
+      }
+
       if (message.type === "ATLAS_PING") {
-        sendResponse({ status: "ok" });
+        sendResponse({ status: "ok", isTopFrame: true });
         return true;
       }
       if (message.type === "ATLAS_TOGGLE") {
@@ -2084,12 +2227,15 @@ const handleElementClick = async (atlasId) => {
   };
 
   if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
-    window.addEventListener("keydown", handleKeyboardShortcuts);
+    // Only TOP frame listens for global shortcuts and human agency yield events (L2 multi-frame isolation)
+    if (isTopFrame) {
+      window.addEventListener("keydown", handleKeyboardShortcuts);
 
-    // Yield to Human Agency (H21) capture-phase listeners
-    window.addEventListener("keydown", onHumanInteraction, { capture: true, passive: true });
-    window.addEventListener("pointerdown", onHumanInteraction, { capture: true, passive: true });
-    window.addEventListener("input", onHumanInteraction, { capture: true, passive: true });
+      // Yield to Human Agency (H21) capture-phase listeners
+      window.addEventListener("keydown", onHumanInteraction, { capture: true, passive: true });
+      window.addEventListener("pointerdown", onHumanInteraction, { capture: true, passive: true });
+      window.addEventListener("input", onHumanInteraction, { capture: true, passive: true });
+    }
 
     // Popup blocker & browser-native auth event listeners
     window.addEventListener("__atlas_popup_blocked__", handlePopupBlocked);
@@ -2125,6 +2271,9 @@ const handleElementClick = async (atlasId) => {
       handleNativeAuthStart,
       handleNativeAuthEnd,
       isPausedForHuman: () => isPausedForHuman,
+      setIsPausedForHuman: (val) => { isPausedForHuman = Boolean(val); },
+      isTopFrame: () => isTopFrame,
+      setIsTopFrame: (val) => { isTopFrame = Boolean(val); },
       isGuidedAuthMode: () => isGuidedAuthMode,
       setExecuting: (val) => { isExecuting = Boolean(val); },
       isExecuting: () => isExecuting,
@@ -2156,6 +2305,9 @@ const handleElementClick = async (atlasId) => {
       handleNativeAuthStart,
       handleNativeAuthEnd,
       isPausedForHuman: () => isPausedForHuman,
+      setIsPausedForHuman: (val) => { isPausedForHuman = Boolean(val); },
+      isTopFrame: () => isTopFrame,
+      setIsTopFrame: (val) => { isTopFrame = Boolean(val); },
       isGuidedAuthMode: () => isGuidedAuthMode,
       setExecuting: (val) => { isExecuting = Boolean(val); },
       isExecuting: () => isExecuting,
