@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>استعلام مخالفات رخص المركبات والقيادة (نسخة منوعة)</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --primary: #1e3a8a;
+      --primary-dark: #172554;
+      --accent: #3b82f6;
+      --danger: #dc2626;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --bg: #f1f5f9;
+      --card-bg: #ffffff;
+      --border: #e2e8f0;
+      --radius: 8px;
+    }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Arabic", sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+    header {
+      background: var(--primary-dark);
+      color: #ffffff;
+      padding: 16px 24px;
+    }
+    .header-inner {
+      max-width: 900px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .brand {
+      font-size: 18px;
+      font-weight: 800;
+      color: #ffffff;
+      text-decoration: none;
+    }
+    main {
+      max-width: 900px;
+      margin: 32px auto 40px;
+      padding: 0 24px;
+    }
+    .card {
+      background: var(--card-bg);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      padding: 32px;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+    }
+    h1 {
+      font-size: 22px;
+      color: var(--primary);
+      margin-bottom: 8px;
+    }
+    p.lead {
+      color: var(--text-muted);
+      font-size: 14px;
+      margin-bottom: 24px;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    label {
+      display: block;
+      font-weight: 700;
+      font-size: 14px;
+      margin-bottom: 6px;
+    }
+    .req {
+      color: var(--danger);
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 15px;
+      outline: none;
+    }
+    input[type="text"]:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+    }
+    .hint {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+    .error-msg {
+      font-size: 12px;
+      color: var(--danger);
+      margin-top: 4px;
+      font-weight: 600;
+    }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 600px) {
+      .grid-2 { grid-template-columns: 1fr; }
+    }
+    .btn-submit {
+      width: 100%;
+      padding: 14px;
+      background: var(--primary);
+      color: #ffffff;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .btn-submit:hover {
+      background: var(--primary-dark);
+    }
+    #variant-results {
+      margin-top: 24px;
+      padding: 24px;
+      border-radius: var(--radius);
+      background: #ffffff;
+      border: 1px solid #93c5fd;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+    }
+    th, td {
+      padding: 12px;
+      text-align: right;
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+    }
+    th {
+      background: #f8fafc;
+      font-weight: 700;
+    }
+    .total-banner {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      padding: 14px;
+      border-radius: 6px;
+      text-align: center;
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--primary);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <a href="portal-megamenu-variant.html" class="brand">بوابة المعاملات الحكومية التجريبية (منوعة)</a>
+      <span style="font-size: 13px; color: #cbd5e1;">خدمة استعلام التنوع</span>
+    </div>
+  </header>
+
+  <main>
+    <div class="card">
+      <h1>استعلام مخالفات رخص المركبات والقيادة</h1>
+      <p class="lead">يرجى تسجيل بيانات الهوية ورقم لوحة السيارة لعرض جدول المخالفات والغرامات المستحقة.</p>
+
+      <form id="variant-inquiry-form" novalidate>
+        <div class="form-group">
+          <label for="civil-id">
+            رقم بطاقة الرقم القومي <span class="req">*</span>
+          </label>
+          <input 
+            type="text" 
+            id="civil-id" 
+            name="civil_id" 
+            pattern="[0-9]{14}" 
+            maxlength="14" 
+            required 
+            autocomplete="off" 
+            placeholder="أدخل 14 رقماً"
+            aria-describedby="civil-hint civil-error"
+          >
+          <div id="civil-hint" class="hint">14 رقماً مسجلة في الهوية الشخصية</div>
+          <div id="civil-error" class="error-msg" role="alert" style="display:none;">يرجى التحقق من صحة الرقم القومي (14 رقماً)</div>
+        </div>
+
+        <div class="grid-2">
+          <div class="form-group">
+            <label for="vehicle-plate-num">
+              أرقام لوحة المركبة <span class="req">*</span>
+            </label>
+            <input 
+              type="text" 
+              id="vehicle-plate-num" 
+              name="plate_num" 
+              pattern="[0-9]{1,4}" 
+              maxlength="4" 
+              required 
+              placeholder="مثال: 5678"
+              aria-describedby="plate-num-error"
+            >
+            <div id="plate-num-error" class="error-msg" role="alert" style="display:none;">يرجى إدخال أرقام اللوحة (1-4 أرقام)</div>
+          </div>
+
+          <div class="form-group">
+            <label for="vehicle-plate-chars">
+              أحرف لوحة المركبة <span class="req">*</span>
+            </label>
+            <input 
+              type="text" 
+              id="vehicle-plate-chars" 
+              name="plate_chars" 
+              pattern="[\u0600-\u06FF\s]{1,4}" 
+              maxlength="7" 
+              required 
+              placeholder="مثال: س ص ع"
+              aria-describedby="plate-chars-error"
+            >
+            <div id="plate-chars-error" class="error-msg" role="alert" style="display:none;">يرجى إدخال أحرف اللوحة العربية</div>
+          </div>
+        </div>
+
+        <button type="submit" id="variant-submit-btn" class="btn-submit">عرض بيان المخالفات والرسوم</button>
+      </form>
+
+      <!-- Client-side results display -->
+      <section id="variant-results" role="region" aria-live="polite" style="display:none;">
+        <h2 style="font-size: 18px; color: var(--primary); margin-bottom: 12px;">كشف المخالفات والغرامات المسجلة</h2>
+        
+        <div style="background: #f8fafc; padding: 12px; border-radius: 6px; margin-bottom: 16px; font-size: 14px;">
+          الهوية: <strong id="v-res-id">00000000000000</strong> | اللوحة: <strong id="v-res-plate">س ص ع 5678</strong>
+        </div>
+
+        <table id="variant-violations-table">
+          <thead>
+            <tr>
+              <th>تاريخ المخالفة</th>
+              <th>بيان المخالفة</th>
+              <th>الموقع</th>
+              <th>الغرامة</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>2026-08-10</td>
+              <td>تجاوز السرعة المقررة تجريبياً</td>
+              <td>محور تجريبي بديل</td>
+              <td>300 ج.م</td>
+            </tr>
+            <tr>
+              <td>2026-09-22</td>
+              <td>استخدام الهاتف المحمول أثناء القيادة تجريبياً</td>
+              <td>طريق تجريبي حر</td>
+              <td>150 ج.م</td>
+            </tr>
+            <tr>
+              <td>2026-10-05</td>
+              <td>الانتظار الخاطئ في مسار المشاة</td>
+              <td>ميدان تجريبي</td>
+              <td>100 ج.م</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="total-banner" id="variant-total-amount">
+          إجمالي المخالفات المستحقة: 550 ج.م
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const form = document.getElementById('variant-inquiry-form');
+    const results = document.getElementById('variant-results');
+    const idInput = document.getElementById('civil-id');
+    const numInput = document.getElementById('vehicle-plate-num');
+    const charsInput = document.getElementById('vehicle-plate-chars');
+
+    const idError = document.getElementById('civil-error');
+    const numError = document.getElementById('plate-num-error');
+    const charsError = document.getElementById('plate-chars-error');
+
+    const resId = document.getElementById('v-res-id');
+    const resPlate = document.getElementById('v-res-plate');
+
+    form.addEventListener('submit', function(e) {
+      e.preventDefault(); // No GET query parameters!
+
+      let valid = true;
+
+      if (!/^[0-9]{14}$/.test(idInput.value.trim())) {
+        idError.style.display = 'block';
+        valid = false;
+      } else {
+        idError.style.display = 'none';
+      }
+
+      if (!/^[0-9]{1,4}$/.test(numInput.value.trim())) {
+        numError.style.display = 'block';
+        valid = false;
+      } else {
+        numError.style.display = 'none';
+      }
+
+      if (!/^[\u0600-\u06FF\s]{1,7}$/.test(charsInput.value.trim()) || charsInput.value.trim().length === 0) {
+        charsError.style.display = 'block';
+        valid = false;
+      } else {
+        charsError.style.display = 'none';
+      }
+
+      if (!valid) return;
+
+      resId.textContent = idInput.value.trim();
+      resPlate.textContent = `${charsInput.value.trim()} ${numInput.value.trim()}`;
+
+      form.style.display = 'none';
+      results.style.display = 'block';
+    });
+  </script>
+</body>
+</html>

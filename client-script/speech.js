@@ -32,31 +32,51 @@ let analyserNode = null
 let animFrameId = null
 let isStarting = false
 
-// Load stored language on initialization from chrome.storage.local key atlas_voice_lang
+// Load stored language on initialization from chrome.storage.local key atlas_lang (with atlas_voice_lang migration)
 const loadStoredLanguage = () => {
     if (typeof chrome !== 'undefined' && chrome.storage?.local?.get) {
         try {
-            const res = chrome.storage.local.get(['atlas_voice_lang'], (items) => {
-                if (chrome.runtime?.lastError) return
-                if (items && items.atlas_voice_lang) {
+            const handleItems = (items) => {
+                if (!items) return
+                if (items.atlas_lang) {
+                    currentLang = items.atlas_lang
+                } else if (items.atlas_voice_lang) {
                     currentLang = items.atlas_voice_lang
+                    try {
+                        chrome.storage.local.set({ atlas_lang: currentLang })
+                    } catch (_) {}
                 }
+            }
+            const res = chrome.storage.local.get(['atlas_lang', 'atlas_voice_lang'], (items) => {
+                if (chrome.runtime?.lastError) return
+                handleItems(items)
             })
             if (res && typeof res.then === 'function') {
-                res.then((items) => {
-                    if (items && items.atlas_voice_lang) {
-                        currentLang = items.atlas_voice_lang
-                    }
-                }).catch(() => {})
+                res.then(handleItems).catch(() => {})
             }
         } catch (_) {}
     }
 }
 loadStoredLanguage()
 
+// Keep currentLang synced across tabs when chrome.storage changes
+if (typeof chrome !== 'undefined' && chrome.storage?.onChanged?.addListener) {
+    try {
+        chrome.storage.onChanged.addListener((changes, area) => {
+            if (area === 'local') {
+                if (changes.atlas_lang && changes.atlas_lang.newValue) {
+                    setLanguage(changes.atlas_lang.newValue, false)
+                } else if (changes.atlas_voice_lang && changes.atlas_voice_lang.newValue) {
+                    setLanguage(changes.atlas_voice_lang.newValue, false)
+                }
+            }
+        })
+    } catch (_) {}
+}
+
 const getLanguage = () => currentLang
 
-const setLanguage = (lang) => {
+const setLanguage = (lang, syncStorage = true) => {
     if (lang === 'ar-EG' || lang === 'en-US') {
         currentLang = lang
     } else if (typeof lang === 'string' && (lang.startsWith('ar') || lang === 'ar-EG')) {
@@ -64,9 +84,9 @@ const setLanguage = (lang) => {
     } else {
         currentLang = 'en-US'
     }
-    if (typeof chrome !== 'undefined' && chrome.storage?.local?.set) {
+    if (syncStorage && typeof chrome !== 'undefined' && chrome.storage?.local?.set) {
         try {
-            chrome.storage.local.set({ atlas_voice_lang: currentLang })
+            chrome.storage.local.set({ atlas_lang: currentLang, atlas_voice_lang: currentLang })
         } catch (_) {}
     }
     return currentLang
@@ -76,20 +96,31 @@ const isSupported = () => Boolean(SpeechRecognitionImpl)
 const isListening = () => listening
 
 const formatSpeechError = (errorCode) => {
+    const isAr = currentLang === 'ar-EG'
     switch (errorCode) {
         case 'not-allowed':
         case 'service-not-allowed':
-            return 'Microphone or speech recognition permission was denied. Please click the lock icon in your address bar and allow Microphone access.'
+            return isAr
+                ? 'تم رفض إذن الميكروفون أو التعرف على الصوت. يرجى النقر فوق أيقونة القفل في شريط العناوين والسماح بالوصول إلى الميكروفون.'
+                : 'Microphone or speech recognition permission was denied. Please click the lock icon in your address bar and allow Microphone access.'
         case 'network':
-            return "Voice recognition connection failed. In Brave browser, speech recognition is disabled by default for privacy. To enable it: go to brave://settings/privacy and toggle ON 'Use Google services for speech recognition', or type your requests in the chat box."
+            return isAr
+                ? "فشل الاتصال بالتعرف الصوتي. في متصفح Brave، يتم تعطيل التعرف على الصوت افتراضياً. لتفعيله: انتقل إلى brave://settings/privacy وفعّل خيار التعرف الصوتي، أو اكتب طلباتك في مربع المحادثة."
+                : "Voice recognition connection failed. In Brave browser, speech recognition is disabled by default for privacy. To enable it: go to brave://settings/privacy and toggle ON 'Use Google services for speech recognition', or type your requests in the chat box."
         case 'no-speech':
-            return 'No speech was detected. Please check your microphone volume and speak clearly.'
+            return isAr
+                ? 'لم يتم اكتشاف أي صوت. يرجى التحقق من مستوى صوت الميكروفون والتحدث بوضوح.'
+                : 'No speech was detected. Please check your microphone volume and speak clearly.'
         case 'audio-capture':
-            return 'No microphone was found on your system. Please verify your microphone is plugged in.'
+            return isAr
+                ? 'لم يتم العثور على ميكروفون في نظامك. يرجى التحقق من توصيل الميكروفون.'
+                : 'No microphone was found on your system. Please verify your microphone is plugged in.'
         case 'aborted':
             return null // user intentionally stopped
         default:
-            return `Speech recognition error (${errorCode}).`
+            return isAr
+                ? `خطأ في التعرف على الصوت (${errorCode}).`
+                : `Speech recognition error (${errorCode}).`
     }
 }
 

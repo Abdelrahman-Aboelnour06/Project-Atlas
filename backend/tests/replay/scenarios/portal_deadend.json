@@ -1,0 +1,18 @@
+{
+  "scenario_id": "portal_deadend",
+  "name": "Dead-end Exploration Bound Portal",
+  "description": "Navigation on a site that has no matching service, proving the agent explores, backtracks, and safely halts without looping.",
+  "start_page": "portal-deadend.html",
+  "goal_text": {
+    "ar": "اريد الاستعلام عن مخالفات المرور للسيارة",
+    "en": "I want to check traffic violations for my car"
+  },
+  "expected_target_page": null,
+  "target_link_id": null,
+  "required_inputs": [],
+  "expected_end_state": {
+    "status": "goal_failed",
+    "reason_category": "target_not_found_or_max_hops",
+    "must_not_loop": true
+  }
+}

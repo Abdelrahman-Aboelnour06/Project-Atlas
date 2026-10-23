@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>بوابة الخدمات الحكومية التجريبية - نمط الفهرس</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --primary: #4338ca;
+      --primary-dark: #312e81;
+      --accent: #6366f1;
+      --text: #1e293b;
+      --text-muted: #64748b;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --border: #e2e8f0;
+      --radius: 8px;
+    }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Arabic", sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+    header {
+      background: #ffffff;
+      border-bottom: 2px solid var(--accent);
+      padding: 16px 24px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .header-content {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .brand {
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--primary-dark);
+      text-decoration: none;
+    }
+    main {
+      max-width: 1100px;
+      margin: 40px auto;
+      padding: 0 24px;
+    }
+    .welcome-card {
+      background: var(--card-bg);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      padding: 40px;
+      text-align: center;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+      margin-bottom: 32px;
+    }
+    h1 {
+      font-size: 26px;
+      color: var(--primary-dark);
+      margin-bottom: 12px;
+    }
+    p.desc {
+      color: var(--text-muted);
+      font-size: 16px;
+      max-width: 680px;
+      margin: 0 auto 28px;
+    }
+    .btn-all-services {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--primary);
+      color: #ffffff;
+      padding: 14px 28px;
+      border-radius: var(--radius);
+      font-size: 16px;
+      font-weight: 700;
+      text-decoration: none;
+      transition: background 0.15s, transform 0.05s;
+    }
+    .btn-all-services:hover {
+      background: var(--primary-dark);
+    }
+    .teaser-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+    }
+    .teaser-item {
+      background: #ffffff;
+      padding: 24px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+    }
+    .teaser-item h2 {
+      font-size: 18px;
+      color: var(--primary);
+      margin-bottom: 8px;
+    }
+    .teaser-item p {
+      font-size: 14px;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-content">
+      <a href="portal-grid.html" class="brand">بوابة الخدمات الحكومية التجريبية (نمط الفهرس)</a>
+      <span style="font-size: 13px; color: var(--text-muted);">نمط الصفحة الوسيطة</span>
+    </div>
+  </header>
+
+  <main>
+    <div class="welcome-card">
+      <h1>دليل الخدمات الحكومية الرقمية</h1>
+      <p class="desc">
+        تتاح كافة الخدمات والمعاملات الحكومية الإلكترونية عبر صفحة الفهرس الموحد، والتي تجمع خدمات المرور والتوثيق والضرائب والأحوال المدنية في مكان واحد.
+      </p>
+      <!-- "All Services" navigation link -->
+      <a href="portal-grid-services.html" id="all-services-link" class="btn-all-services">
+        استعراض جميع الخدمات الحكومية ←
+      </a>
+    </div>
+
+    <div class="teaser-grid">
+      <div class="teaser-item">
+        <h2>منظومة الخدمات الموحدة</h2>
+        <p>فهرس منظم يتيح استكشاف مختلف القطاعات الخدمية بسلاسة.</p>
+      </div>
+      <div class="teaser-item">
+        <h2>الاستعلام الإلكتروني</h2>
+        <p>خدمات الاستعلام والمتابعة لجميع المعاملات الرسمية.</p>
+      </div>
+      <div class="teaser-item">
+        <h2>معايير الويب العالمية</h2>
+        <p>بنية معيارية تدعم التنقل السهل عبر تقنيات المساعدة المتاحة.</p>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

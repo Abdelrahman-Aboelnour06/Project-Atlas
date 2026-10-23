@@ -31,6 +31,7 @@ CI_E2E_SUITES = {
     "ui_sidebar_behavior.js",
     "a11y_axe.js",
     "run_multi_tab_suite.js",
+    "test_portal_fixtures_e2e.js",
 }
 
 

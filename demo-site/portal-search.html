@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>بوابة الخدمات الحكومية التجريبية - محرك البحث</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --primary: #0369a1;
+      --primary-dark: #075985;
+      --accent: #38bdf8;
+      --text: #1e293b;
+      --text-muted: #64748b;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --border: #e2e8f0;
+      --radius: 8px;
+    }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Arabic", sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+    header {
+      background: #ffffff;
+      border-bottom: 2px solid var(--primary);
+      padding: 16px 24px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .header-content {
+      max-width: 900px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .brand {
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--primary-dark);
+      text-decoration: none;
+    }
+    main {
+      max-width: 900px;
+      margin: 40px auto;
+      padding: 0 24px;
+    }
+    .search-hero {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 36px;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+      margin-bottom: 30px;
+    }
+    h1 {
+      font-size: 24px;
+      color: var(--primary-dark);
+      margin-bottom: 8px;
+      text-align: center;
+    }
+    p.lead {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 15px;
+      margin-bottom: 24px;
+    }
+    .search-bar-form {
+      display: flex;
+      gap: 12px;
+      max-width: 640px;
+      margin: 0 auto;
+    }
+    input[type="search"] {
+      flex: 1;
+      padding: 14px 18px;
+      border: 2px solid var(--border);
+      border-radius: 6px;
+      font-size: 16px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input[type="search"]:focus {
+      border-color: var(--primary);
+    }
+    .btn-search {
+      padding: 14px 28px;
+      background: var(--primary);
+      color: #ffffff;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-search:hover {
+      background: var(--primary-dark);
+    }
+    
+    /* Search Results Section */
+    #search-results-container {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      min-height: 180px;
+    }
+    .results-heading {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--primary-dark);
+      margin-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+    }
+    .results-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .result-card {
+      padding: 16px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #f8fafc;
+      transition: all 0.15s ease;
+    }
+    .result-card:hover {
+      background: #f0f9ff;
+      border-color: var(--accent);
+    }
+    .result-link {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--primary);
+      text-decoration: none;
+      display: inline-block;
+      margin-bottom: 6px;
+    }
+    .result-link:hover {
+      text-decoration: underline;
+    }
+    .result-desc {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    .empty-msg {
+      color: var(--text-muted);
+      font-size: 14px;
+      text-align: center;
+      padding: 30px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-content">
+      <a href="portal-search.html" class="brand">بوابة الخدمات الحكومية التجريبية (نمط البحث فقط)</a>
+      <span style="font-size: 13px; color: var(--text-muted);">البحث الموحد</span>
+    </div>
+  </header>
+
+  <main>
+    <div class="search-hero">
+      <h1>البحث في المعاملات والخدمات الحكومية</h1>
+      <p class="lead">لا تظهر الخدمات في قوائم ثابتة؛ يرجى كتابة اسم المعاملة للوصول إلى الرابط المباشر.</p>
+
+      <form id="site-search-form" class="search-bar-form" role="search">
+        <input 
+          type="search" 
+          id="site-search-input" 
+          name="query" 
+          placeholder="ابحث عن الخدمة المطلوبة (مثال: مخالفات المرور)..." 
+          aria-label="ابحث في الخدمات الحكومية"
+          autocomplete="off"
+        >
+        <button type="submit" id="search-submit-btn" class="btn-search">بحث</button>
+      </form>
+    </div>
+
+    <!-- Search Results Container -->
+    <section id="search-results-container" role="region" aria-live="polite">
+      <div class="results-heading" id="results-status">نتائج البحث</div>
+      <div id="results-body">
+        <div class="empty-msg" id="placeholder-msg">
+          أدخل مصطلح البحث أعلاه لعرض الخدمات المتطابقة.
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const form = document.getElementById('site-search-form');
+    const input = document.getElementById('site-search-input');
+    const resultsBody = document.getElementById('results-body');
+    const resultsStatus = document.getElementById('results-status');
+
+    function performSearch(query) {
+      const q = (query || '').trim().toLowerCase();
+      if (!q) {
+        resultsStatus.textContent = 'نتائج البحث';
+        resultsBody.innerHTML = '<div class="empty-msg">أدخل مصطلح البحث أعلاه لعرض الخدمات المتطابقة.</div>';
+        return;
+      }
+
+      resultsStatus.textContent = `نتائج البحث عن: "${query}"`;
+
+      // Check if query matches traffic / violations / vehicle keywords
+      const matchesTraffic = ['مرور', 'مخالف', 'مخالفات', 'سيار', 'مركب', 'نياب', 'رخص'].some(term => q.includes(term));
+
+      if (matchesTraffic) {
+        resultsBody.innerHTML = `
+          <ul class="results-list">
+            <li class="result-card">
+              <a href="portal-inquiry.html" id="search-result-traffic-link" class="result-link">
+                نيابات المرور - الاستعلام عن مخالفات المركبات
+              </a>
+              <div class="result-desc">
+                خدمة حكومية تجريبية تتيح للمواطنين الاستعلام عن بيانات مخالفات رخص المركبات والقيادة المسجلة برقم اللوحة والرقم القومي.
+              </div>
+            </li>
+          </ul>
+        `;
+      } else {
+        resultsBody.innerHTML = `
+          <div class="empty-msg">
+            لم يتم العثور على خدمات مطابقة للبحث "${query}". جرب البحث بكلمة "مخالفات" أو "مرور".
+          </div>
+        `;
+      }
+    }
+
+    form.addEventListener('submit', function(e) {
+      e.preventDefault();
+      performSearch(input.value);
+    });
+
+    // Check if query param is passed in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const initialQuery = urlParams.get('query');
+    if (initialQuery) {
+      input.value = initialQuery;
+      performSearch(initialQuery);
+    }
+  </script>
+</body>
+</html>

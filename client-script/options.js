@@ -511,6 +511,7 @@ const initWizard = () => {
           {
             [API_KEY_STORAGE_KEY]: verifiedKey,
             [BASE_URL_STORAGE_KEY]: verifiedUrl,
+            atlas_lang: selectedLang,
             atlas_voice_lang: selectedLang,
             atlas_wizard_completed: true,
           },
