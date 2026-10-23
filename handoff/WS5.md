@@ -1,50 +1,47 @@
 # WS5 Router and Loop
-Branch: feat/goal-router   Last commit: e6c22c6   Model used: Gemini 3.8 Flash
+Branch: feat/goal-router   Last commit: f8135a2   Model used: Gemini 3.8 Flash
 Status: done
 
 Done:
 - backend/app/i18n.py:112,208: Added symmetric i18n keys for `router_goal_ack` and `loop_repeated_action_limit` in English and Egyptian Colloquial Arabic (`ar-EG`).
 - backend/app/routes/chat.py:133: Added `contract_version: int = 2` to `ChatRequest` (preserving legacy behavior for contract_version < 3).
-- backend/app/routes/chat.py:151-274: Implemented `classify_intent_route(question, dom_map, page_text, language)`:
-  - Question FIRST: informational questions about page content.
-  - Direct: short command (<=6 words) matching a VISIBLE node with score >= 0.85.
-  - Explicit Goal: multi-step task verbs, service requests, inquiries, payments (e.g. `عايز`, `اريد`, `محتاج`, `استعلام`, `استفسار`, `ادفع`, `سجل`, `قدم`) route to `goal` even if words match links.
-  - LLM classification in `json_mode` when rules are unsure, disabled when `is_limited_mode()` is True.
-  - Goal fallback when no visible match.
-- backend/app/routes/chat.py:301-370: Integrated router in `chat_endpoint`:
-  - When `contract_version >= 3`: routes to `goal` (seeding `GoalState` with `max_hops=15`), `direct` (single-shot plan), or `question` (conversational QA).
-  - When `contract_version < 3`: keeps today's exact legacy behavior.
-- backend/tests/test_ws5_router.py: Added 12 comprehensive unit and integration tests covering vehicle violations, Egyptian Arabic bill pay, visible direct click, latent node exclusion from direct, question precedence, limited mode fallback, and Prime Directive zero-domain hardcoding.
-- client-script/content.js:118,533-655: Implemented `renderAwaitingUserInputForm` inside sidebar closed shadow root (`dir="auto"`) with sensitive field masking (`type="password"`), tokenization via `window.AtlasSecretVault.store(origin, category, field.ref, rawVal)`, immediate clearing of inputs post-submit, and submission of `{vault:...}` tokens with zero raw PII leakage to logs, speech, or chat history.
-- client-script/content.js:659-992: Upgraded `executeGoalHop`:
-  - Single-flight lock (`isHopInProgress`) preventing duplicate concurrent runs.
-  - Navigation settle window integration.
-  - Sends active `language` (`window.AtlasSidebar?.getLanguage?.() || "en-US"`), `contract_version: 3`, `page_text`, and previous `lastActionResult`.
-  - Repeat step safety guard: detects 3 identical consecutive actions on the same element and halts the loop with a localized warning.
-  - Max hops enforcement (seeds with `max_hops=15`).
-  - Interactive status handling for `awaiting_user_input` and `requires_confirmation`.
-  - Terminal status handling for `goal_complete` and `goal_failed`.
-- client-script/content.js:1274,1503,1573: Applied WS3 one-liners ensuring `language` and `contract_version: 3` are dispatched across `ATLAS_CHAT`, `ATLAS_GOAL_STEP`, and `ATLAS_SUMMARY`.
-- client-script/test_ws5_router_loop.js: Created standalone 8-test acceptance suite validating router loop, vault tokenization, repetition abort, max hops, and stop control.
-- ci/e2e/test_ws5_portal_router_e2e.js: Created 13-assertion Playwright E2E test driving `demo-site/portal-inquiry.html`, asserting pause at `awaiting_user_input`, password masking, vault tokenization, zero raw digits in network payload or chat, and completion.
-- package.json:9: Registered `node client-script/test_ws5_router_loop.js` in `test:js`.
-- ci/verify_all_tests_run.py:29: Added `test_ws5_portal_router_e2e.js` to `CI_E2E_SUITES`.
+- backend/app/routes/chat.py:151-345: Implemented WS5 review order in `classify_intent_route`:
+  - (a) Explicit command verb (`click`, `press`, `tap`, `open`, `select`, `type`, `اضغط`, `دوس`, `افتح`, `اختار`, `اكتب`) + VISIBLE node >= 0.85 -> `direct`.
+  - (b) Question: interrogative start (`what`, `where`, `how`, `when`, `who`, `why`, `ما`, `ماذا`, `ايه`, `فين`, `ازاي`, `امتى`, `كام`, `هل`...) beats goal when no first-person want/need phrase.
+  - (c) Explicit goal phrase -> `goal`. All topic nouns removed from `GOAL_TASK_PATTERNS` (`مخالفات`, `مرور`, `رخصة`, `بطاقة`, `كشف`, `معرفة`, `طلب`), keeping verbs/intent phrases only with word boundaries `(?<![-ۿ])(?:...)(?![-ۿ])`, so `سجل` never matches inside `التسجيل`.
+  - (d) Other short commands (<= 6 words) + visible match >= 0.85 -> `direct`.
+  - (e) Small talk / greetings / thanks (`hello`, `thanks!`, `شكرا`, `ازيك`...), or <= 2 words with no action verb -> `question`.
+  - (f) Else LLM in `json_mode` if healthy, else `goal`.
+- backend/tests/test_ws5_router.py:239-290: Added `test_ws5_review_fixes_rules_only_limited_mode` covering all 7 review cases under limited mode:
+  - "click register" -> `direct`
+  - "اضغط تسجيل الدخول" -> `direct`
+  - "hello" / "thanks!" / "شكرا" / "ازيك" -> `question`
+  - "ما هي مواعيد التسجيل؟" -> `question`
+  - "اريد الاستفسار عن مخالفات المركبات" -> `goal`
+  - "I want to renew my license" -> `goal`
+  - "عايز ادفع الفاتورة" -> `goal`
+- client-script/content.js:966-976: Changed confirmation chip handling to decide strictly by option index (`options[0]` = proceed -> `"yes"`, otherwise `"no"`), completely language-agnostic and regex-free.
+- client-script/content.js:1232-1256: Added active goal input interception in `handleChatInput`: while `currentGoalState.status` is `awaiting_user_input` or `requires_confirmation`, typed/spoken chat is routed to `goal_step` as `user_response` (tokenized via `AtlasSecretVault.tokenizeCommand`) rather than `/v1/chat`, handling captcha/OTP prompts without fields ("done"/"خلصت" resumes).
+- client-script/content.js:853-870: Updated repeat action guard: step signature includes `action` + `element` + `redacted URL` + `hash of visible DOM node ids`. Only aborts when the page has not changed.
+- client-script/content.js:632-658: Hardened vault error handling: if `AtlasSecretVault.store` is missing or throws, never sends fake `{vault:...}` token; displays a localized error in sidebar and preserves the form for user retry.
+- client-script/test_ws5_router_loop.js: Added test cases for Arabic `t()` confirmation chip index resolution, active goal typed user_response interception, and vault error handling.
+- ci/e2e/test_ws5_portal_router_e2e.js: 13-assertion Playwright E2E suite verifying portal inquiry, shadow root form, vault tokenization, and complete goal loop.
 
 Tests run:
-- cd backend && LLM_PROVIDER=mock pytest tests/test_ws5_router.py -v: 12 passed, 0 failed in 0.29s
-- cd backend && LLM_PROVIDER=mock pytest tests/ -q: 1063 passed, 0 failed, 7 warnings in 5.83s
-- LLM_PROVIDER=mock pytest backend/tests -q: 1063 passed, 0 failed, 7 warnings in 5.86s
-- npm run test:js: 1,216 passed, 0 failed across all 20 JS test suites in 18.2s
+- cd backend && LLM_PROVIDER=mock pytest tests/test_ws5_router.py -v: 13 passed, 0 failed in 0.31s
+- cd backend && LLM_PROVIDER=mock pytest tests/ -q: 1064 passed, 0 failed, 7 warnings in 5.87s
+- LLM_PROVIDER=mock pytest backend/tests -q: 1064 passed, 0 failed, 7 warnings in 5.94s
+- npm run test:js: 1,218 passed, 0 failed across all 20 JS test suites in 18.5s
 - node ci/e2e/test_ws5_portal_router_e2e.js: 13 passed, 0 failed in 1.8s
 - python3 ci/verify_all_tests_run.py: 100% checks passed:
-  - 100% Backend test files executed (50/50, 1063 passed >= 782 floor)
-  - 100% JavaScript test files executed (30/30, 1216 passed >= 814 floor)
+  - 100% Backend test files executed (50/50, 1064 passed >= 782 floor)
+  - 100% JavaScript test files executed (30/30, 1218 passed >= 814 floor)
   - 100% Playwright E2E Harnesses executed (7/7)
   - 0 failures across all suites.
 - node client-script/package_extension.js --verify-only: 100% store-ready, 0 errors.
 
 Next steps:
-1. Merge `feat/goal-router` into the integration branch following team protocol.
+1. Merge `feat/goal-router` into integration branch.
 2. WS6/WS7 will consume the `/v1/chat` seeded `GoalState(max_hops=15)` and `user_inputs` dictionary in `POST /v1/chat/goal_step`.
 
 Requests for other workstreams:

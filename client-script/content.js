@@ -630,12 +630,31 @@
         const kind = input?.dataset?.kind || "text";
 
         if (isSensitive) {
-          if (rawVal && window.AtlasSecretVault?.store) {
-            const category = ["password", "otp", "pin", "ssn", "cc_number"].includes(kind) ? kind : "secret";
-            const token = await window.AtlasSecretVault.store(origin, category, field.ref, rawVal);
-            userInputs[field.ref] = token;
-          } else if (rawVal) {
-            userInputs[field.ref] = `{vault:${field.ref}}`;
+          if (rawVal) {
+            if (!window.AtlasSecretVault?.store) {
+              const activeLang = window.AtlasSidebar?.getLanguage?.() || "en-US";
+              const vaultErrMsg = activeLang.startsWith("ar")
+                ? "تعذر تشفير وحفظ البيانات الحساسة: خدمة الخزنة غير متاحة."
+                : "Unable to secure sensitive data: Secret Vault is unavailable.";
+              window.AtlasSidebar?.setStatus?.("Vault unavailable", "error");
+              window.AtlasSidebar?.addChatMessage?.("agent", `⚠️ ${vaultErrMsg}`);
+              btn.disabled = false;
+              return;
+            }
+            try {
+              const category = ["password", "otp", "pin", "ssn", "cc_number"].includes(kind) ? kind : "secret";
+              const token = await window.AtlasSecretVault.store(origin, category, field.ref, rawVal);
+              userInputs[field.ref] = token;
+            } catch (err) {
+              const activeLang = window.AtlasSidebar?.getLanguage?.() || "en-US";
+              const vaultErrMsg = activeLang.startsWith("ar")
+                ? "فشل تشفير البيانات الحساسة داخل الخزنة."
+                : "Failed to encrypt sensitive data in Secret Vault.";
+              window.AtlasSidebar?.setStatus?.("Vault error", "error");
+              window.AtlasSidebar?.addChatMessage?.("agent", `⚠️ ${vaultErrMsg}`);
+              btn.disabled = false;
+              return;
+            }
           }
         } else {
           userInputs[field.ref] = rawVal;
@@ -833,7 +852,21 @@
           for (let i = 0; i < stepsToExecute.length; i++) {
             if (!isExecuting || currentAbortController.signal.aborted) break;
             const step = stepsToExecute[i];
-            const sig = `${step.action}:${step.element_id || step.target || ""}`;
+            const computeDomHash = (nodes) => {
+              const visibleIds = (nodes || [])
+                .filter((n) => n && n.visible !== false && n.id != null)
+                .map((n) => n.id)
+                .join(",");
+              let hash = 5381;
+              for (let idx = 0; idx < visibleIds.length; idx++) {
+                hash = (hash << 5) + hash + visibleIds.charCodeAt(idx);
+                hash = hash & hash;
+              }
+              return (hash >>> 0).toString(16);
+            };
+            const pageHash = computeDomHash(domMap);
+            const stepTarget = step.element_id || step.target || "";
+            const sig = `${step.action}:${stepTarget}:${currentUrl}:${pageHash}`;
 
             if (sig === recentStepSignature) {
               stepRepeatCount++;
@@ -932,8 +965,12 @@
           actions: options,
           onAction: (choice) => {
             window.AtlasSidebar?.addChatMessage?.("user", choice);
-            const lower = (choice || "").toLowerCase();
-            const isAffirmative = /^(yes|sure|proceed|ok|continue|نعم|موافق|تأكيد|كمل)/i.test(lower);
+            // WS5: Decide by option index (options[0] = proceed), language-agnostic
+            const idx = options.findIndex((opt) => {
+              const label = typeof opt === "string" ? opt : (opt.value || opt.label);
+              return label === choice;
+            });
+            const isAffirmative = idx === 0;
             pendingUserResponse = isAffirmative ? "yes" : "no";
             isExecuting = true;
             window.AtlasSidebar?.setExecuting?.(true);
@@ -1192,6 +1229,31 @@
 
     // Stop ongoing speech before handling new input
     window.AtlasTTS?.stop();
+
+    // WS5: While currentGoalState status is awaiting_user_input or requires_confirmation,
+    // typed or spoken chat goes to goal_step as user_response, not to /v1/chat.
+    // Covers captcha/otp prompts that have no fields ("done"/"خلصت" resumes).
+    if (
+      currentGoalState &&
+      (currentGoalState.status === "awaiting_user_input" || currentGoalState.status === "requires_confirmation")
+    ) {
+      window.AtlasSidebar?.addChatMessage?.("user", rawInput);
+      let responseText = rawInput;
+      if (window.AtlasSecretVault?.tokenizeCommand) {
+        try {
+          const origin = typeof window !== "undefined" && window.location ? window.location.origin : "";
+          const domMap = window.AtlasSerializer?.serialize?.() || [];
+          const tokenized = await window.AtlasSecretVault.tokenizeCommand(origin, rawInput, domMap);
+          responseText = tokenized.command || rawInput;
+        } catch (_) {}
+      }
+      pendingUserResponse = responseText;
+      isExecuting = true;
+      window.AtlasSidebar?.setExecuting?.(true);
+      window.AtlasSidebar?.setStatus?.("Resuming goal...", "info");
+      await executeGoalHop(currentGoalState);
+      return;
+    }
 
     const lowerInput = rawInput.toLowerCase();
 

@@ -499,7 +499,7 @@ async function run() {
     assert(confirmMsg !== undefined, "Confirmation prompt must be shown in chat");
     assert(confirmMsg.opts.actions.length === 2, "Confirmation chips must be present");
 
-    // Simulate clicking "نعم، متابعة"
+    // Simulate clicking option 0 ("نعم، متابعة")
     confirmMsg.opts.onAction("نعم، متابعة");
 
     // Wait microtask tick
@@ -507,7 +507,97 @@ async function run() {
 
     // Verify Hop 2 received user_response = "yes"
     assert.strictEqual(interceptedHops.length, 2);
-    assert.strictEqual(interceptedHops[1].user_response, "yes", "Hop 2 must carry user_response: yes");
+    assert.strictEqual(interceptedHops[1].user_response, "yes", "Hop 2 must carry user_response: yes when option 0 chosen");
+  });
+
+  await test("chat input during awaiting_user_input or requires_confirmation routes to goal_step as user_response", async () => {
+    setupMockEnv();
+    const content = require("./content.js");
+
+    let goalStepDispatched = false;
+    let chatEndpointCalled = false;
+    let receivedUserResponse = null;
+
+    global.chrome.runtime.sendMessage = (msg, cb) => {
+      if (msg.type === "ATLAS_CHAT") {
+        chatEndpointCalled = true;
+        if (cb) cb({ ok: true, data: {} });
+        return;
+      }
+      if (msg.type === "ATLAS_GOAL_STEP") {
+        goalStepDispatched = true;
+        receivedUserResponse = msg.payload?.user_response;
+        if (cb) {
+          cb({
+            ok: true,
+            data: {
+              status: "goal_complete",
+              reply: "تم استكمال العملية بعد حل الرمز",
+              goal_state: { goal: "OTP Goal", status: "goal_complete", hop_count: 2 },
+            },
+          });
+        }
+        return;
+      }
+      if (cb) cb({ ok: true });
+    };
+
+    // Set current goal state to awaiting_user_input (e.g. captcha/otp without form fields)
+    content.setCurrentGoalState({
+      goal: "OTP Goal",
+      status: "awaiting_user_input",
+      hop_count: 1,
+      max_hops: 15,
+      language: "ar-EG",
+    });
+
+    // User types "خلصت" or "done"
+    await content.handleChatInput("خلصت");
+
+    assert.strictEqual(chatEndpointCalled, false, "Must NOT route to /v1/chat when awaiting input");
+    assert.strictEqual(goalStepDispatched, true, "Must route directly to goal_step");
+    assert.strictEqual(receivedUserResponse, "خلصت", "Must pass typed input as user_response");
+  });
+
+  await test("if AtlasSecretVault.store throws or is missing, show localized error and keep form", async () => {
+    const env = setupMockEnv();
+    const content = require("./content.js");
+
+    // Break the vault store function to simulate error
+    global.window.AtlasSecretVault.store = async () => {
+      throw new Error("Vault hardware failure");
+    };
+
+    const awaitingReq = {
+      prompt: "يرجى إدخال كلمة المرور",
+      fields: [
+        { ref: "user_pwd", label: "كلمة المرور", kind: "password", sensitive: true, required: true },
+      ],
+    };
+
+    let submitted = false;
+    content.renderAwaitingUserInputForm(awaitingReq, () => {
+      submitted = true;
+    });
+
+    const chatLog = global.window.AtlasSidebar.getShadowRoot().querySelector(".atlas-chat-log");
+    const formCard = chatLog.querySelector(".atlas-user-input-form-card");
+    assert(formCard !== null, "Form card must be rendered");
+
+    const pwdInput = formCard.children.find((c) => c.tagName === "FORM").querySelector('[data-field-ref="user_pwd"]');
+    pwdInput.value = "secret123";
+
+    // Attempt submit
+    const form = formCard.children.find((c) => c.tagName === "FORM");
+    await form.on_submit({ preventDefault: () => {} });
+
+    // Invariants:
+    assert.strictEqual(submitted, false, "Must NOT execute submit callback on vault failure");
+    const msgs = global.window.AtlasSidebar.getChatMessages().map((m) => m.text).join(" ");
+    assert(msgs.includes("فشل تشفير البيانات الحساسة") || msgs.includes("Failed to encrypt"), "Must show localized vault failure message");
+
+    // Form must NOT be removed from DOM
+    assert(chatLog.querySelector(".atlas-user-input-form-card") !== null, "Form must be kept so user can retry");
   });
 
   await test("abort loop with localized message if same step on same element repeats 3 times", async () => {

@@ -148,20 +148,36 @@ class ChatResponse(BaseModel):
 
 
 # ── Universal Intent Classification Regex & Helpers (WS5 / Prime Directive) ───
-GOAL_TASK_PATTERNS = [
-    # English task and workflow phrasing
-    r"\b(i want to|i want|i need to|i need|i'd like to|i would like to|help me to|can you help me)\b",
-    r"\b(inquire about|inquire|inquiry|check my|check on|look up|lookup)\b",
-    r"\b(pay for|pay my|pay|make a payment|pay bill)\b",
-    r"\b(apply for|apply|submit application|sign up for|sign up|register for|register)\b",
+COMMAND_VERBS_EN = r"\b(click|press|tap|open|select|type|choose|hit|push)\b"
+COMMAND_VERBS_AR = r"(?<![-ۿ])(?:[وف])?(اضغط|إضغط|دوس|افتح|اختار|إختار|اكتب|إكتب|انقر)(?![-ۿ])"
+
+INTERROGATIVE_START_EN = r"^(what|where|how|when|who|why|which|is there|are there|can i|could you|tell me)\b"
+INTERROGATIVE_START_AR = r"^(?:[وف])?(ما|ماذا|ايه|إيه|فين|ازاي|إزاي|امتى|إمتى|كام|بكام|هل|ليه|كيف|أين|اين|لماذا|مين)(?![-ۿ])"
+
+WANT_NEED_EN = r"\b(i want to|i want|i need to|i need|i'd like to|i would like to|help me to|help me)\b"
+WANT_NEED_AR = r"(?<![-ۿ])(?:[وف])?(عايز|عاوز|عاوزه|عايزة|حابب|ياريت|نفسي|اريد|أريد|احتاج|أحتاج|محتاج|محتاجة)(?![-ۿ])"
+
+# Goal task patterns: Verbs and Intent Phrases ONLY (Zero topic nouns per review directive)
+GOAL_TASK_PATTERNS_EN = [
+    r"\b(i want to|i want|i need to|i need|i'd like to|i would like to|help me to|help me)\b",
+    r"\b(inquire about|inquire|make an inquiry|check on|look up)\b",
+    r"\b(pay for|pay my|make a payment|pay bill|pay)\b",
+    r"\b(apply for|apply|submit application|sign up for|sign up|register for)\b",
     r"\b(book|reserve|schedule an appointment|renew|file a complaint)\b",
-    # Arabic task & workflow phrasing (MSA and Egyptian Colloquial)
-    r"(عايز|عاوز|عاوزه|عايزة|حابب|ياريت|نفسي)",
-    r"(اريد|أريد|احتاج|أحتاج|محتاج|محتاجة|وديني|ساعدني)",
-    r"(استعلام|استفسار|استعلم|استفسر|معرفة|فحص|كشف)",
-    r"(ادفع|دفع|تسديد|سدد)",
-    r"(قدم|تقديم|طلب|تسجيل|سجل|اشتراك|اشترك)",
-    r"(تجديد|حجز|احجز|شكوى|شكاوى|مخالفات|مرور|رخصة|رخص|بطاقة)",
+]
+
+GOAL_TASK_PATTERNS_AR = [
+    # want / need / assist intent
+    r"(?<![-ۿ])(?:[وف])?(عايز|عاوز|عاوزه|عايزة|حابب|ياريت|نفسي|اريد|أريد|احتاج|أحتاج|محتاج|محتاجة|وديني|ساعدني)(?![-ۿ])",
+    # inquire / check verbs
+    r"(?<![-ۿ])(?:[وفبل]|ال)?(استعلام|استفسار|استعلم|استفسر|فحص)(?![-ۿ])",
+    # pay / settle verbs
+    r"(?<![-ۿ])(?:[وفبل]|ال)?(ادفع|أدفع|دفع|تسديد|سدد)(?![-ۿ])",
+    # register / apply verbs (سجل standalone with [وف] prefix only, never inside التسجيل)
+    r"(?<![-ۿ])(?:[وف])?سجل(?![-ۿ])",
+    r"(?<![-ۿ])(?:[وفبل]|ال)?(قدم|تقديم|اشترك|اشتراك)(?![-ۿ])",
+    # renew / book verbs
+    r"(?<![-ۿ])(?:[وفبل]|ال)?(تجديد|جدد|حجز|احجز)(?![-ۿ])",
 ]
 
 QUESTION_PATTERNS = [
@@ -171,6 +187,8 @@ QUESTION_PATTERNS = [
     r"\b(عن ايه|بيتكلم عن ايه|عبارة عن ايه|معلومات عن)\b",
 ]
 
+SMALL_TALK_EN = r"^(hello|hi|hey|thanks|thank you|thanks!|good morning|good evening|good afternoon|bye|goodbye|how are you)[!.]?$"
+SMALL_TALK_AR = r"^(?:[وف])?(شكرا|شكراً|شكرا لك|شكرا جزيلا|ازيك|إزيك|مرحبا|مرحباً|اهلا|أهلا|اهلا وسهلا|أهلاً وسهلاً|السلام عليكم|صباح الخير|مساء الخير|تسلم|تسلمي)[!.]?$"
 
 PAGE_INQUIRY_PHRASES = (
     "what do you see", "what you see", "what's visible", "what is visible",
@@ -187,12 +205,15 @@ def _is_page_inquiry(user_message: str) -> bool:
 
 
 def _is_explicit_goal_request(user_message: str) -> bool:
-    """Detects multi-step task intent, service inquiries, applications, and payments."""
+    """Detects multi-step task intent, service inquiries, applications, and payments using verbs only."""
     import re
     norm_msg = agentic_planner._normalize_text(user_message)
     lower_msg = user_message.lower()
-    for pat in GOAL_TASK_PATTERNS:
-        if re.search(pat, lower_msg, re.IGNORECASE) or re.search(pat, norm_msg):
+    for pat in GOAL_TASK_PATTERNS_EN:
+        if re.search(pat, lower_msg, re.IGNORECASE):
+            return True
+    for pat in GOAL_TASK_PATTERNS_AR:
+        if re.search(pat, user_message) or re.search(pat, norm_msg):
             return True
     return False
 
@@ -222,39 +243,79 @@ async def classify_intent_route(
 ) -> tuple[Literal["direct", "question", "goal"], Optional[Dict[str, Any]]]:
     """
     Universal intent classifier for /v1/chat.
-    Order of precedence:
-    1. Question FIRST: informational questions about page content.
-       ('No visible match' alone must not turn a question into a goal).
-    2. Direct: short command AND a VISIBLE node scores >= 0.85.
-       (Requests to inquire/pay/apply/register/check are 'goal' even if a word matches a link).
-    3. LLM classification if rules are unsure and LLM is healthy (not limited_mode).
-    4. Goal fallback: multi-step tasks or commands with no visible match.
+    Strict Review Precedence (WS5):
+    (a) Explicit command verb (click/press/tap/open/select/type, اضغط/دوس/افتح/اختار/اكتب) + VISIBLE node >= 0.85 -> direct
+    (b) Question: interrogative start beats goal when no first-person want/need phrase
+    (c) Explicit goal phrase -> goal
+    (d) Other short commands + visible match >= 0.85 -> direct
+    (e) Small talk / greetings / thanks, or <= 2 words with no action verb -> question
+    (f) Else LLM if healthy, else goal
     """
     clean_q = (question or "").strip()
     if not clean_q:
         return "question", None
 
-    # 1. Question FIRST: informational inquiries about page content
-    if _is_informational_question(clean_q) and not _is_explicit_goal_request(clean_q):
+    import re
+    norm_q = agentic_planner._normalize_text(clean_q)
+    lower_q = clean_q.lower()
+    words = clean_q.split()
+
+    visible_nodes = [
+        n for n in (dom_map or [])
+        if n.get("visible") is not False and n.get("id") is not None
+    ]
+
+    has_cmd_verb = bool(
+        re.search(COMMAND_VERBS_EN, lower_q)
+        or re.search(COMMAND_VERBS_AR, clean_q)
+        or re.search(COMMAND_VERBS_AR, norm_q)
+    )
+
+    # (a) Explicit command verb + VISIBLE node >= 0.85 -> direct
+    if has_cmd_verb and visible_nodes:
+        matched_node, score = agentic_planner.find_heuristic_match(clean_q, visible_nodes)
+        if matched_node and score >= 0.85:
+            return "direct", matched_node
+
+    # (b) Question: interrogative start beats goal when no first-person want/need phrase
+    has_want_need = bool(
+        re.search(WANT_NEED_EN, lower_q)
+        or re.search(WANT_NEED_AR, clean_q)
+        or re.search(WANT_NEED_AR, norm_q)
+    )
+    starts_with_interrogative = bool(
+        re.search(INTERROGATIVE_START_EN, lower_q)
+        or re.search(INTERROGATIVE_START_AR, clean_q)
+        or re.search(INTERROGATIVE_START_AR, norm_q)
+    )
+
+    if starts_with_interrogative and not has_want_need:
         return "question", None
 
-    # 2. Explicit Goal Rule Check: multi-step task verbs, service requests, inquiries, payments
+    if _is_informational_question(clean_q) and not has_want_need:
+        return "question", None
+
+    # (c) Explicit goal phrase -> goal
     if _is_explicit_goal_request(clean_q):
         return "goal", None
 
-    # 3. Direct Command Check: short command + VISIBLE node score >= 0.85
-    words = clean_q.split()
-    if len(words) <= 6:
-        visible_nodes = [
-            n for n in (dom_map or [])
-            if n.get("visible") is not False and n.get("id") is not None
-        ]
-        if visible_nodes:
-            matched_node, score = agentic_planner.find_heuristic_match(clean_q, visible_nodes)
-            if matched_node and score >= 0.85:
-                return "direct", matched_node
+    # (d) Other short commands + visible match >= 0.85 -> direct
+    if len(words) <= 6 and visible_nodes:
+        matched_node, score = agentic_planner.find_heuristic_match(clean_q, visible_nodes)
+        if matched_node and score >= 0.85:
+            return "direct", matched_node
 
-    # 4. LLM Classification when rules are unsure (only when not in limited mode)
+    # (e) Small talk / greetings / thanks, or <= 2 words with no action verb -> question
+    is_small_talk = bool(
+        re.search(SMALL_TALK_EN, lower_q)
+        or re.search(SMALL_TALK_AR, clean_q)
+        or re.search(SMALL_TALK_AR, norm_q)
+    )
+    has_action_verb = has_cmd_verb or _is_explicit_goal_request(clean_q)
+    if is_small_talk or (len(words) <= 2 and not has_action_verb):
+        return "question", None
+
+    # (f) Else LLM if healthy, else goal
     if not llm_client.is_limited_mode():
         try:
             from app.agent.json_utils import extract_json
@@ -273,16 +334,16 @@ Respond with ONLY valid JSON:
             if isinstance(parsed, dict) and parsed.get("route") in ("direct", "question", "goal"):
                 llm_route = parsed["route"]
                 if llm_route == "direct":
-                    visible_nodes = [n for n in (dom_map or []) if n.get("visible") is not False and n.get("id") is not None]
-                    matched_node, score = agentic_planner.find_heuristic_match(clean_q, visible_nodes)
-                    if matched_node and score >= 0.85:
-                        return "direct", matched_node
+                    if visible_nodes:
+                        matched_node, score = agentic_planner.find_heuristic_match(clean_q, visible_nodes)
+                        if matched_node and score >= 0.85:
+                            return "direct", matched_node
                     return "goal", None
-                return llm_route, None
+                elif llm_route in ("question", "goal"):
+                    return llm_route, None
         except Exception as exc:
             logger.debug("LLM router classification fallback to rules: %s", exc)
 
-    # 5. Fallback: If not a question, and no visible element matches with >= 0.85, it is a goal
     return "goal", None
 
 

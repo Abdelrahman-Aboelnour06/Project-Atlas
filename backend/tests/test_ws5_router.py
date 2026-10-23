@@ -235,3 +235,53 @@ def test_router_prime_directive_zero_domain_hardcoding():
     content = chat_path.read_text(encoding="utf-8")
     for forbidden in ["google.com", "amazon.com", "drive.google.com", "github.com", "wikipedia.org"]:
         assert forbidden not in content, f"Prime Directive violation: {forbidden} found in chat.py"
+
+
+@pytest.mark.asyncio
+async def test_ws5_review_fixes_rules_only_limited_mode():
+    """
+    WS5 Review Fixes: Strict rule-only classification (LLM in limited mode).
+    1. "click register" -> direct
+    2. "اضغط تسجيل الدخول" -> direct
+    3. "hello" / "thanks!" / "شكرا" / "ازيك" -> question
+    4. "ما هي مواعيد التسجيل؟" -> question (interrogative start beats goal, no first-person want/need)
+    5. "اريد الاستفسار عن مخالفات المركبات" -> goal
+    6. "I want to renew my license" -> goal
+    7. "عايز ادفع الفاتورة" -> goal
+    """
+    dom = [
+        {"id": 1, "label": "Register", "role": "button", "visible": True},
+        {"id": 2, "label": "تسجيل الدخول", "role": "button", "visible": True},
+    ]
+
+    with patch("app.agent.llm_client.is_limited_mode", return_value=True):
+        # 1. "click register" with visible Register -> direct
+        r1, n1 = await classify_intent_route("click register", dom, language="en-US")
+        assert r1 == "direct"
+        assert n1["id"] == 1
+
+        # 2. "اضغط تسجيل الدخول" with visible تسجيل الدخول -> direct
+        r2, n2 = await classify_intent_route("اضغط تسجيل الدخول", dom, language="ar-EG")
+        assert r2 == "direct"
+        assert n2["id"] == 2
+
+        # 3. Small talk: "hello" / "thanks!" / "شكرا" / "ازيك" -> question
+        for greeting in ["hello", "thanks!", "شكرا", "ازيك"]:
+            rg, _ = await classify_intent_route(greeting, dom, language="ar-EG")
+            assert rg == "question", f"Expected question for {greeting}, got {rg}"
+
+        # 4. "ما هي مواعيد التسجيل؟" -> question (interrogative start without want/need)
+        r4, _ = await classify_intent_route("ما هي مواعيد التسجيل؟", dom, language="ar-EG")
+        assert r4 == "question"
+
+        # 5. "اريد الاستفسار عن مخالفات المركبات" -> goal
+        r5, _ = await classify_intent_route("اريد الاستفسار عن مخالفات المركبات", dom, language="ar-EG")
+        assert r5 == "goal"
+
+        # 6. "I want to renew my license" -> goal
+        r6, _ = await classify_intent_route("I want to renew my license", dom, language="en-US")
+        assert r6 == "goal"
+
+        # 7. "عايز ادفع الفاتورة" -> goal
+        r7, _ = await classify_intent_route("عايز ادفع الفاتورة", dom, language="ar-EG")
+        assert r7 == "goal"
