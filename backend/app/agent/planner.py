@@ -85,7 +85,12 @@ RULES:
 4. Mark the ultimate completion milestone with `is_final: true`. Earlier milestones must have `is_final: false`.
 5. NEVER invent element IDs or site-specific selectors. Milestones are semantic checkpoints (e.g. "Sign up for an account", "Navigate to pricing table", "Download schedule").
 6. If the goal is a single action, emit exactly ONE milestone marked `is_final: true`.
-7. Language mirroring: Reply in the same language the user is using. If language is an Arabic locale (e.g. 'ar-EG'), reply in Egyptian colloquial Arabic — not Modern Standard Arabic, and not a literal translation. If unset, infer from script. If mixed, mirror the mix.
+7. For multi-step service or navigation goals, decompose into outcome-based generic milestones that use the user's own service words:
+   - Milestone 1: "Reach the page that offers <user's service words>"
+   - Milestone 2: "Provide required details"
+   - Milestone 3: "Submit and confirm"
+   - Milestone 4: "Read the result"
+8. Language mirroring: Reply in the same language the user is using. If language is an Arabic locale (e.g. 'ar-EG'), reply in Egyptian colloquial Arabic — not Modern Standard Arabic, and not a literal translation. If unset, infer from script. If mixed, mirror the mix.
 
 RESPONSE JSON SCHEMA:
 {

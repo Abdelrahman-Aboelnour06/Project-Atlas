@@ -360,8 +360,15 @@ function setupMockDocument() {
     querySelectorAll: (sel) => docElement.querySelectorAll(sel),
   };
 
+  const loc = {
+    href: 'https://example.com/portal',
+    origin: 'https://example.com',
+  };
+  global.location = loc;
+
   global.window = {
     document: doc,
+    location: loc,
     getComputedStyle: (el) => el.style,
     AtlasSerializer: (typeof AtlasSerializer !== 'undefined' ? AtlasSerializer : null),
   };
@@ -780,6 +787,133 @@ testAsync('Executor execute self-healing: clicking latent node triggers reveal o
   assert.strictEqual(res.ok, true, 'Self-healing execute must succeed');
   assert.strictEqual(revealTriggered, true, 'Toggle must be revealed first');
   assert.strictEqual(childClicked, true, 'Target child must be clicked after reveal');
+});
+
+testAsync('Executor execute self-healing: fallback to direct click on same-origin <a href> when reveal fails', async () => {
+  const { body } = setupMockDocument();
+
+  let linkClicked = false;
+  const toggle = new MockElement('button', { id: 'hover-menu-toggle', 'data-atlas-id': 'el_hov_toggle' }, 'Menu');
+  // Pure CSS hover menu: clicking the toggle does NOT reveal the target link
+  const targetLink = new MockElement('a', {
+    id: 'latent-nav-link',
+    href: '/services/inquiry.html',
+    'data-atlas-id': 'el_latent_link',
+    'data-atlas-reveal-via': 'el_hov_toggle',
+    style: 'display:none',
+  }, 'Inquiry Link');
+
+  targetLink.addEventListener('click', () => {
+    linkClicked = true;
+  });
+
+  body.appendChild(toggle);
+  body.appendChild(targetLink);
+
+  const res = await AtlasExecutor.execute({
+    status: 'ok',
+    action: 'click',
+    element_id: 'el_latent_link',
+    message: 'Click latent link',
+  }, { skipConfirmation: true });
+
+  assert.strictEqual(res.ok, true, 'Fallback link click must succeed when reveal fails');
+  assert.strictEqual(linkClicked, true, 'Latent <a href> click() must be invoked');
+});
+
+testAsync('Executor execute self-healing: fallback follows absolute same-origin URL when reveal fails', async () => {
+  const { body } = setupMockDocument();
+
+  let linkClicked = false;
+  const toggle = new MockElement('button', { id: 'hover-menu-toggle-2', 'data-atlas-id': 'el_hov_toggle_2' }, 'Menu');
+  const targetLink = new MockElement('a', {
+    id: 'latent-abs-link',
+    href: 'https://example.com/services/inquiry.html',
+    'data-atlas-id': 'el_latent_abs',
+    'data-atlas-reveal-via': 'el_hov_toggle_2',
+    style: 'display:none',
+  }, 'Absolute Same-Origin Link');
+
+  targetLink.addEventListener('click', () => {
+    linkClicked = true;
+  });
+
+  body.appendChild(toggle);
+  body.appendChild(targetLink);
+
+  const res = await AtlasExecutor.execute({
+    status: 'ok',
+    action: 'click',
+    element_id: 'el_latent_abs',
+    message: 'Click absolute same-origin link',
+  }, { skipConfirmation: true });
+
+  assert.strictEqual(res.ok, true, 'Absolute same-origin link must be followed when reveal fails');
+  assert.strictEqual(linkClicked, true, 'Absolute same-origin <a href> click() must be invoked');
+  assert(res.message.includes('https://example.com/services/inquiry.html'), 'Success message reports followed URL');
+});
+
+testAsync('Executor execute self-healing: fallback does NOT follow cross-origin URL when reveal fails', async () => {
+  const { body } = setupMockDocument();
+
+  let linkClicked = false;
+  const toggle = new MockElement('button', { id: 'hover-menu-toggle-3', 'data-atlas-id': 'el_hov_toggle_3' }, 'Menu');
+  const targetLink = new MockElement('a', {
+    id: 'latent-cross-link',
+    href: 'https://external-domain.org/phishing',
+    'data-atlas-id': 'el_latent_cross',
+    'data-atlas-reveal-via': 'el_hov_toggle_3',
+    style: 'display:none',
+  }, 'Cross-Origin Link');
+
+  targetLink.addEventListener('click', () => {
+    linkClicked = true;
+  });
+
+  body.appendChild(toggle);
+  body.appendChild(targetLink);
+
+  const res = await AtlasExecutor.execute({
+    status: 'ok',
+    action: 'click',
+    element_id: 'el_latent_cross',
+    message: 'Click cross-origin link',
+  }, { skipConfirmation: true });
+
+  assert.strictEqual(res.ok, false, 'Cross-origin URL must NOT be followed by fallback');
+  assert.strictEqual(linkClicked, false, 'Cross-origin <a href> click() must NOT be invoked');
+  assert(res.message.includes('Could not reveal menu'), 'Failure message reported when reveal fails and URL is cross-origin');
+});
+
+testAsync('Executor execute self-healing: fallback does NOT follow hash or javascript href', async () => {
+  const { body } = setupMockDocument();
+
+  let linkClicked = false;
+  const toggle = new MockElement('button', { id: 'hover-menu-toggle-4', 'data-atlas-id': 'el_hov_toggle_4' }, 'Menu');
+  const targetLink = new MockElement('a', {
+    id: 'latent-hash-link',
+    href: '#section',
+    'data-atlas-id': 'el_latent_hash',
+    'data-atlas-reveal-via': 'el_hov_toggle_4',
+    style: 'display:none',
+  }, 'Hash Link');
+
+  targetLink.addEventListener('click', () => {
+    linkClicked = true;
+  });
+
+  body.appendChild(toggle);
+  body.appendChild(targetLink);
+
+  const res = await AtlasExecutor.execute({
+    status: 'ok',
+    action: 'click',
+    element_id: 'el_latent_hash',
+    message: 'Click hash link',
+  }, { skipConfirmation: true });
+
+  assert.strictEqual(res.ok, false, 'Hash href must NOT be followed by fallback');
+  assert.strictEqual(linkClicked, false, 'Hash <a href> click() must NOT be invoked');
 });
 
 test('Breadcrumb isolation: real ancestor triggers only, never sibling menus', () => {
