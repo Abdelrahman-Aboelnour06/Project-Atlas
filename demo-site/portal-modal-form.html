@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Portal Modal Form</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 2rem; background: #f8fafc; }
+    .card-grid { display: flex; gap: 1rem; margin-top: 1.5rem; }
+    .service-card {
+      background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px;
+      padding: 1.5rem; cursor: pointer; font-size: 1rem; font-weight: 600;
+      color: #1e293b; text-align: left; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .service-card:hover { border-color: #3b82f6; }
+    dialog {
+      border: 1px solid #94a3b8; border-radius: 8px; padding: 2rem;
+      max-width: 480px; width: 90%; box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    }
+    dialog::backdrop { background: rgba(0,0,0,0.4); }
+    .form-group { margin-bottom: 1rem; }
+    label { display: block; margin-bottom: 0.25rem; font-size: 0.875rem; font-weight: 500; }
+    input[type="text"] { width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box; }
+    .btn-submit { background: #2563eb; color: #fff; border: none; padding: 0.6rem 1.2rem; border-radius: 4px; cursor: pointer; font-weight: 600; }
+    .btn-cancel { background: #e2e8f0; color: #334155; border: none; padding: 0.6rem 1.2rem; border-radius: 4px; cursor: pointer; margin-right: 0.5rem; }
+    .success-result { margin-top: 1rem; padding: 0.75rem; background: #dcfce7; color: #166534; border-radius: 4px; font-weight: 500; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Portal Services Directory</h1>
+    <nav>
+      <a id="nav-home" href="#home">Home</a>
+      <a id="nav-services" href="#services">Services</a>
+      <a id="nav-contact" href="#contact">Contact</a>
+    </nav>
+  </header>
+
+  <main>
+    <p>Select a service to start an application.</p>
+    <div class="card-grid">
+      <button id="card-service-inquiry" class="service-card" type="button" role="button">
+        Civil Record Certificate
+      </button>
+      <button id="card-license-service" class="service-card" type="button" role="button">
+        Driver License Renewal
+      </button>
+    </div>
+  </main>
+
+  <dialog id="service-modal" role="dialog" aria-modal="true" aria-labelledby="modal-heading">
+    <h2 id="modal-heading">Civil Record Application</h2>
+    <form id="modal-form">
+      <div class="form-group">
+        <label for="input-national-id">National ID</label>
+        <input id="input-national-id" name="national_id" type="text" pattern="[0-9]{14}" required placeholder="14-digit National ID">
+      </div>
+      <div class="form-group">
+        <label for="input-applicant-name">Applicant Name</label>
+        <input id="input-applicant-name" name="applicant_name" type="text" required placeholder="Full Name">
+      </div>
+      <div>
+        <button id="btn-cancel-modal" class="btn-cancel" type="button">Cancel</button>
+        <button id="btn-submit-modal" class="btn-submit" type="submit">Submit Application</button>
+      </div>
+    </form>
+    <div id="modal-result-container"></div>
+  </dialog>
+
+  <script>
+    const modal = document.getElementById('service-modal');
+    const openBtn = document.getElementById('card-service-inquiry');
+    const cancelBtn = document.getElementById('btn-cancel-modal');
+    const form = document.getElementById('modal-form');
+    const resultContainer = document.getElementById('modal-result-container');
+
+    openBtn.addEventListener('click', () => {
+      if (typeof modal.showModal === 'function') {
+        modal.showModal();
+      } else {
+        modal.setAttribute('open', '');
+      }
+    });
+
+    cancelBtn.addEventListener('click', () => {
+      if (typeof modal.close === 'function') {
+        modal.close();
+      } else {
+        modal.removeAttribute('open');
+      }
+    });
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const nid = document.getElementById('input-national-id').value;
+      const name = document.getElementById('input-applicant-name').value;
+      resultContainer.innerHTML = '<div id="modal-submit-success" class="success-result">Request confirmed for ' + name + ' (Ref #00000000000000)</div>';
+    });
+  </script>
+</body>
+</html>

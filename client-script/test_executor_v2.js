@@ -51,6 +51,8 @@ test('executorApi exports all new actions and helpers', () => {
   assert(typeof AtlasExecutor.doPressKey === 'function', 'doPressKey must be exported');
   assert(typeof AtlasExecutor.doUploadFile === 'function', 'doUploadFile must be exported');
   assert(typeof AtlasExecutor.doWaitFor === 'function', 'doWaitFor must be exported');
+  assert(typeof AtlasExecutor.waitForDomSettle === 'function', 'waitForDomSettle must be exported');
+  assert(typeof AtlasExecutor.getLastActionResult === 'function', 'getLastActionResult must be exported');
 });
 
 test('doSetCheckbox is idempotent and toggles checked state', () => {
@@ -103,5 +105,149 @@ test('doSelectOption sets value on select element', () => {
   assert.strictEqual(changeFired, true, 'Change event must be dispatched on select');
 });
 
-console.log(`\nTrack 1h Test Summary: ${passed} passed, ${failed} failed.\n`);
-if (failed > 0) process.exit(1);
+// 3. WS11 Lane B: L3 & L11 Executor Tests
+if (typeof global.PointerEvent === 'undefined') {
+  global.PointerEvent = class PointerEvent { constructor(type, init) { this.type = type; Object.assign(this, init); } };
+}
+if (typeof global.MouseEvent === 'undefined') {
+  global.MouseEvent = class MouseEvent { constructor(type, init) { this.type = type; Object.assign(this, init); } };
+}
+if (typeof global.CSS === 'undefined') {
+  global.CSS = { escape: (s) => s };
+}
+
+const asyncQueue = [];
+function testAsync(name, fn) {
+  asyncQueue.push(async () => {
+    try {
+      await fn();
+      console.log(`  ✓ ${name}`);
+      passed++;
+    } catch (err) {
+      console.error(`  ✗ ${name}: ${err.message}`);
+      failed++;
+    }
+  });
+}
+
+test('L3 & B5: doClick with sameTab: true overrides target to _self during dispatch and restores original target afterwards', () => {
+  let clickedTarget = null;
+  global.window = {
+    location: {
+      href: 'http://localhost/origin',
+    }
+  };
+
+  const mockLink = {
+    tagName: 'A',
+    href: 'http://localhost/target-page',
+    target: '_blank',
+    attrs: new Map([['target', '_blank'], ['href', 'http://localhost/target-page']]),
+    focus: () => {},
+    click: function() {
+      clickedTarget = this.target;
+      if (this.target === '_self') {
+        global.window.location.href = this.href;
+      }
+    },
+    classList: { add: () => {}, remove: () => {} },
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 50, height: 20 }),
+    dispatchEvent: () => {},
+    hasAttribute: function(k) { return this.attrs.has(k); },
+    getAttribute: function(k) { return this.attrs.get(k) || null; },
+    setAttribute: function(k, v) { this.attrs.set(k, String(v)); this[k] = v; },
+    removeAttribute: function(k) { this.attrs.delete(k); this.target = ''; },
+  };
+
+  AtlasExecutor.doClick(mockLink, { sameTab: true });
+  assert.strictEqual(clickedTarget, '_self', 'Target attribute was _self during click dispatch');
+  assert.strictEqual(global.window.location.href, 'http://localhost/target-page', 'Navigates in same tab via target=_self click');
+  assert.strictEqual(mockLink.target, '_blank', 'Target property must be restored to _blank after click');
+  assert.strictEqual(mockLink.getAttribute('target'), '_blank', 'Target attribute must be restored to _blank after click');
+
+  // Also test anchor with NO original target attribute
+  let clickedNoTarget = null;
+  const noTargetLink = {
+    tagName: 'A',
+    href: 'http://localhost/other-page',
+    target: '',
+    attrs: new Map([['href', 'http://localhost/other-page']]),
+    focus: () => {},
+    click: function() {
+      clickedNoTarget = this.target;
+    },
+    classList: { add: () => {}, remove: () => {} },
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 50, height: 20 }),
+    dispatchEvent: () => {},
+    hasAttribute: function(k) { return this.attrs.has(k); },
+    getAttribute: function(k) { return this.attrs.get(k) || null; },
+    setAttribute: function(k, v) { this.attrs.set(k, String(v)); this[k] = v; },
+    removeAttribute: function(k) { this.attrs.delete(k); this.target = ''; },
+  };
+
+  AtlasExecutor.doClick(noTargetLink, { sameTab: true });
+  assert.strictEqual(clickedNoTarget, '_self', 'Target was _self during dispatch for link without target');
+  assert.strictEqual(noTargetLink.hasAttribute('target'), false, 'Target attribute removed if originally absent');
+});
+
+testAsync('L11: execute returns structured change summary in result and getLastActionResult', async () => {
+  global.window = {
+    location: { href: 'http://localhost/test' },
+  };
+  global.document = {
+    body: { innerText: 'Welcome' },
+    querySelectorAll: () => [],
+    querySelector: () => null,
+  };
+  global.AtlasSerializer = {
+    serialize: () => [
+      { id: 'el_1', tag: 'button', resolved_label: 'Click Me', role: 'button', visible: true }
+    ],
+    getElementByAtlasId: () => ({
+      tagName: 'BUTTON',
+      getAttribute: () => null,
+      focus: () => {},
+      click: () => {},
+      classList: { add: () => {}, remove: () => {} },
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 50, height: 20 }),
+      dispatchEvent: () => {},
+    }),
+    getActiveModalDialog: () => null,
+    fnv1a64: () => 12345n,
+  };
+  global.window.AtlasSerializer = global.AtlasSerializer;
+
+  const result = await AtlasExecutor.execute({
+    status: 'ok',
+    action: 'click',
+    element_id: 'el_1',
+    message: 'Clicked element',
+  }, { skipConfirmation: true });
+
+  assert.strictEqual(result.ok, true, 'Result ok is true');
+  assert.strictEqual(typeof result.added_visible_count, 'number', 'added_visible_count is number');
+  assert.strictEqual(typeof result.removed_visible_count, 'number', 'removed_visible_count is number');
+  assert.strictEqual(typeof result.text_changed, 'boolean', 'text_changed is boolean');
+  assert.strictEqual(typeof result.url_changed, 'boolean', 'url_changed is boolean');
+  assert.strictEqual(typeof result.expanded_changed, 'boolean', 'expanded_changed is boolean');
+  assert.strictEqual(typeof result.modal_opened, 'boolean', 'modal_opened is boolean');
+
+  const lastResult = AtlasExecutor.getLastActionResult();
+  assert.strictEqual(lastResult, result, 'getLastActionResult matches returned result');
+});
+
+testAsync('L11: waitForDomSettle skips wait immediately when navigation is pending', async () => {
+  const start = Date.now();
+  // Simulate navigation pending
+  await AtlasExecutor.waitForDomSettle('http://localhost/diff-url', 1000, 2000);
+  const elapsed = Date.now() - start;
+  assert(elapsed < 200, `Must skip settle wait when URL changed (elapsed: ${elapsed}ms)`);
+});
+
+(async () => {
+  for (const t of asyncQueue) {
+    await t();
+  }
+  console.log(`\nTrack 1h Test Summary: ${passed} passed, ${failed} failed.\n`);
+  if (failed > 0) process.exit(1);
+})();
