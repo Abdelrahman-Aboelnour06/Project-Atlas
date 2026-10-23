@@ -96,6 +96,7 @@ jobs:
 
       - name: Run Core JavaScript Test Suites
         run: |
+          node client-script/package_extension.js
           node client-script/test_extension.js
           node client-script/test_secret_vault.js
           node client-script/test_dom_serializer_v2.js
@@ -261,6 +262,9 @@ jobs:
         run: |
           npm ci || npm install
           npx playwright install --with-deps chromium
+
+      - name: Build Extension Zip for JS Suites
+        run: node client-script/package_extension.js
 
       - name: Run Node Extension Unit Tests
         run: |
