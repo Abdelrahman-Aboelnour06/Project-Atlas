@@ -406,8 +406,12 @@ def _generate_deterministic_mock_response(
                 target_id = eid
                 break
 
-        lower_user = user_prompt.lower()
-        is_consequential = any(w in lower_user for w in ("delete", "purchase", "buy", "order", "remove", "pay", "submit payment"))
+        goal_match = re.search(r'USER GOAL:\s*["\']?([^"\'\n]+)', user_prompt, re.I)
+        goal_text = goal_match.group(1).lower() if goal_match else user_prompt.lower()
+        is_consequential = any(
+            re.search(rf"\b{re.escape(w)}\b", goal_text)
+            for w in ("delete", "purchase", "buy", "order", "remove", "pay", "submit payment")
+        )
         if is_consequential:
             return json.dumps({
                 "type": "confirmation",

@@ -39,7 +39,8 @@
             tag === "noscript" ||
             tag === "template" ||
             parent.closest("#atlas-sidebar-root") ||
-            parent.closest("#atlas-sidebar-host")
+            parent.closest("#atlas-sidebar-host") ||
+            parent.closest("[hidden], [aria-hidden='true'], [style*='display: none'], [style*='display:none']")
           ) {
             return NodeFilter.FILTER_REJECT;
           }
@@ -53,11 +54,13 @@
     while (currentNode && text.length < 3000) {
       const val = currentNode.nodeValue.trim();
       if (val) {
-        text += (text ? " " : "") + val;
+        text += (text ? "\n" : "") + val;
       }
       currentNode = walker.nextNode();
     }
-    return text.slice(0, 3000);
+    const rawPageText = text.slice(0, 3000);
+    // WS10 / D6 Privacy Invariant: Runs of 10+ digits must never flow in network payloads or logs
+    return rawPageText.replace(/[0-9\u0660-\u0669]{10,}/g, "••••••••");
   };
 
   let conversationHistory = [];
@@ -648,7 +651,7 @@
         } else if (rawVal && field.pattern) {
           try {
             const regex = new RegExp(`^(?:${field.pattern})$`);
-            if (!regex.test(rawVal)) {
+            if (!regex.test(rawVal) && !regex.test(rawVal.replace(/\s+/g, ""))) {
               errorMsg = isArabic ? "القيمة المدخلة غير صحيحة." : "Invalid format.";
             }
           } catch (_) {}
@@ -1028,7 +1031,7 @@
             });
             const isAffirmative = idx === 0;
             if (currentGoalState) {
-              currentGoalState.requires_confirmation = false;
+              currentGoalState.requires_confirmation = true;
             }
             pendingUserResponse = isAffirmative ? "yes" : "no";
             isExecuting = true;
