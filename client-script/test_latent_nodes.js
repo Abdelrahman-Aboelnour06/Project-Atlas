@@ -990,6 +990,24 @@ testAsync('Executor doReveal: when target is given, decides only by target visib
   assert.strictEqual(revealAttempted, true, 'doReveal must act to reveal target despite aria-expanded="true"');
 });
 
+test('WS4 rule: aria-hidden role="dialog" containing link and input does NOT produce latent nodes', () => {
+  const { body } = setupMockDocument();
+
+  const dialog = new MockElement('div', { role: 'dialog', 'aria-hidden': 'true', id: 'modal-dialog' });
+  const link = new MockElement('a', { href: '/secret-link' }, 'Secret Link');
+  const input = new MockElement('input', { type: 'text', id: 'modal-input', name: 'modal-text' });
+  dialog.appendChild(link);
+  dialog.appendChild(input);
+  body.appendChild(dialog);
+
+  const nodes = AtlasSerializer.serialize();
+  const foundLink = nodes.find((n) => n.inner_text === 'Secret Link' || (n.href && n.href.includes('/secret-link')));
+  const foundInput = nodes.find((n) => n.id === 'modal-input' || n.name === 'modal-text');
+
+  assert.strictEqual(foundLink, undefined, 'Link inside aria-hidden role="dialog" must NOT become a latent node');
+  assert.strictEqual(foundInput, undefined, 'Input inside aria-hidden role="dialog" must NOT become a latent node');
+});
+
 // ── Prime Directive Universal Audit ──────────────────────────────────────────
 test('Universal Prime Directive: Zero hardcoded hostnames, domain names or site-specific selectors', () => {
   const DOMAIN_REGEX = /(?:google\.com|amazon\.com|github\.com|wikipedia\.org|ppo\.gov|egypt)/i;

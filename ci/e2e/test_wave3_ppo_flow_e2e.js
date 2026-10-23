@@ -575,6 +575,34 @@ async function runScenario(scenarioName, startPage, { browser, backendPort, fixt
   const hopCount = interceptedGoalStepResponses.length;
   record(`[${scenarioName}] c. Completed within 8 hops (took ${hopCount})`, hopCount <= 8);
 
+  // Assertion (h): in ar-EG, no reply contains English sentences (Latin letters allowed only inside quoted page labels)
+  const allReplies = [];
+  if (interceptedChatResponses[0]?.answer) {
+    allReplies.push(interceptedChatResponses[0].answer);
+  }
+  interceptedGoalStepResponses.forEach((res) => {
+    if (res.reply) allReplies.push(res.reply);
+    if (res.confirmation_prompt) allReplies.push(res.confirmation_prompt);
+  });
+
+  let latinLeakFound = null;
+  for (const rep of allReplies) {
+    const stripped = rep
+      .replace(/'[^']*'/g, "")
+      .replace(/"[^"]*"/g, "")
+      .replace(/«[^»]*»/g, "")
+      .replace(/[“”][^“”]*[“”]/g, "");
+    if (/[a-zA-Z]/.test(stripped)) {
+      latinLeakFound = { reply: rep, unquoted: stripped };
+      break;
+    }
+  }
+  record(
+    `[${scenarioName}] h. In ar-EG, zero English sentences across all replies (Latin letters only in quoted labels)`,
+    latinLeakFound == null,
+    latinLeakFound ? `Leaked in reply: "${latinLeakFound.reply}"` : undefined
+  );
+
   await context.close();
 }
 

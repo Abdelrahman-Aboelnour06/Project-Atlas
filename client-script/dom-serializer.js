@@ -1113,21 +1113,19 @@ const NOISE_TEXT_PATTERNS = [
               const cClass = (curr.getAttribute?.("class") || "").toLowerCase();
               const cId = curr.id || "";
 
-              const isControlledOrValidContainer =
-                cTag === "nav" ||
-                cTag === "header" ||
-                cTag === "aside" ||
-                cTag === "details" ||
-                cRole === "menu" ||
-                cRole === "menubar" ||
-                cRole === "navigation" ||
-                cClass.includes("drawer") ||
-                cId.includes("drawer") ||
-                Boolean(cId && controlsMap.has(cId));
+              const isDialog = cRole === "dialog" || cRole === "alertdialog" || cTag === "dialog";
+              const isAriaHidden = curr.getAttribute?.("aria-hidden") === "true";
+
+              // WS4 rule: Only nav/menu/drawer containers that a toggle controls (aria-controls) may be latent when aria-hidden
+              const isControlledNavMenuDrawer =
+                !isDialog &&
+                Boolean(cId && controlsMap.has(cId)) &&
+                (cTag === "nav" || cRole === "menu" || cRole === "menubar" || cRole === "navigation" || cClass.includes("drawer") || cId.includes("drawer"));
 
               if (
-                (curr.getAttribute?.("aria-hidden") === "true" && !isControlledOrValidContainer) ||
-                (curr.tagName === "DIALOG" && !curr.open && !curr.hasAttribute("open")) ||
+                (isDialog && (isAriaHidden || (cTag === "dialog" && !curr.open && !curr.hasAttribute("open")))) ||
+                (isAriaHidden && !isControlledNavMenuDrawer) ||
+                (cTag === "dialog" && !curr.open && !curr.hasAttribute("open")) ||
                 curr.hasAttribute?.("inert") ||
                 curr.id === "atlas-sidebar-host" ||
                 curr.id === "atlas-sidebar-root"
@@ -1140,7 +1138,20 @@ const NOISE_TEXT_PATTERNS = [
                 formId = curr.id || curr.getAttribute?.("name") || curr.getAttribute?.(ATLAS_ID_ATTR) || "form_0";
               }
 
-              if (isControlledOrValidContainer) {
+              // Container validation: nav, header, menu, menubar, navigation, details:not([open]), aside, drawer, controlsMap
+              if (
+                !isDialog &&
+                (cTag === "nav" ||
+                cTag === "header" ||
+                cTag === "aside" ||
+                cTag === "details" ||
+                cRole === "menu" ||
+                cRole === "menubar" ||
+                cRole === "navigation" ||
+                cClass.includes("drawer") ||
+                cId.includes("drawer") ||
+                Boolean(cId && controlsMap.has(cId)))
+              ) {
                 validContainer = true;
               }
 
