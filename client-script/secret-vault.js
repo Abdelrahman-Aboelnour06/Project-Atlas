@@ -14,7 +14,7 @@
   const VAULT_KEY_STORAGE_KEY = "atlas_vault_key";
   const VAULT_PREFIX = "atlas_vault:";
   const PROFILE_PREFIX = "atlas_profile:";
-  const TOKEN_REGEX = /^\{(password|cc_number|cc_cvv|cc_expiry|cc_name|ssn|otp|pin|secret|profile\.[a-z0-9_]+)(_\d+)?\}$/;
+  const TOKEN_REGEX = /^\{(?:vault:[a-zA-Z0-9_]+|password|cc_number|cc_cvv|cc_expiry|cc_name|ssn|otp|pin|secret|national_id|profile\.[a-z0-9_]+)(?:_\d+)?\}$/;
 
   // In-memory key cache during active runtime session
   let cachedKey = null;
@@ -462,7 +462,10 @@
       return { command: rawCommand || "", extracted: [] };
     }
 
-    let command = rawCommand;
+    let command = rawCommand.replace(/[\u0660-\u0669\u06F0-\u06F9]/g, (d) => {
+      const code = d.charCodeAt(0);
+      return code >= 0x06F0 ? String(code - 0x06F0) : String(code - 0x0660);
+    });
     const extracted = [];
     const usedAtlasIds = new Set();
 
@@ -614,6 +617,19 @@
       extracted.push({ token, category: "ssn" });
       command = command.slice(0, ssnMatch.index) + token + command.slice(ssnMatch.index + rawSsn.length);
       ssnCandidateRegex.lastIndex = ssnMatch.index + token.length;
+    }
+
+    // Pattern 5: Any run of 10+ digits (Arabic-Indic digits normalized) -> secret
+    const tenPlusDigitsRegex = /\b\d{10,}\b/g;
+    let tenDigitMatch;
+    while ((tenDigitMatch = tenPlusDigitsRegex.exec(command)) !== null) {
+      const rawDigits = tenDigitMatch[0];
+      const atlasId = findMatchingDomNode("secret", null);
+      if (atlasId) usedAtlasIds.add(atlasId);
+      const token = await store(origin, "secret", atlasId, rawDigits);
+      extracted.push({ token, category: "secret" });
+      command = command.slice(0, tenDigitMatch.index) + token + command.slice(tenDigitMatch.index + rawDigits.length);
+      tenPlusDigitsRegex.lastIndex = tenDigitMatch.index + token.length;
     }
 
     return { command, extracted };
