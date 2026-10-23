@@ -36,6 +36,7 @@ CI_E2E_SUITES = {
     "test_ws5_portal_router_e2e.js",
     "test_ws7_slots_e2e.js",
     "test_wave3_ppo_flow_e2e.js",
+    "test_ws11_frames_e2e.js",
 }
 
 
