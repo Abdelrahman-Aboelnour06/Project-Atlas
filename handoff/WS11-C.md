@@ -1,5 +1,5 @@
 # WS11-C Live-Run Fixes (Lane C: Backend Reliability, Routing, Verification & Scoping)
-Branch: fix/live-c-backend   Last commit: pending   Model used: Gemini 3.8 Flash
+Branch: fix/live-c-backend   Last commit: 0b16534   Model used: Gemini 3.8 Flash
 Status: in progress (L3, L4, L5, L6, L7, L8, L11 done; awaiting Lane A and B merge to main for C-E2E)
 Done:
 - `backend/app/models/dom.py:64-165`: Added perception fields `opens_new_tab`, `target_origin`, `in_modal`, `blocked_by_modal` to `DomNode`. Implemented `coerce_dom_map()` with generous bounds (label: 512, inner_text: 2000, href: 2048), safe landmark nulling, numeric string casting for `maxlength`, and privacy-safe logging (field names/counts only, no node values) resolving L8.
