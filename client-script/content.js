@@ -955,6 +955,9 @@
       }
 
       if (data.status === "requires_confirmation" || data.requires_confirmation || data.goal_state?.requires_confirmation) {
+        if (currentGoalState) {
+          currentGoalState.requires_confirmation = true;
+        }
         isExecuting = false;
         isHopInProgress = false;
         window.AtlasSidebar?.setExecuting?.(false);
@@ -971,6 +974,9 @@
               return label === choice;
             });
             const isAffirmative = idx === 0;
+            if (currentGoalState) {
+              currentGoalState.requires_confirmation = false;
+            }
             pendingUserResponse = isAffirmative ? "yes" : "no";
             isExecuting = true;
             window.AtlasSidebar?.setExecuting?.(true);
@@ -1235,9 +1241,8 @@
     // Covers captcha/otp prompts that have no fields ("done"/"خلصت" resumes).
     if (
       currentGoalState &&
-      (currentGoalState.status === "awaiting_user_input" || currentGoalState.status === "requires_confirmation")
+      (currentGoalState.status === "awaiting_user_input" || currentGoalState.requires_confirmation === true || pendingConfirmation)
     ) {
-      window.AtlasSidebar?.addChatMessage?.("user", rawInput);
       let responseText = rawInput;
       if (window.AtlasSecretVault?.tokenizeCommand) {
         try {
@@ -1247,7 +1252,19 @@
           responseText = tokenized.command || rawInput;
         } catch (_) {}
       }
-      pendingUserResponse = responseText;
+      window.AtlasSidebar?.addChatMessage?.("user", responseText);
+
+      if (currentGoalState.requires_confirmation || pendingConfirmation) {
+        currentGoalState.requires_confirmation = false;
+        pendingConfirmation = null;
+        const norm = responseText.trim().toLowerCase();
+        const isAffirmative = /^(yes|sure|proceed|confirm|go ahead|ok|continue|y|yeah|yep|أيوة|ايوة|نعم|تمام|موافق|ماشي|تأكيد|استمر|كمل)\b/i.test(norm) || norm === "أيوة" || norm === "ايوة" || norm === "نعم";
+        const isNegative = /^(no|cancel|stop|abort|don't|dont|لا|الغي|إلغي|توقف|الغاء|إلغاء)\b/i.test(norm) || norm === "لا";
+        pendingUserResponse = isAffirmative ? "yes" : (isNegative ? "no" : responseText);
+      } else {
+        pendingUserResponse = responseText;
+      }
+
       isExecuting = true;
       window.AtlasSidebar?.setExecuting?.(true);
       window.AtlasSidebar?.setStatus?.("Resuming goal...", "info");

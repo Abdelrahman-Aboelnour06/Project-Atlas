@@ -534,6 +534,42 @@ def _build_canonical_plan(
     )
 
 
+def build_concise_dom(dom_map: Optional[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+    """
+    Builds a concise, sanitized representation of the DOM with resolved labels and PII stripped.
+    Extracts label from resolved_label, aria_label, inner_text, placeholder, name, or label.
+    Preserves node visibility metadata for intent routing and planning.
+    """
+    safe_dom = strip_pii_from_dom(dom_map or [])
+    concise_dom = []
+    for node in safe_dom:
+        label = (
+            node.get("resolved_label")
+            or node.get("aria_label")
+            or node.get("inner_text")
+            or node.get("placeholder")
+            or node.get("name")
+            or node.get("label")
+            or ""
+        )
+        if isinstance(label, str):
+            label = label.strip()
+        category = node.get("category") or node.get("group_label") or node.get("role") or node.get("tag")
+        tag = (node.get("tag") or "").lower()
+        if label or tag in ("input", "textarea", "select"):
+            entry = {
+                "id": node.get("id"),
+                "tag": node.get("tag"),
+                "label": label[:40],
+                "category": category,
+                "role": node.get("role"),
+            }
+            if "visible" in node:
+                entry["visible"] = node["visible"]
+            concise_dom.append(entry)
+    return concise_dom
+
+
 async def plan_agentic_action(
     dom_map: List[Dict[str, Any]],
     user_message: str,
@@ -558,32 +594,9 @@ async def plan_agentic_action(
             and optional confirmation requirements.
     """
     reply_lang = resolve_reply_language(language, user_message)
-    safe_dom = strip_pii_from_dom(dom_map)
+    safe_dom = strip_pii_from_dom(dom_map or [])
     valid_ids = _get_valid_element_ids(safe_dom)
-
-    concise_dom = []
-    for node in safe_dom:
-        label = (
-            node.get("resolved_label")
-            or node.get("aria_label")
-            or node.get("inner_text")
-            or node.get("placeholder")
-            or node.get("name")
-            or node.get("label")
-            or ""
-        )
-        if isinstance(label, str):
-            label = label.strip()
-        category = node.get("category") or node.get("group_label") or node.get("role") or node.get("tag")
-        tag = (node.get("tag") or "").lower()
-        if label or tag in ("input", "textarea", "select"):
-            concise_dom.append({
-                "id": node.get("id"),
-                "tag": node.get("tag"),
-                "label": label[:40],
-                "category": category,
-                "role": node.get("role"),
-            })
+    concise_dom = build_concise_dom(dom_map)
 
     # 0. Fast-path: Search typing & Canonical intent resolution (§Track N2a-wire)
     # If the user command matches a search query to type or a high-frequency canonical intent,

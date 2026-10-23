@@ -68,6 +68,7 @@ function setupMockEnv() {
       return token;
     },
     resolve: async (origin, token) => vaultStore[token]?.plaintext || null,
+    tokenizeCommand: async (origin, cmd) => ({ command: cmd, tokens: [] }),
   };
 
   const mockSidebar = {
@@ -557,6 +558,117 @@ async function run() {
     assert.strictEqual(chatEndpointCalled, false, "Must NOT route to /v1/chat when awaiting input");
     assert.strictEqual(goalStepDispatched, true, "Must route directly to goal_step");
     assert.strictEqual(receivedUserResponse, "خلصت", "Must pass typed input as user_response");
+  });
+
+  await test("typed 'yes' during a confirmation resumes goal_step with user_response 'yes'", async () => {
+    setupMockEnv();
+    const content = require("./content.js");
+
+    let receivedUserResponse = null;
+    global.chrome.runtime.sendMessage = (msg, cb) => {
+      if (msg.type === "ATLAS_GOAL_STEP") {
+        receivedUserResponse = msg.payload?.user_response;
+        if (cb) {
+          cb({
+            ok: true,
+            data: {
+              status: "goal_complete",
+              reply: "Action confirmed and executed",
+              goal_state: { goal: "Confirm Goal", status: "in_progress", hop_count: 2 },
+            },
+          });
+        }
+        return;
+      }
+      if (cb) cb({ ok: true });
+    };
+
+    content.setCurrentGoalState({
+      goal: "Confirm Goal",
+      status: "in_progress",
+      requires_confirmation: true,
+      hop_count: 1,
+      max_hops: 15,
+      language: "en-US",
+    });
+
+    await content.handleChatInput("yes");
+    assert.strictEqual(receivedUserResponse, "yes", "Must pass 'yes' as user_response to goal_step");
+  });
+
+  await test("typed 'أيوة' during a confirmation resumes goal_step with user_response 'yes'", async () => {
+    setupMockEnv();
+    const content = require("./content.js");
+
+    let receivedUserResponse = null;
+    global.chrome.runtime.sendMessage = (msg, cb) => {
+      if (msg.type === "ATLAS_GOAL_STEP") {
+        receivedUserResponse = msg.payload?.user_response;
+        if (cb) {
+          cb({
+            ok: true,
+            data: {
+              status: "goal_complete",
+              reply: "تم تأكيد الإجراء وتنفيذه",
+              goal_state: { goal: "Confirm Goal AR", status: "in_progress", hop_count: 2 },
+            },
+          });
+        }
+        return;
+      }
+      if (cb) cb({ ok: true });
+    };
+
+    content.setCurrentGoalState({
+      goal: "Confirm Goal AR",
+      status: "in_progress",
+      requires_confirmation: true,
+      hop_count: 1,
+      max_hops: 15,
+      language: "ar-EG",
+    });
+
+    await content.handleChatInput("أيوة");
+    assert.strictEqual(receivedUserResponse, "yes", "Must pass 'yes' as user_response when user types 'أيوة'");
+  });
+
+  await test("chat input tokenizes first and shows tokenized text in user chat bubble", async () => {
+    setupMockEnv();
+    global.window.AtlasSecretVault.tokenizeCommand = async (origin, cmd) => {
+      return { command: cmd.replace("secret_val_123", "{vault:pwd_test}") };
+    };
+    const content = require("./content.js");
+
+    content.setCurrentGoalState({
+      goal: "Vault Chat Test",
+      status: "awaiting_user_input",
+      hop_count: 1,
+      max_hops: 15,
+      language: "en-US",
+    });
+
+    global.chrome.runtime.sendMessage = (msg, cb) => {
+      if (cb) {
+        cb({
+          ok: true,
+          data: {
+            status: "goal_complete",
+            reply: "OK",
+            goal_state: { goal: "Vault Chat Test", status: "in_progress", hop_count: 2 },
+          },
+        });
+      }
+    };
+
+    await content.handleChatInput("my code is secret_val_123");
+    const messages = global.window.AtlasSidebar.getChatMessages();
+    const userMsg = messages.find((m) => m.role === "user");
+    assert(userMsg !== undefined, "User message must be present in chat");
+    assert.strictEqual(
+      userMsg.text,
+      "my code is {vault:pwd_test}",
+      "Chat bubble must display tokenized text, NOT rawInput"
+    );
   });
 
   await test("if AtlasSecretVault.store throws or is missing, show localized error and keep form", async () => {

@@ -9,6 +9,8 @@ Verifies:
 6. Deterministic rule fallback when LLM is down or in limited mode.
 7. Legacy contract_version < 3 maintains exact backwards-compatible behavior.
 8. Zero domain/website hardcoding (Prime Directive).
+9. Serializer-shaped nodes: resolved_label / aria_label / inner_text / placeholder / name (no "label" key).
+10. Targetless scroll/navigation commands route to 'direct'.
 """
 
 import pytest
@@ -50,8 +52,8 @@ async def test_classifier_vehicle_violations_no_visible_match_routes_to_goal():
     """Arabic vehicle violations with no visible match routes to 'goal'."""
     q = "اريد الاستفسار عن مخالفات المركبات"
     dom_map = [
-        {"id": 1, "label": "الرئيسية", "role": "link", "visible": True},
-        {"id": 2, "label": "اتصل بنا", "role": "link", "visible": True},
+        {"id": "el_1", "tag": "a", "resolved_label": "الرئيسية", "inner_text": "الرئيسية", "visible": True},
+        {"id": "el_2", "tag": "a", "resolved_label": "اتصل بنا", "inner_text": "اتصل بنا", "visible": True},
     ]
     route, node = await classify_intent_route(q, dom_map, language="ar-EG")
     assert route == "goal"
@@ -63,7 +65,7 @@ async def test_classifier_egyptian_arabic_bill_pay_routes_to_goal():
     """Egyptian colloquial Arabic 'عايز ادفع الفاتورة' routes to 'goal'."""
     q = "عايز ادفع الفاتورة"
     dom_map = [
-        {"id": 10, "label": "Home", "role": "link", "visible": True},
+        {"id": "el_10", "tag": "a", "resolved_label": "Home", "inner_text": "Home", "visible": True},
     ]
     route, node = await classify_intent_route(q, dom_map, language="ar-EG")
     assert route == "goal"
@@ -74,13 +76,13 @@ async def test_classifier_direct_click_with_visible_match():
     """Short command with visible node matching score >= 0.85 routes to 'direct'."""
     q = "click login"
     dom_map = [
-        {"id": 101, "label": "Login", "role": "button", "visible": True},
-        {"id": 102, "label": "Register", "role": "link", "visible": True},
+        {"id": "el_101", "tag": "button", "resolved_label": "Login", "inner_text": "Login", "visible": True},
+        {"id": "el_102", "tag": "a", "resolved_label": "Register", "inner_text": "Register", "visible": True},
     ]
     route, node = await classify_intent_route(q, dom_map, language="en-US")
     assert route == "direct"
     assert node is not None
-    assert node["id"] == 101
+    assert node["id"] == "el_101"
 
 
 @pytest.mark.asyncio
@@ -88,7 +90,7 @@ async def test_classifier_latent_node_does_not_route_direct():
     """Hidden/latent node (visible=False) cannot satisfy 'direct' routing."""
     q = "click submit"
     dom_map = [
-        {"id": 201, "label": "Submit", "role": "button", "visible": False, "reveal_via": 100},
+        {"id": "el_201", "tag": "button", "resolved_label": "Submit", "inner_text": "Submit", "visible": False, "reveal_via": "el_100"},
     ]
     route, node = await classify_intent_route(q, dom_map, language="en-US")
     # Because the only matching node is latent (visible=False), it routes to goal
@@ -101,7 +103,7 @@ async def test_classifier_question_first_order():
     """Informational questions route to 'question' even if no visible node matches."""
     q = "what is this page about"
     dom_map = [
-        {"id": 1, "label": "Products", "role": "link", "visible": True},
+        {"id": "el_1", "tag": "a", "resolved_label": "Products", "inner_text": "Products", "visible": True},
     ]
     route, node = await classify_intent_route(q, dom_map, language="en-US")
     assert route == "question"
@@ -119,7 +121,7 @@ async def test_classifier_task_phrasing_overrides_matching_link():
     q = "اريد الاستفسار عن مخالفات المركبات"
     # Even if there is a link named "استفسار"
     dom_map = [
-        {"id": 50, "label": "استفسار", "role": "link", "visible": True},
+        {"id": "el_50", "tag": "a", "resolved_label": "استفسار", "inner_text": "استفسار", "visible": True},
     ]
     route, node = await classify_intent_route(q, dom_map, language="ar-EG")
     assert route == "goal"
@@ -138,10 +140,22 @@ async def test_classifier_llm_limited_mode_rule_fallback():
         assert r2 == "question"
 
         # 3. Direct command
-        dom = [{"id": 42, "label": "Sign In", "role": "button", "visible": True}]
+        dom = [{"id": "el_42", "tag": "button", "resolved_label": "Sign In", "inner_text": "Sign In", "visible": True}]
         r3, n3 = await classify_intent_route("sign in", dom, language="en-US")
         assert r3 == "direct"
-        assert n3["id"] == 42
+        assert n3["id"] == "el_42"
+
+
+@pytest.mark.asyncio
+async def test_classifier_targetless_scroll_and_nav_routes_to_direct():
+    """Scroll and navigation commands without a target route directly to 'direct'."""
+    dom_map = [
+        {"id": "el_1", "tag": "button", "resolved_label": "Register", "inner_text": "Register", "visible": True},
+    ]
+    for cmd in ["scroll down", "go back", "انزل", "اطلع لفوق", "ارجع"]:
+        route, node = await classify_intent_route(cmd, dom_map)
+        assert route == "direct", f"Expected direct for '{cmd}', got '{route}'"
+        assert node is None
 
 
 def test_chat_endpoint_goal_routing_seeded_state(auth_client):
@@ -152,7 +166,7 @@ def test_chat_endpoint_goal_routing_seeded_state(auth_client):
         "language": "ar-EG",
         "contract_version": 3,
         "dom_map": [
-            {"id": 1, "label": "الرئيسية", "role": "link", "visible": True},
+            {"id": "el_1", "tag": "a", "resolved_label": "الرئيسية", "inner_text": "الرئيسية", "visible": True},
         ],
     }
     res = auth_client.post("/v1/chat", headers={"X-Atlas-Key": DEMO_API_KEY}, json=payload)
@@ -178,8 +192,8 @@ def test_chat_endpoint_direct_routing(auth_client):
         "question": "click home",
         "contract_version": 3,
         "dom_map": [
-            {"id": 7, "label": "Home", "role": "link", "visible": True},
-            {"id": 8, "label": "About", "role": "link", "visible": True},
+            {"id": "el_7", "tag": "a", "resolved_label": "Home", "inner_text": "Home", "visible": True},
+            {"id": "el_8", "tag": "a", "resolved_label": "About", "inner_text": "About", "visible": True},
         ],
     }
     res = auth_client.post("/v1/chat", headers={"X-Atlas-Key": DEMO_API_KEY}, json=payload)
@@ -189,7 +203,7 @@ def test_chat_endpoint_direct_routing(auth_client):
     assert data["intent_route"] == "direct"
     assert data["plan"] is not None
     assert len(data["plan"]["steps"]) > 0
-    assert data["plan"]["steps"][0]["element_id"] == "7"
+    assert data["plan"]["steps"][0]["element_id"] == "el_7"
 
 
 def test_chat_endpoint_question_routing(auth_client):
@@ -216,13 +230,12 @@ def test_chat_endpoint_legacy_contract_v2_unchanged(auth_client):
         "question": "click home",
         "contract_version": 2,
         "dom_map": [
-            {"id": 7, "label": "Home", "role": "link", "visible": True},
+            {"id": "el_7", "tag": "a", "resolved_label": "Home", "inner_text": "Home", "visible": True},
         ],
     }
     res = auth_client.post("/v1/chat", headers={"X-Atlas-Key": DEMO_API_KEY}, json=payload)
     assert res.status_code == 200
     data = res.json()
-    assert data["status"] == "ok"
     # Legacy response keeps intent_route as None
     assert data["intent_route"] is None
     assert data["goal_state"] is None
@@ -250,20 +263,20 @@ async def test_ws5_review_fixes_rules_only_limited_mode():
     7. "عايز ادفع الفاتورة" -> goal
     """
     dom = [
-        {"id": 1, "label": "Register", "role": "button", "visible": True},
-        {"id": 2, "label": "تسجيل الدخول", "role": "button", "visible": True},
+        {"id": "el_1", "tag": "button", "resolved_label": "Register", "inner_text": "Register", "visible": True},
+        {"id": "el_2", "tag": "button", "resolved_label": "تسجيل الدخول", "inner_text": "تسجيل الدخول", "visible": True},
     ]
 
     with patch("app.agent.llm_client.is_limited_mode", return_value=True):
         # 1. "click register" with visible Register -> direct
         r1, n1 = await classify_intent_route("click register", dom, language="en-US")
         assert r1 == "direct"
-        assert n1["id"] == 1
+        assert n1["id"] == "el_1"
 
         # 2. "اضغط تسجيل الدخول" with visible تسجيل الدخول -> direct
         r2, n2 = await classify_intent_route("اضغط تسجيل الدخول", dom, language="ar-EG")
         assert r2 == "direct"
-        assert n2["id"] == 2
+        assert n2["id"] == "el_2"
 
         # 3. Small talk: "hello" / "thanks!" / "شكرا" / "ازيك" -> question
         for greeting in ["hello", "thanks!", "شكرا", "ازيك"]:

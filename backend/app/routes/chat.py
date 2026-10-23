@@ -190,6 +190,9 @@ QUESTION_PATTERNS = [
 SMALL_TALK_EN = r"^(hello|hi|hey|thanks|thank you|thanks!|good morning|good evening|good afternoon|bye|goodbye|how are you)[!.]?$"
 SMALL_TALK_AR = r"^(?:[وف])?(شكرا|شكراً|شكرا لك|شكرا جزيلا|ازيك|إزيك|مرحبا|مرحباً|اهلا|أهلا|اهلا وسهلا|أهلاً وسهلاً|السلام عليكم|صباح الخير|مساء الخير|تسلم|تسلمي)[!.]?$"
 
+NAV_SCROLL_COMMANDS_EN = r"^(scroll\s+(down|up|to\s+bottom|to\s+top|bottom|top|left|right)|page\s+(down|up)|go\s+(back|forward)|navigate\s+(back|forward)|refresh|reload|zoom\s+(in|out))[!.]?$"
+NAV_SCROLL_COMMANDS_AR = r"^(?:[وف])?(انزل(?:\s+(?:تحت|لتحت|للأخر|للاخر))?|اطلع(?:\s+(?:فوق|لفوق|للأول|للاول))?|ارجع(?:\s+(?:ورا|لورا|للخلف|خطوة))?|تقدم|حدث(?:\s+الصفحة)?|اعمل\s+ريفريش)[!.]?$"
+
 PAGE_INQUIRY_PHRASES = (
     "what do you see", "what you see", "what's visible", "what is visible",
     "what do you notice", "what's here", "what is here", "what is on this",
@@ -260,8 +263,18 @@ async def classify_intent_route(
     lower_q = clean_q.lower()
     words = clean_q.split()
 
+    # 0. Scroll/navigation commands without a target ("scroll down", "go back", "انزل", "اطلع لفوق", "ارجع") -> direct
+    is_nav_scroll = bool(
+        re.search(NAV_SCROLL_COMMANDS_EN, lower_q)
+        or re.search(NAV_SCROLL_COMMANDS_AR, clean_q)
+        or re.search(NAV_SCROLL_COMMANDS_AR, norm_q)
+    )
+    if is_nav_scroll:
+        return "direct", None
+
+    concise_dom = agentic_planner.build_concise_dom(dom_map)
     visible_nodes = [
-        n for n in (dom_map or [])
+        n for n in concise_dom
         if n.get("visible") is not False and n.get("id") is not None
     ]
 
