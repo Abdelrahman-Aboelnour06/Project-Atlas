@@ -17,6 +17,7 @@ import re
 from typing import Any, Dict, List, Optional, Set, Union
 
 from app.agent import llm_client
+from app.i18n import resolve_reply_language
 from app.models.dom import DomNode
 from app.models.goal import Milestone, PlanStep, VerifierResult, VerifierStatus
 
@@ -167,6 +168,7 @@ async def verify_step_outcome(
     current_dom_map: Optional[List[Union[DomNode, Dict[str, Any]]]] = None,
     page_text: Optional[str] = None,
     prior_dom_map: Optional[List[Union[DomNode, Dict[str, Any]]]] = None,
+    language: Optional[str] = None,
 ) -> VerifierResult:
     """
     Evaluates post-action outcome against observable signals prioritizing deterministic rules.
@@ -329,11 +331,13 @@ async def verify_step_outcome(
                 )
 
     # ── Rule 6: Fallback to LLM Evaluation ───────────────────────────────────────
+    reply_lang = resolve_reply_language(language, milestone.description or goal)
     user_body = f"""USER GOAL:
 "{goal}"
 
 ACTIVE MILESTONE:
 "{milestone.description}" (status: {milestone.status})
+REPLY LANGUAGE: {reply_lang}
 
 LAST ACTION EXECUTED:
 {last_action.model_dump_json() if last_action else "None"}
@@ -405,6 +409,7 @@ async def _verify_with_llm(
     prior_dom_map: Optional[List[DomNode]] = None,
     role: str = "verifier",
     system_prompt: Optional[str] = None,
+    language: Optional[str] = None,
 ) -> VerifierResult:
     """Invokes LLM for verification using specified role and prompt."""
     if milestone is None:
@@ -418,11 +423,13 @@ async def _verify_with_llm(
         if getattr(node, "id", None) and str(node.id) not in prior_ids
     ] if prior_ids else []
 
+    reply_lang = resolve_reply_language(language, milestone.description or goal)
     user_body = f"""USER GOAL:
 "{goal}"
 
 ACTIVE MILESTONE:
 "{milestone.description}" (status: {milestone.status})
+REPLY LANGUAGE: {reply_lang}
 
 LAST ACTION EXECUTED:
 {step.model_dump_json() if step else "None"}
@@ -541,6 +548,7 @@ async def verify_quorum(
     page_text: Optional[str] = None,
     prior_dom_map: Optional[List[DomNode]] = None,
     n: int = 3,
+    language: Optional[str] = None,
 ) -> VerifierResult:
     """
     Ensemble verifier for consequential outcomes (§8.6).
@@ -570,6 +578,7 @@ async def verify_quorum(
                     prior_dom_map=prior_dom_map,
                     role=role,
                     system_prompt=prompt,
+                    language=language,
                 )
             )
             for role, prompt in variants

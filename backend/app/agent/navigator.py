@@ -21,6 +21,7 @@ from app.agent import llm_client
 from app.agent.agentic_planner import find_heuristic_match, _detect_click_action
 from app.agent.jev_client import get_jev_client
 from app.agent.sanitize import strip_pii_from_dom
+from app.i18n import resolve_reply_language, t
 from app.models.action import ActionType
 from app.models.dom import DomNode
 from app.models.goal import AgenticPlan, Milestone, PlanStep
@@ -133,6 +134,7 @@ async def plan_milestone_step(
     page_text: Optional[str] = None,
     user_response: Optional[str] = None,
     history: Optional[List[Dict[str, Any]]] = None,
+    language: Optional[str] = None,
 ) -> AgenticPlan:
     """
     Resolves the active milestone into concrete, DOM-validated PlanSteps on the current page.
@@ -145,11 +147,13 @@ async def plan_milestone_step(
         page_text: Optional extracted visible text on the page.
         user_response: Optional user response to confirmation prompt ('yes', 'cancel', etc.).
         history: Optional multi-turn conversation history.
+        language: Preferred language locale (e.g. 'ar-EG' or 'en-US').
 
     Returns:
         AgenticPlan: Fully validated agentic plan with zero hallucinated element IDs
             and human-in-the-loop gating for consequential actions.
     """
+    reply_lang = resolve_reply_language(language, user_response or milestone.description or goal)
     raw_nodes = _convert_dom_nodes_to_dicts(dom_map)
     safe_dom = strip_pii_from_dom(raw_nodes)
 
@@ -189,7 +193,7 @@ async def plan_milestone_step(
             return AgenticPlan(
                 type="conversation",
                 thought="User cancelled the pending action.",
-                reply="No problem, I've cancelled that action for you.",
+                reply=t("nav_cancelled_action", reply_lang),
                 steps=[],
                 requires_confirmation=False,
             )
@@ -229,6 +233,7 @@ async def plan_milestone_step(
     dom_json = json.dumps(budgeted_dom, separators=(',', ':'))
 
     user_body = f"""PAGE URL: {current_url}
+REPLY LANGUAGE: {reply_lang}
 
 --- BEGIN UNTRUSTED WEBPAGE SUMMARY (BOUNDARY_ID: {summary_nonce}) ---
 {(page_text or "").strip()[:350] if page_text else "No page summary"}
@@ -302,7 +307,7 @@ JSON RESPONSE:"""
                     "description": f"{f_act} on {fast_lbl}",
                     "delay_ms": 400,
                 }]
-                reply = f"Interacting with {fast_lbl}."
+                reply = t("nav_interacting_with", reply_lang, label=fast_lbl)
                 thought = f"Jev 3 System 1 reflex selected '{fast_lbl}' (confidence {jev_fast.confidence:.2f}) in {jev_fast.latency_ms:.1f}ms"
         except Exception as fast_exc:
             logger.debug("Jev 3 fast path bypass: %s", fast_exc)
@@ -433,7 +438,7 @@ JSON RESPONSE:"""
                 description=act_desc,
                 delay_ms=600,
             ))
-            reply = f"I found '{lbl}' on the page. {act_desc} for you now."
+            reply = t("nav_heuristic_found", reply_lang, lbl=lbl, act_desc=act_desc)
             thought = f"Universal heuristic matched '{target_query}' to element '{lbl}' (id={mid}, score={score:.2f})"
 
     # Deterministic Consequential Action Gate
@@ -473,16 +478,16 @@ JSON RESPONSE:"""
             final_pending = validated_steps.pop(sensitive_step_idx)
             confirmation_prompt = (
                 llm_confirmation_prompt
-                or f"This action will {final_pending.description or 'perform a sensitive operation'}. Would you like to proceed?"
+                or t("nav_confirm_sensitive", reply_lang, desc=final_pending.description or 'perform a sensitive operation')
             )
         elif llm_requires_confirmation and final_pending is not None:
             requires_confirmation = True
-            confirmation_prompt = llm_confirmation_prompt or "Would you like to proceed with this action?"
+            confirmation_prompt = llm_confirmation_prompt or t("nav_confirm_generic", reply_lang)
         elif goal_consequential and final_pending is not None:
             requires_confirmation = True
             confirmation_prompt = (
                 llm_confirmation_prompt
-                or f"Would you like to confirm: {final_pending.description or goal}?"
+                or t("nav_confirm_desc", reply_lang, desc=final_pending.description or goal)
             )
 
     plan_type = "confirmation" if requires_confirmation else ("plan" if validated_steps else "conversation")
@@ -494,7 +499,7 @@ JSON RESPONSE:"""
         steps=validated_steps,
         requires_confirmation=requires_confirmation,
         confirmation_prompt=confirmation_prompt,
-        confirmation_options=["Yes, proceed", "No, cancel"],
+        confirmation_options=[t("confirm_proceed_option", reply_lang), t("confirm_cancel_option", reply_lang)],
         pending_step=final_pending,
-        confirmation_success_message="Done! Action completed.",
+        confirmation_success_message=t("action_completed", reply_lang),
     )
