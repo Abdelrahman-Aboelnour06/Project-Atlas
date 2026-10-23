@@ -1,7 +1,8 @@
 import os
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 import httpx
 import asyncio
 from dotenv import load_dotenv
@@ -70,6 +71,83 @@ class LLMRateLimited(LLMError):
         super().__init__(message)
         self.retry_after = retry_after
         self.model = model
+
+
+# ── Health, Diagnostic Logging & Failure Tracking ────────────────────────────
+
+_last_error_class: Optional[str] = None
+_last_error_time: Optional[str] = None
+_limited_mode: bool = False
+_last_model_used: Optional[str] = None
+_json_mode_unsupported: Set[str] = set()
+
+
+def record_llm_failure(
+    provider: str,
+    model: Optional[str],
+    exc: Exception,
+    status_code: Optional[int] = None,
+) -> None:
+    """
+    Records an LLM failure without logging or storing any prompts, URLs, headers, or API keys.
+    Updates the operational health state and marks limited_mode as True.
+    """
+    global _last_error_class, _last_error_time, _limited_mode, _last_model_used
+    exc_class = exc.__class__.__name__
+    _last_error_class = exc_class
+    _last_error_time = datetime.now(timezone.utc).isoformat()
+    _limited_mode = True
+    if model:
+        _last_model_used = model
+
+    # Strictly log only provider, model, error class, and status code (no secrets/prompts)
+    logger.error(
+        "LLM call failed: provider=%s, model=%s, error_class=%s, status_code=%s",
+        provider,
+        model,
+        exc_class,
+        status_code,
+    )
+
+
+def record_llm_success(provider: str, model: Optional[str]) -> None:
+    """Records an LLM call success, resetting limited_mode back to False."""
+    global _limited_mode, _last_model_used
+    _limited_mode = False
+    if model:
+        _last_model_used = model
+
+
+def is_limited_mode() -> bool:
+    """Returns True if the LLM client is operating in degraded/limited mode due to a recent failure."""
+    return _limited_mode
+
+
+def set_limited_mode(enabled: bool) -> None:
+    """Manually toggles limited_mode (used in testing or explicit admin control)."""
+    global _limited_mode
+    _limited_mode = bool(enabled)
+
+
+def get_llm_health_info() -> Dict[str, Any]:
+    """Returns sanitised health status info for the GET /health probe."""
+    return {
+        "provider": _get_current_provider(),
+        "model": _last_model_used or get_model_for_role(),
+        "last_error_class": _last_error_class,
+        "last_error_time": _last_error_time,
+        "limited_mode": _limited_mode,
+    }
+
+
+def reset_llm_health() -> None:
+    """Resets all health tracking variables (for deterministic test isolation)."""
+    global _last_error_class, _last_error_time, _limited_mode, _last_model_used, _json_mode_unsupported
+    _last_error_class = None
+    _last_error_time = None
+    _limited_mode = False
+    _last_model_used = None
+    _json_mode_unsupported.clear()
 
 
 # ── Mock LLM Provider State & Utilities ───────────────────────────────────────
@@ -388,6 +466,23 @@ def _generate_deterministic_mock_response(
             "message": f"Clicked {target_id}"
         })
 
+    def _mock_repair() -> str:
+        target = user_prompt
+        if "Malformed Content to Repair:" in target:
+            target = target.split("Malformed Content to Repair:", 1)[1]
+        if "Return ONLY the fixed, valid JSON:" in target:
+            target = target.split("Return ONLY the fixed, valid JSON:", 1)[0]
+        target = target.strip()
+        if "```" in target:
+            target = re.sub(r"```(?:json)?|```", "", target).strip()
+        repaired = re.sub(r"'([^']*)'", r'"\1"', target)
+        repaired = re.sub(r",\s*([\]}])", r"\1", repaired)
+        try:
+            json.loads(repaired)
+            return repaired
+        except Exception:
+            return json.dumps({"status": "repaired", "repaired": True})
+
     # 1. Explicit Role Routing (Strict Precedence)
     if norm_role in ("verifier",):
         return _mock_verifier()
@@ -403,6 +498,8 @@ def _generate_deterministic_mock_response(
         return _mock_simplify()
     elif norm_role in ("command", "action", "parser"):
         return _mock_command()
+    elif norm_role in ("repair", "repair_json", "json_repair"):
+        return _mock_repair()
     elif norm_role in ("summary", "summarizer"):
         return "This is a summary of the webpage. You can browse items or perform actions."
 
@@ -421,6 +518,8 @@ def _generate_deterministic_mock_response(
         return _mock_simplify()
     elif "ACTION TYPES:" in full_prompt:
         return _mock_command()
+    elif "json repair" in full_prompt.lower() or "malformed content to repair" in full_prompt.lower():
+        return _mock_repair()
     elif "summary" in full_prompt.lower():
         return "This is a summary of the webpage. You can browse items or perform actions."
 
@@ -461,8 +560,15 @@ async def ping_llm(timeout: float = 5.0) -> bool:
                     f"{base_url}/models",
                     headers={"Authorization": f"Bearer {api_key}"},
                 )
-            return response.status_code == 200
-    except Exception:
+            if response.status_code == 200:
+                record_llm_success(provider, None)
+                return True
+            else:
+                record_llm_failure(provider, None, httpx.HTTPStatusError("ping failed", request=response.request, response=response), status_code=response.status_code)
+                return False
+    except Exception as e:
+        status_code = getattr(getattr(e, "response", None), "status_code", None)
+        record_llm_failure(provider, None, e, status_code=status_code)
         return False
 
 
@@ -473,6 +579,7 @@ async def call_llm(
     role: Optional[str] = None,
     model: Optional[str] = None,
     max_tokens: Optional[int] = None,
+    json_mode: bool = False,
 ) -> str:
     """
     Invokes the configured AI provider (Mock, NVIDIA NIM, OpenAI-compatible, Groq, or Ollama) with retry logic.
@@ -484,6 +591,7 @@ async def call_llm(
         role (str | None): Agent role ('planner', 'navigator', 'verifier', 'simplify', etc.).
         model (str | None): Optional model override.
         max_tokens (int | None): Optional max_tokens override.
+        json_mode (bool): Whether to request structured JSON output from supported providers.
 
     Returns:
         str: Raw completion or response text from the model.
@@ -501,8 +609,10 @@ async def call_llm(
             "reasoning": reasoning,
             "role": role,
             "model": effective_model,
+            "json_mode": json_mode,
         }
         _mock_call_history.append(call_record)
+        record_llm_success("mock", effective_model)
         return _mock_canned_queue.pop(0)
 
     # BRANCH 0: Deterministic Mock Provider
@@ -513,8 +623,10 @@ async def call_llm(
             "reasoning": reasoning,
             "role": role,
             "model": effective_model,
+            "json_mode": json_mode,
         }
         _mock_call_history.append(call_record)
+        record_llm_success("mock", effective_model)
 
         return _generate_deterministic_mock_response(
             user_prompt=user_prompt,
@@ -541,6 +653,9 @@ async def call_llm(
     elif system_prompt:
         system_content = system_prompt
 
+    unsupported_key = f"{provider}:{effective_model}"
+    active_json_mode = json_mode and (unsupported_key not in _json_mode_unsupported)
+
     for attempt in range(max_retries + 1):
         try:
             async with httpx.AsyncClient() as client:
@@ -552,12 +667,21 @@ async def call_llm(
                     else:
                         full_prompt = user_prompt
 
+                    ollama_payload: Dict[str, Any] = {
+                        "model": effective_model,
+                        "prompt": full_prompt,
+                        "stream": False,
+                    }
+                    if active_json_mode:
+                        ollama_payload["format"] = "json"
+
                     response = await client.post(
                         f"{base_url}/api/generate",
-                        json={"model": effective_model, "prompt": full_prompt, "stream": False},
+                        json=ollama_payload,
                         timeout=30.0,
                     )
                     response.raise_for_status()
+                    record_llm_success(provider, effective_model)
                     return response.json().get("response", "")
 
                 # BRANCH 2: NVIDIA NIM / OpenAI-Compatible (including Groq)
@@ -584,6 +708,8 @@ async def call_llm(
                     }
                     if reasoning and tokens:
                         payload["top_p"] = 0.95
+                    if active_json_mode:
+                        payload["response_format"] = {"type": "json_object"}
 
                     response = await client.post(
                         f"{base_url}/chat/completions",
@@ -592,14 +718,27 @@ async def call_llm(
                         timeout=30.0,
                     )
                     response.raise_for_status()
+                    record_llm_success(provider, effective_model)
                     return response.json()["choices"][0]["message"]["content"]
 
-        except httpx.TimeoutException:
+        except httpx.TimeoutException as e:
+            record_llm_failure(provider, effective_model, e, status_code=None)
             if attempt == max_retries:
-                raise LLMError(f"LLM request timed out after {max_retries} retries.")
+                raise LLMError(f"LLM request timed out after {max_retries} retries: {e.__class__.__name__}") from e
             await asyncio.sleep(1)
 
         except httpx.HTTPStatusError as e:
+            # Handle HTTP 400 when json_mode was rejected by the provider
+            if e.response.status_code == 400 and active_json_mode:
+                logger.warning(
+                    "Provider %s model %s returned HTTP 400 with json_mode. Remembering and retrying without json_mode.",
+                    provider,
+                    effective_model,
+                )
+                _json_mode_unsupported.add(unsupported_key)
+                active_json_mode = False
+                continue
+
             if e.response.status_code == 429:
                 retry_wait = None
                 retry_after_val = 2.0
@@ -627,13 +766,89 @@ async def call_llm(
                     effective_model = "openai/gpt-oss-20b"
                     continue
 
+                record_llm_failure(provider, effective_model, e, status_code=429)
                 raise LLMRateLimited(
                     f"LLM rate limit (429): {e.response.text}",
                     retry_after=retry_after_val,
                     model=effective_model,
                 )
-            raise LLMError(f"LLM HTTP error: {e.response.status_code} - {e.response.text}")
+
+            record_llm_failure(provider, effective_model, e, status_code=e.response.status_code)
+            raise LLMError(f"LLM HTTP error: {e.response.status_code} - {e.response.text}") from e
+
         except LLMError:
             raise
+
         except Exception as e:
-            raise LLMError(f"Unexpected LLM error: {str(e)}")
+            status_code = getattr(getattr(e, "response", None), "status_code", None)
+            record_llm_failure(provider, effective_model, e, status_code=status_code)
+            raise LLMError(f"Unexpected LLM error: {str(e)}") from e
+
+
+async def repair_json(
+    raw: str,
+    schema_hint: Optional[str] = None,
+    role: Optional[str] = "repair",
+    model: Optional[str] = None,
+) -> str:
+    """
+    Attempts to repair broken or malformed JSON output from an LLM.
+    Runs only on a parse failure, never on timeouts/HTTP errors, and at most once.
+
+    Args:
+        raw: Raw or malformed string from a prior LLM call.
+        schema_hint: Optional description or schema of expected JSON structure.
+        role: Optional role name for role-based routing (defaults to 'repair').
+        model: Optional model override.
+
+    Returns:
+        Repaired valid JSON string parseable by json.loads.
+
+    Raises:
+        LLMError: If repair retry fails or returns non-JSON.
+    """
+    import json
+    from app.agent.json_utils import extract_json
+
+    # Step 1: Check if already parseable
+    cleaned = extract_json(raw)
+    try:
+        json.loads(cleaned)
+        return cleaned
+    except Exception:
+        pass
+
+    # Step 2: At most one retry asking the model to return valid JSON
+    system_prompt = (
+        "You are a strict JSON repair utility. Fix all syntax errors (such as trailing commas, "
+        "missing quotes, single quotes, unescaped characters, or malformed braces) and return ONLY "
+        "the valid JSON object or array. Do NOT output markdown code fences, reasoning blocks, or conversational prose."
+    )
+    if schema_hint:
+        user_prompt = (
+            f"Expected Schema / Format:\n{schema_hint}\n\n"
+            f"Malformed Content to Repair:\n{raw}\n\n"
+            "Return ONLY the fixed, valid JSON:"
+        )
+    else:
+        user_prompt = (
+            f"Malformed Content to Repair:\n{raw}\n\n"
+            "Return ONLY the fixed, valid JSON:"
+        )
+
+    # Call LLM once with json_mode=True. Any timeout/401/403/5xx raises LLMError directly.
+    repaired_raw = await call_llm(
+        user_prompt=user_prompt,
+        system_prompt=system_prompt,
+        reasoning=False,
+        role=role,
+        model=model,
+        json_mode=True,
+    )
+
+    repaired_clean = extract_json(repaired_raw)
+    try:
+        json.loads(repaired_clean)
+        return repaired_clean
+    except Exception as e:
+        raise LLMError("Failed to repair malformed JSON into valid JSON.") from e
