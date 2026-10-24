@@ -1376,6 +1376,7 @@ const executeStep = async (step) => {
         value: step.value,
         click_count: step.click_count,
         same_tab: Boolean(step.same_tab),
+        vault_login: Boolean(step.vault_login),
         message: step.description || `Performed ${step.action}`,
     }, { skipConfirmation: true, same_tab: Boolean(step.same_tab) });
 };

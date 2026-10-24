@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>نيابات المرور - الاستعلام عن مخالفات المركبات</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #f8fafc;
+      color: #1e293b;
+      padding: 20px;
+    }
+    header {
+      background: #ffffff;
+      border-bottom: 2px solid #0284c7;
+      padding: 12px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+    }
+    .header-actions {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .card {
+      max-width: 600px;
+      margin: 0 auto;
+      background: #ffffff;
+      padding: 24px;
+      border-radius: 8px;
+      border: 1px solid #cbd5e1;
+    }
+    .form-group {
+      margin-bottom: 16px;
+    }
+    label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .req {
+      color: #dc2626;
+      font-weight: bold;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      font-size: 15px;
+    }
+    input[aria-invalid="true"] {
+      border-color: #dc2626;
+      background-color: #fef2f2;
+    }
+    .error-msg {
+      color: #dc2626;
+      font-size: 13px;
+      margin-top: 4px;
+    }
+    .btn-row {
+      display: flex;
+      gap: 12px;
+      margin-top: 20px;
+    }
+    button {
+      padding: 10px 20px;
+      border-radius: 6px;
+      font-size: 15px;
+      cursor: pointer;
+      border: 1px solid transparent;
+    }
+    .btn-back {
+      background: #f1f5f9;
+      color: #475569;
+      border-color: #cbd5e1;
+    }
+    .btn-submit {
+      background: #0284c7;
+      color: #ffffff;
+    }
+    #results-table {
+      display: none;
+      margin-top: 20px;
+      padding: 16px;
+      background: #f0fdf4;
+      border: 1px solid #86efac;
+      border-radius: 6px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="site-title">بوابة خدمات المرور</div>
+    <div class="header-actions">
+      <button id="menu-toggle" aria-expanded="false" aria-label="القائمة">☰</button>
+      <button id="lang-btn" lang="en">English</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="card">
+      <h1>الاستعلام عن مخالفات رخص المركبات</h1>
+      <p style="color: #64748b; margin-bottom: 20px;">يرجى إدخال البيانات المطلوبة للاستعلام عن إجمالي المخالفات المسجلة.</p>
+
+      <form id="violations-form" onsubmit="return handleFormSubmit(event)">
+        <div class="form-group">
+          <label for="national_id">الرقم القومي <span class="req">*</span></label>
+          <input type="text" id="national_id" name="national_id" maxlength="14" required>
+        </div>
+
+        <div class="form-group">
+          <label for="plate_numbers">أرقام اللوحة <span class="req">*</span></label>
+          <input type="text" id="plate_numbers" name="plate_numbers" maxlength="4" required aria-errormessage="plate_numbers_err">
+          <div id="plate_numbers_err" class="error-msg" role="alert" style="display:none;">أرقام اللوحة غير صحيحة</div>
+        </div>
+
+        <div class="form-group">
+          <label for="plate_letters">حروف اللوحة <span class="req">*</span></label>
+          <input type="text" id="plate_letters" name="plate_letters" maxlength="4" required>
+        </div>
+
+        <div class="btn-row">
+          <button type="button" id="btn-back" class="btn-back" onclick="history.back()">رجوع</button>
+          <button type="submit" id="btn-submit" class="btn-submit">استعلام</button>
+        </div>
+      </form>
+
+      <div id="results-table" role="region" aria-label="نتائج الاستعلام">
+        <h2>نتيجة الاستعلام</h2>
+        <table border="1" style="width: 100%; border-collapse: collapse; margin-top: 12px;">
+          <thead>
+            <tr><th>رقم المخالفة</th><th>تاريخ المخالفة</th><th>المبلغ</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>1024</td><td>2026-05-12</td><td>150 جنيه</td></tr>
+            <tr><td colspan="2"><strong>الإجمالي</strong></td><td><strong>150 جنيه</strong></td></tr>
+          </tbody>
+        </table>
+        <p id="result-text" style="margin-top: 12px;">إجمالي المخالفات المستحقة: 150 جنيه مصري</p>
+        <button type="button" id="btn-new-inquiry" class="btn-submit" style="margin-top: 12px;" onclick="location.reload()">استعلام جديد</button>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    let submitCount = 0;
+    function handleFormSubmit(e) {
+      e.preventDefault();
+      submitCount++;
+      const numInput = document.getElementById('plate_numbers');
+      const numErr = document.getElementById('plate_numbers_err');
+      const results = document.getElementById('results-table');
+
+      if (submitCount === 1) {
+        numInput.value = '';
+        numInput.setAttribute('aria-invalid', 'true');
+        numErr.style.display = 'block';
+      } else {
+        numInput.removeAttribute('aria-invalid');
+        numErr.style.display = 'none';
+        results.style.display = 'block';
+      }
+      return false;
+    }
+  </script>
+</body>
+</html>

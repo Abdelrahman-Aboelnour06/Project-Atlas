@@ -291,6 +291,8 @@ def _is_icon_only_without_label(node: Dict[str, Any]) -> bool:
         str(node.get("aria_label") or ""),
         str(node.get("title") or ""),
         str(node.get("inner_text") or ""),
+        str(node.get("value") or ""),
+        str(node.get("current_value") or ""),
     ]
     combined = " ".join(raw_labels).strip()
     if not combined:
@@ -326,6 +328,8 @@ def _is_excluded_submit_candidate(node: Dict[str, Any]) -> bool:
         or node.get("aria_label")
         or node.get("inner_text")
         or node.get("title")
+        or node.get("value")
+        or node.get("current_value")
         or ""
     ).strip()
 
@@ -494,6 +498,7 @@ def is_field_value_empty(node: Dict[str, Any]) -> bool:
 def extract_target_form_fields(
     dom_nodes: List[Union[DomNode, Dict[str, Any]]],
     form_id: Optional[str] = None,
+    goal: Optional[str] = None,
 ) -> Tuple[List[InputField], List[InputField]]:
     """
     Universally extracts (required_fields, optional_fields) for the target form.
@@ -510,6 +515,14 @@ def extract_target_form_fields(
         form_nodes = [n for n in raw_nodes if str(n.get("form_id") or "") == str(form_id)]
     else:
         form_nodes = raw_nodes
+
+    # Auth wall protection: auth-wall forms never go to form filler
+    auth_wall = classify_auth_wall(form_nodes) or classify_auth_wall(raw_nodes)
+    if auth_wall:
+        is_modal = any(bool(n.get("in_modal")) for n in raw_nodes)
+        is_auth_goal = matches_any_keyword((goal or "").lower(), AUTH_KEYWORDS) if goal else False
+        if is_modal or (goal and not is_auth_goal):
+            return [], []
 
     user_data_inputs: List[Dict[str, Any]] = []
     for n in form_nodes:
@@ -586,7 +599,7 @@ def extract_target_form_fields(
 
 AUTH_KEYWORDS: Set[str] = {
     # Login
-    "تسجيل الدخول", "دخول", "sign in", "log in", "login",
+    "تسجيل الدخول", "دخول", "sign in", "log in", "login", "log into", "sign into",
     # Signup
     "إنشاء حساب", "انشاء حساب", "تسجيل جديد", "حساب جديد", "sign up", "signup", "register", "create account",
 }
@@ -594,6 +607,43 @@ AUTH_KEYWORDS: Set[str] = {
 SIGNUP_SPECIFIC_KEYWORDS: Set[str] = {
     "إنشاء حساب", "انشاء حساب", "تسجيل جديد", "حساب جديد", "sign up", "signup", "register", "create account",
 }
+
+LOGIN_SPECIFIC_KEYWORDS: Set[str] = {
+    # Login
+    "تسجيل الدخول", "دخول", "sign in", "log in", "login", "log into", "sign into",
+}
+
+
+def _score_auth_submit_candidate(node: Dict[str, Any]) -> int:
+    tag = (node.get("tag") or "").lower()
+    ntype = (node.get("type") or "").lower()
+    lbl = (
+        node.get("resolved_label")
+        or node.get("aria_label")
+        or node.get("inner_text")
+        or node.get("value")
+        or node.get("current_value")
+        or ""
+    ).strip()
+
+    is_submit_type = (ntype == "submit") or (tag == "button" and ntype not in ("button", "reset"))
+    matches_auth = matches_any_keyword(lbl, AUTH_KEYWORDS)
+    matches_signup = matches_any_keyword(lbl, SIGNUP_SPECIFIC_KEYWORDS)
+    matches_semantics = matches_any_keyword(lbl, SUBMIT_SEMANTICS_KEYWORDS)
+
+    if is_submit_type and (matches_auth or matches_signup):
+        return 100
+    if is_submit_type and matches_semantics:
+        return 80
+    if is_submit_type:
+        return 60
+    if (matches_auth or matches_signup) and ntype != "button":
+        return 50
+    if matches_auth or matches_signup:
+        return 30
+    if matches_semantics:
+        return 20
+    return 10
 
 
 def classify_auth_wall(
@@ -606,9 +656,11 @@ def classify_auth_wall(
     - Page without a modal: an auth wall needs a visible password input. Text alone never counts,
       and page_text is not used.
     - Modal:
-      * login when it has a password input;
-      * sign-up when it has 2 or more password inputs, or when the modal's OWN heading/buttons match sign-up words;
-      * login by text only when the modal's own heading/buttons match login words AND it has an identifier input.
+      * with 2 or more password inputs: sign-up;
+      * with exactly 1 password input: decide by the submit button of the password's form (or modal);
+        it is sign-up only when that submit matches sign-up words and not login words, otherwise login;
+      * without password inputs: sign-up if modal heading/buttons match sign-up words;
+        login by text only when modal heading/buttons match login words AND it has an identifier input.
     - Identifier, password and submit must come from the same form_id, or the same modal.
     - If type is login but no password or no identifier field was found, returns None for missing field.
     """
@@ -626,20 +678,69 @@ def classify_auth_wall(
     ]
 
     # Non-modal page: MUST have a visible password input. Text alone never counts, page_text not used (E-F2).
-    if not is_modal:
-        if not password_nodes:
-            return None
-        # Form scoping: prefer nodes sharing the form_id of the first password field
+    if not is_modal and not password_nodes:
+        return None
+
+    # Form scoping: prefer nodes sharing the form_id of the first password field
+    if password_nodes and password_nodes[0].get("form_id"):
         target_form_id = password_nodes[0].get("form_id")
-        if target_form_id:
-            form_nodes = [n for n in nodes_to_check if n.get("form_id") == target_form_id]
-        else:
-            form_nodes = nodes_to_check
-        is_signup = len(password_nodes) >= 2
-        auth_type = "signup" if is_signup else "login"
+        matching_form_nodes = [n for n in nodes_to_check if n.get("form_id") == target_form_id]
+        form_nodes = matching_form_nodes if matching_form_nodes else nodes_to_check
     else:
-        # Modal page (E-F2):
-        # Examine modal's OWN headings and buttons (excluding navigation links)
+        form_nodes = nodes_to_check
+
+    # Identify submit button in auth form
+    submit_candidates = [
+        n for n in form_nodes
+        if (
+            (n.get("tag") or "").lower() == "button"
+            or (n.get("type") or "").lower() in ("submit", "button")
+            or (n.get("role") or "").lower() in ("button", "submit")
+        )
+        and not _is_excluded_submit_candidate(n)
+    ]
+    if not submit_candidates and form_nodes is not nodes_to_check:
+        submit_candidates = [
+            n for n in nodes_to_check
+            if (
+                (n.get("tag") or "").lower() == "button"
+                or (n.get("type") or "").lower() in ("submit", "button")
+                or (n.get("role") or "").lower() in ("button", "submit")
+            )
+            and not _is_excluded_submit_candidate(n)
+        ]
+
+    submit_ref = None
+    submit_label = None
+    if submit_candidates:
+        best_submit = max(submit_candidates, key=_score_auth_submit_candidate)
+        submit_ref = str(best_submit.get("ref") or best_submit.get("id") or "")
+        submit_label = (
+            best_submit.get("resolved_label")
+            or best_submit.get("aria_label")
+            or best_submit.get("inner_text")
+            or best_submit.get("value")
+            or best_submit.get("current_value")
+            or ""
+        ).strip() or "Submit"
+
+    # Decide auth_type
+    # R2-5: with exactly one password input, decide by the submit button of the password's form (or modal).
+    # It is sign-up only when that submit matches sign-up words and not login words.
+    # Two or more passwords is still sign-up. The existing no-password text rule stays.
+    if len(password_nodes) >= 2:
+        auth_type = "signup"
+    elif len(password_nodes) == 1:
+        sub_lbl = submit_label or ""
+        is_signup_submit = (
+            matches_any_keyword(sub_lbl, SIGNUP_SPECIFIC_KEYWORDS)
+            and not matches_any_keyword(sub_lbl, LOGIN_SPECIFIC_KEYWORDS)
+        )
+        auth_type = "signup" if is_signup_submit else "login"
+    elif not is_modal:
+        return None
+    else:
+        # Modal page with 0 password inputs (E-F2):
         modal_headings_and_btns = [
             n for n in nodes_to_check
             if ((n.get("tag") or "").lower() in ("h1", "h2", "h3", "h4", "h5", "h6", "button")
@@ -659,41 +760,12 @@ def classify_auth_wall(
             and (n.get("type") or "").lower() not in ("hidden", "submit", "button", "checkbox", "radio")
         ]
 
-        if len(password_nodes) >= 2 or matches_any_keyword(combined_modal_text, SIGNUP_SPECIFIC_KEYWORDS):
+        if matches_any_keyword(combined_modal_text, SIGNUP_SPECIFIC_KEYWORDS):
             auth_type = "signup"
-        elif password_nodes:
-            auth_type = "login"
         elif matches_any_keyword(combined_modal_text, AUTH_KEYWORDS) and candidate_identifiers:
             auth_type = "login"
         else:
             return None
-
-        # Modal context: nodes inside the modal
-        if password_nodes and password_nodes[0].get("form_id"):
-            m_form_id = password_nodes[0].get("form_id")
-            matching_form_nodes = [n for n in nodes_to_check if n.get("form_id") == m_form_id]
-            form_nodes = matching_form_nodes if matching_form_nodes else nodes_to_check
-        else:
-            form_nodes = nodes_to_check
-
-    # Identify submit button in auth form
-    submit_ref = None
-    submit_label = None
-    for n in form_nodes:
-        ref = str(n.get("ref") or n.get("id") or "")
-        tag = (n.get("tag") or "").lower()
-        ntype = (n.get("type") or "").lower()
-        lbl = (n.get("resolved_label") or n.get("aria_label") or n.get("inner_text") or "").strip()
-        if (tag == "button" or ntype in ("submit", "button")) and not _is_excluded_submit_candidate(n):
-            if (
-                matches_any_keyword(lbl, AUTH_KEYWORDS)
-                or matches_any_keyword(lbl, SIGNUP_SPECIFIC_KEYWORDS)
-                or matches_any_keyword(lbl, SUBMIT_SEMANTICS_KEYWORDS)
-                or ntype == "submit"
-            ):
-                submit_ref = ref
-                submit_label = lbl or "Submit"
-                break
 
     # Identify identifier field (non-password text, email or tel input before password in DOM order)
     identifier_ref = None
@@ -853,12 +925,22 @@ async def plan_form_fill(
     if any(bool(n.get("in_modal")) for n in raw_nodes):
         raw_nodes = [n for n in raw_nodes if bool(n.get("in_modal"))]
 
+    has_form_id_match = bool(form_id and any(str(n.get("form_id") or "") == str(form_id) for n in raw_nodes))
+    target_nodes = [n for n in raw_nodes if str(n.get("form_id") or "") == str(form_id)] if has_form_id_match else raw_nodes
+
+    # Auth wall protection: auth-wall forms never go to form filler
+    auth_wall = classify_auth_wall(target_nodes) or classify_auth_wall(raw_nodes)
+    if auth_wall:
+        is_modal = any(bool(n.get("in_modal")) for n in raw_nodes)
+        is_auth_goal = matches_any_keyword((goal or "").lower(), AUTH_KEYWORDS)
+        if is_modal or not is_auth_goal:
+            return FormPlan(form_id=form_id or "", fields=[], submit_ref=None, missing_required=[], blockers=["auth_wall"])
+
     profile_keys = profile_hints or []
     valid_refs: Dict[str, Dict[str, Any]] = {}
     consent_refs: Set[str] = set()
 
     # Scope candidates to target form
-    has_form_id_match = bool(form_id and any(str(n.get("form_id") or "") == str(form_id) for n in raw_nodes))
     last_input_idx = -1
     for idx, n in enumerate(raw_nodes):
         tag = (n.get("tag") or "").lower()

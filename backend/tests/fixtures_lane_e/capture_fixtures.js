@@ -74,6 +74,30 @@ async function capture() {
   fs.writeFileSync(path.join(outputDir, 'portal_service_signup.json'), JSON.stringify(snap8, null, 2), 'utf8');
   console.log('✓ Captured portal_service_signup.json');
 
+  // 9. portal_form_validation_error (initial, first submit with error, second submit with results)
+  const url9 = 'file://' + path.join(demoSiteDir, 'portal-form-validation-error.html').replace(/\\/g, '/');
+  const snap9Initial = await getSerialized(url9);
+  fs.writeFileSync(path.join(outputDir, 'portal_form_validation_error_initial.json'), JSON.stringify(snap9Initial, null, 2), 'utf8');
+  console.log('✓ Captured portal_form_validation_error_initial.json');
+
+  // Fill all 3 fields and click submit (1st submit triggers validation error on plate_numbers)
+  await page.fill('#national_id', '00000000000000');
+  await page.fill('#plate_numbers', '1234');
+  await page.fill('#plate_letters', 'أبج');
+  await page.click('#btn-submit');
+  await page.waitForTimeout(200);
+  const snap9FirstSubmit = await page.evaluate(() => window.AtlasSerializer.serialize());
+  fs.writeFileSync(path.join(outputDir, 'portal_form_validation_error_first_submit.json'), JSON.stringify(snap9FirstSubmit, null, 2), 'utf8');
+  console.log('✓ Captured portal_form_validation_error_first_submit.json');
+
+  // Re-fill plate_numbers and submit again (2nd submit displays results table)
+  await page.fill('#plate_numbers', '5678');
+  await page.click('#btn-submit');
+  await page.waitForTimeout(200);
+  const snap9SecondSubmit = await page.evaluate(() => window.AtlasSerializer.serialize());
+  fs.writeFileSync(path.join(outputDir, 'portal_form_validation_error_second_submit.json'), JSON.stringify(snap9SecondSubmit, null, 2), 'utf8');
+  console.log('✓ Captured portal_form_validation_error_second_submit.json');
+
   await browser.close();
   console.log('All fixtures captured successfully.');
 }

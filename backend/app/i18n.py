@@ -112,6 +112,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "auth_label_identifier_fallback": "Username / Email",
         "auth_no_account_option": "I don't have an account",
         "auth_signup_handoff_prompt": "Please create an account on the page yourself, then click 'Done, continue'.",
+        "auth_signup_still_open": "The sign-up page is still open. Please finish creating your account on the page, then click 'Done, continue'.",
         "auth_done_continue_option": "Done, continue",
         "auth_login_manual_handoff": "Please log in on the page yourself, then click 'Done, continue'.",
 
@@ -230,6 +231,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "auth_label_identifier_fallback": "اسم المستخدم أو البريد الإلكتروني",
         "auth_no_account_option": "معنديش حساب",
         "auth_signup_handoff_prompt": "اعمل حساب بنفسك في الصفحة، وبعدين اضغط «خلصت، كمل»",
+        "auth_signup_still_open": "صفحة إنشاء الحساب لسه مفتوحة. كمّل تسجيل حسابك، وبعدين اضغط «خلصت، كمل»",
         "auth_done_continue_option": "خلصت، كمل",
         "auth_login_manual_handoff": "سجّل دخولك بنفسك في الصفحة، وبعدين اضغط «خلصت، كمل»",
 
