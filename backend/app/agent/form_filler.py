@@ -12,9 +12,10 @@ import json
 import logging
 import re
 import secrets
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 from app.agent import llm_client
+from app.agent.intent_synonyms import _normalize_text
 from app.i18n import resolve_reply_language, t
 from app.models.dom import DomNode
 from app.models.goal import FieldPlan, FormPlan, InputField, InputFieldKind
@@ -98,10 +99,10 @@ def _is_consent_checkbox(node: Dict[str, Any]) -> bool:
 
 
 TOKEN_REGEX = re.compile(
-    r"^\{(?:vault:[a-zA-Z0-9_]+|password|cc_number|cc_cvv|cc_expiry|cc_name|ssn|otp|pin|secret|national_id|profile\.[a-z0-9_]+)(?:_\d+)?\}$"
+    r"^\{(?:vault:[a-zA-Z0-9_]+|password|login_id|cc_number|cc_cvv|cc_expiry|cc_name|ssn|otp|pin|secret|national_id|profile\.[a-z0-9_]+)(?:_\d+)?\}$"
 )
 TOKEN_FIND_REGEX = re.compile(
-    r"\{(?:vault:[a-zA-Z0-9_]+|password|cc_number|cc_cvv|cc_expiry|cc_name|ssn|otp|pin|secret|national_id|profile\.[a-z0-9_]+)(?:_\d+)?\}"
+    r"\{(?:vault:[a-zA-Z0-9_]+|password|login_id|cc_number|cc_cvv|cc_expiry|cc_name|ssn|otp|pin|secret|national_id|profile\.[a-z0-9_]+)(?:_\d+)?\}"
 )
 
 IDENTITY_KEYWORDS = (
@@ -255,39 +256,322 @@ def is_search_or_filter_form(nodes: List[Dict[str, Any]]) -> bool:
     return False
 
 
-def extract_required_form_fields(
-    dom_nodes: List[Union[DomNode, Dict[str, Any]]]
-) -> List[InputField]:
+LANGUAGE_NAMES_EXACT: Set[str] = {
+    "english", "en", "عربي", "العربية", "ar", "français", "francais", "french", "fr",
+    "deutsch", "de", "español", "es", "italiano", "it", "русский", "ru"
+}
+
+
+def _matches_any_keyword_whole_word(text: str, keywords: Set[str]) -> bool:
     """
-    Universally discovers required form inputs from dom_nodes.
-    Stateless: recomputed from the live DOM on every hop.
+    Checks if text contains any of the keywords as a whole word (Latin \\bkw\\b)
+    or as a whole Arabic token / normalized phrase.
+    Prevents false substring matches (e.g. 'feedback' matching 'back', 'disclose' matching 'close').
+    """
+    if not text or not isinstance(text, str):
+        return False
+
+    clean_text = text.strip()
+    lower_text = clean_text.lower()
+    norm_text = _normalize_text(clean_text)
+    norm_tokens = set(norm_text.split())
+
+    for kw in keywords:
+        kw_clean = kw.strip()
+        if not kw_clean:
+            continue
+        if re.search(r"^[a-zA-Z0-9_\- ]+$", kw_clean):
+            pattern = rf"\b{re.escape(kw_clean.lower())}\b"
+            if re.search(pattern, lower_text):
+                return True
+        else:
+            norm_kw = _normalize_text(kw_clean)
+            if " " in norm_kw:
+                pattern = rf"(?:^|\s){re.escape(norm_kw)}(?:\s|$)"
+                if re.search(pattern, norm_text):
+                    return True
+            else:
+                if norm_kw in norm_tokens:
+                    return True
+
+    return False
+
+
+def _is_language_switch_control(node: Dict[str, Any], label: str) -> bool:
+    """
+    Detects a language switch ONLY when the WHOLE label is a language name or code,
+    or when the control has lang or hreflang attributes.
+    """
+    if node.get("lang") or node.get("hreflang"):
+        return True
+    clean = label.strip().lower()
+    norm = _normalize_text(label).strip()
+    return clean in LANGUAGE_NAMES_EXACT or norm in {"عربي", "العربيه"}
+
+
+def _is_icon_only_without_label(node: Dict[str, Any]) -> bool:
+    """
+    An icon-only exclusion applies only when the control has no text label at all:
+    no resolved_label, aria_label, title, or inner_text with alphanumeric characters.
+    """
+    raw_labels = [
+        str(node.get("resolved_label") or ""),
+        str(node.get("aria_label") or ""),
+        str(node.get("title") or ""),
+        str(node.get("inner_text") or ""),
+    ]
+    combined = " ".join(raw_labels).strip()
+    if not combined:
+        return True
+    text_only = re.sub(r"[\s☰×✕✖+−\-_<>‹›«»|•\u2000-\u206F\u2E00-\u2E7F\u3000-\u303F]", "", combined)
+    return len(text_only) == 0
+
+
+EXCLUDED_SUBMIT_KEYWORDS: Set[str] = {
+    # Back / previous
+    "back", "previous", "رجوع", "السابق", "عودة",
+    # Cancel / reset / clear
+    "cancel", "reset", "clear", "إلغاء", "الغاء", "مسح", "إعادة تعيين", "اعادة تعيين",
+    # Close
+    "close", "إغلاق", "اغلاق",
+    # Home
+    "home", "الرئيسية", "الرئيسيه",
+    # Print
+    "print", "طباعة", "طباعه",
+    # Help
+    "help", "مساعدة", "مساعده",
+}
+
+
+def _is_excluded_submit_candidate(node: Dict[str, Any]) -> bool:
+    """
+    Universal filter for controls that must NEVER be chosen as a submit button.
+    Excludes back, cancel, reset, close, home, print, help, menu/disclosure toggles,
+    language switches, icon-only buttons with no label, and header/nav/banner/contentinfo landmarks.
+    """
+    lbl = (
+        node.get("resolved_label")
+        or node.get("aria_label")
+        or node.get("inner_text")
+        or node.get("title")
+        or ""
+    ).strip()
+
+    # 1. Landmark exclusion: nav, banner, contentinfo, header
+    landmark = (node.get("landmark") or "").lower()
+    if landmark in ("nav", "banner", "contentinfo", "header"):
+        return True
+
+    # 2. Language switch
+    if _is_language_switch_control(node, lbl):
+        return True
+
+    # 3. Icon-only without label
+    if _is_icon_only_without_label(node):
+        return True
+
+    # 4. Menu / disclosure toggles
+    menu_obj = node.get("menu")
+    if isinstance(menu_obj, dict):
+        if menu_obj.get("expanded") is not None or menu_obj.get("haspopup"):
+            return True
+    if node.get("aria_expanded") is not None or node.get("aria_haspopup"):
+        return True
+    if node.get("aria_controls"):
+        return True
+    role = (node.get("role") or "").lower()
+    if role in ("menuitem", "tab"):
+        return True
+    if (node.get("tag") or "").lower() == "details":
+        return True
+
+    # 5. Whole-word / whole-token keyword exclusion
+    if _matches_any_keyword_whole_word(lbl, EXCLUDED_SUBMIT_KEYWORDS):
+        return True
+
+    return False
+
+
+SUBMIT_SEMANTICS_KEYWORDS: Set[str] = {
+    # Arabic
+    "استعلام", "بحث", "عرض", "إرسال", "ارسال", "تأكيد", "تاكيد", "متابعة", "متابعه", "التالي",
+    # English
+    "submit", "search", "inquire", "continue", "next", "send",
+}
+
+
+def _score_submit_candidate(node: Dict[str, Any]) -> int:
+    """
+    Ranks submit candidate priority:
+    Higher score = better candidate.
+    - type=submit with submit semantics: 100
+    - submit semantics in label: 80
+    - type=submit: 60
+    - other: 10
+    """
+    node_type = (node.get("type") or "").lower()
+    lbl = (
+        node.get("resolved_label")
+        or node.get("aria_label")
+        or node.get("inner_text")
+        or ""
+    ).strip()
+    has_submit_semantics = _matches_any_keyword_whole_word(lbl, SUBMIT_SEMANTICS_KEYWORDS)
+    is_submit_type = (node_type == "submit")
+
+    if is_submit_type and has_submit_semantics:
+        return 100
+    if has_submit_semantics:
+        return 80
+    if is_submit_type:
+        return 60
+    return 10
+
+
+def _is_control_wrong(node: Dict[str, Any], wrong_controls: Optional[List[Any]]) -> bool:
+    """
+    Checks if this control was previously recorded as navigating backwards/wrong.
+    Keyed by (form_id, normalized_label); secondary check on element_id.
+    """
+    if not wrong_controls:
+        return False
+
+    node_form_id = str(node.get("form_id") or "").strip()
+    lbl = (
+        node.get("resolved_label")
+        or node.get("aria_label")
+        or node.get("inner_text")
+        or ""
+    ).strip()
+    norm_lbl = _normalize_text(lbl)
+    node_ref = str(node.get("ref") or node.get("id") or "")
+
+    for wc in wrong_controls:
+        if isinstance(wc, (list, tuple)) and len(wc) >= 2:
+            wc_form, wc_label = str(wc[0]), str(wc[1])
+            wc_id = str(wc[2]) if len(wc) > 2 else ""
+            if wc_form and node_form_id and wc_form == node_form_id and _normalize_text(wc_label) == norm_lbl:
+                return True
+            if not wc_form and _normalize_text(wc_label) == norm_lbl:
+                return True
+            if wc_id and wc_id == node_ref:
+                return True
+        elif isinstance(wc, dict):
+            wc_form = str(wc.get("form_id") or "")
+            wc_label = str(wc.get("normalized_label") or wc.get("label") or "")
+            wc_id = str(wc.get("element_id") or "")
+            if wc_form and node_form_id and wc_form == node_form_id and _normalize_text(wc_label) == norm_lbl:
+                return True
+            if not wc_form and _normalize_text(wc_label) == norm_lbl:
+                return True
+            if wc_id and wc_id == node_ref:
+                return True
+        elif isinstance(wc, str):
+            if wc == node_ref or _normalize_text(wc) == norm_lbl:
+                return True
+
+    return False
+
+
+def _is_field_required(node: Dict[str, Any]) -> bool:
+    """
+    A field is required when it has:
+    - HTML required attribute (required is True / "true")
+    - aria-required (aria_required is True / "true")
+    - Visible required marker in raw label, label container, placeholder, or inner_text:
+      "*" (asterisk), "مطلوب", "إجباري", "اجباري", "required", "mandatory".
+    """
+    if node.get("required") in (True, "true"):
+        return True
+    if node.get("aria_required") in (True, "true"):
+        return True
+
+    raw_labels = [
+        str(node.get("resolved_label") or ""),
+        str(node.get("aria_label") or ""),
+        str(node.get("inner_text") or ""),
+        str(node.get("placeholder") or ""),
+        str(node.get("name") or ""),
+    ]
+    combined_raw = " ".join(raw_labels)
+
+    if "*" in combined_raw:
+        return True
+
+    REQUIRED_MARKERS: Set[str] = {"مطلوب", "إجباري", "اجباري", "required", "mandatory"}
+    if _matches_any_keyword_whole_word(combined_raw, REQUIRED_MARKERS):
+        return True
+
+    return False
+
+
+def is_field_value_empty(node: Dict[str, Any]) -> bool:
+    """Checks whether an input or select currently lacks a user-supplied value."""
+    val = node.get("current_value") if node.get("current_value") is not None else node.get("value")
+    if val is None:
+        return True
+    str_val = str(val).strip()
+    if not str_val:
+        return True
+    tag = (node.get("tag") or "").lower()
+    if tag == "select":
+        placeholder_indicators = {"اختر", "--", "select", "none", "choose", "- اختر -"}
+        if any(pi in str_val.lower() for pi in placeholder_indicators):
+            return True
+    return False
+
+
+def extract_target_form_fields(
+    dom_nodes: List[Union[DomNode, Dict[str, Any]]],
+    form_id: Optional[str] = None,
+) -> Tuple[List[InputField], List[InputField]]:
+    """
+    Universally extracts (required_fields, optional_fields) for the target form.
+    - required_fields: all inputs where _is_field_required(n) is True.
+    - optional_fields: if total target user-data inputs <= 8, includes empty non-required inputs marked required=False.
+    Skips search inputs, consent checkboxes, hidden, readonly, and disabled inputs.
     """
     raw_nodes = _convert_dom_nodes_to_dicts(dom_nodes)
-    # L7: Modal scoping: if any node has in_modal: True, only consider in_modal nodes until modal closes
     if any(bool(n.get("in_modal")) for n in raw_nodes):
         raw_nodes = [n for n in raw_nodes if bool(n.get("in_modal"))]
 
-    required_fields: List[InputField] = []
+    # Filter to form_id if specified and present
+    if form_id and any(str(n.get("form_id") or "") == str(form_id) for n in raw_nodes):
+        form_nodes = [n for n in raw_nodes if str(n.get("form_id") or "") == str(form_id)]
+    else:
+        form_nodes = raw_nodes
 
-
-    for n in raw_nodes:
+    user_data_inputs: List[Dict[str, Any]] = []
+    for n in form_nodes:
         ref = n.get("ref") or n.get("id")
         if not ref:
             continue
-
         tag = (n.get("tag") or "").lower()
         node_type = (n.get("type") or "").lower()
+        role = (n.get("role") or "").lower()
 
-        if node_type in ("submit", "hidden") or tag == "button":
+        if tag not in ("input", "select", "textarea") and role not in ("textbox", "combobox", "spinbutton"):
             continue
-
-        is_req = bool(n.get("required") or n.get("aria_required") in (True, "true"))
-        if not is_req:
+        if node_type in ("submit", "hidden", "button", "reset"):
             continue
-
+        if n.get("disabled") in (True, "true") or n.get("readonly") in (True, "true"):
+            continue
+        if role in ("search", "searchbox") or node_type == "search":
+            continue
+        if (n.get("name") or "").lower() in ("q", "query", "search", "s"):
+            continue
         if _is_consent_checkbox(n):
             continue
 
+        user_data_inputs.append(n)
+
+    required_fields: List[InputField] = []
+    optional_fields: List[InputField] = []
+    total_count = len(user_data_inputs)
+
+    for n in user_data_inputs:
+        ref = str(n.get("ref") or n.get("id"))
+        is_req = _is_field_required(n)
         label = (
             n.get("resolved_label")
             or n.get("aria_label")
@@ -297,6 +581,7 @@ def extract_required_form_fields(
             or ref
         )
         label = re.sub(r"\s*\*+$", "", str(label)).strip()
+        label = re.sub(r"\s*\(?(?:مطلوب|إجباري|اجباري|required|mandatory)\)?", "", str(label), flags=re.IGNORECASE).strip()
 
         sensitive = _is_sensitive_field(n)
         kind = _determine_field_kind(n)
@@ -310,20 +595,148 @@ def extract_required_form_fields(
                 for o in n["options"][:20]
             ]
 
-        required_fields.append(
-            InputField(
-                ref=ref,
-                label=label,
-                kind=kind,
-                sensitive=sensitive,
-                pattern=str(pattern) if pattern else None,
-                maxlength=int(maxlength) if maxlength is not None else None,
-                required=True,
-                options=opts,
-            )
+        field_obj = InputField(
+            ref=ref,
+            label=label,
+            kind=kind,
+            sensitive=sensitive,
+            pattern=str(pattern) if pattern else None,
+            maxlength=int(maxlength) if maxlength is not None else None,
+            required=is_req,
+            options=opts,
         )
 
-    return required_fields
+        if is_req:
+            required_fields.append(field_obj)
+        elif total_count <= 8 and is_field_value_empty(n):
+            optional_fields.append(field_obj)
+
+    return required_fields, optional_fields
+
+
+AUTH_KEYWORDS: Set[str] = {
+    # Login
+    "تسجيل الدخول", "دخول", "sign in", "log in", "login",
+    # Signup
+    "إنشاء حساب", "انشاء حساب", "تسجيل جديد", "حساب جديد", "sign up", "signup", "register", "create account",
+}
+
+SIGNUP_SPECIFIC_KEYWORDS: Set[str] = {
+    "إنشاء حساب", "انشاء حساب", "تسجيل جديد", "حساب جديد", "sign up", "signup", "register", "create account",
+}
+
+
+def classify_auth_wall(
+    dom_nodes: List[Union[DomNode, Dict[str, Any]]],
+    page_text: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """
+    Detects if the current DOM has an auth wall (login or sign-up modal/page).
+    Returns None if not an auth wall, or dict:
+    {
+        "type": "login" | "signup",
+        "modal": bool,
+        "identifier_ref": str or None,
+        "identifier_label": str or None,
+        "password_ref": str or None,
+        "confirm_password_ref": str or None,
+        "submit_ref": str or None,
+    }
+    """
+    raw_nodes = _convert_dom_nodes_to_dicts(dom_nodes)
+    is_modal = any(bool(n.get("in_modal")) for n in raw_nodes)
+    if is_modal:
+        nodes_to_check = [n for n in raw_nodes if bool(n.get("in_modal"))]
+    else:
+        nodes_to_check = raw_nodes
+
+    password_nodes = [
+        n for n in nodes_to_check
+        if (n.get("tag") or "").lower() == "input" and (n.get("type") or "").lower() == "password"
+    ]
+
+    has_auth_text = False
+    combined_headings_btns = " ".join([
+        str(n.get("resolved_label") or n.get("aria_label") or n.get("inner_text") or "")
+        for n in nodes_to_check
+        if (n.get("tag") or "").lower() in ("h1", "h2", "h3", "h4", "button", "a") or (n.get("role") or "").lower() in ("heading", "button", "dialog")
+    ])
+    if _matches_any_keyword_whole_word(combined_headings_btns, AUTH_KEYWORDS):
+        has_auth_text = True
+    elif page_text and _matches_any_keyword_whole_word(page_text[:1000], AUTH_KEYWORDS):
+        has_auth_text = True
+
+    if not password_nodes and not has_auth_text:
+        return None
+
+    # Check for sign-up indications
+    is_signup = False
+    if len(password_nodes) >= 2:
+        is_signup = True
+    elif _matches_any_keyword_whole_word(combined_headings_btns, SIGNUP_SPECIFIC_KEYWORDS):
+        is_signup = True
+
+    # Identify submit button in auth form
+    submit_ref = None
+    for n in nodes_to_check:
+        ref = str(n.get("ref") or n.get("id") or "")
+        tag = (n.get("tag") or "").lower()
+        ntype = (n.get("type") or "").lower()
+        lbl = (n.get("resolved_label") or n.get("aria_label") or n.get("inner_text") or "").strip()
+        if (tag == "button" or ntype in ("submit", "button")) and not _is_excluded_submit_candidate(n):
+            if _matches_any_keyword_whole_word(lbl, AUTH_KEYWORDS) or ntype == "submit":
+                submit_ref = ref
+                break
+
+    # Identify identifier field (non-password text, email or tel input before password in DOM order)
+    identifier_ref = None
+    identifier_label = None
+    if password_nodes:
+        pwd_idx = nodes_to_check.index(password_nodes[0])
+        candidate_ids = []
+        for i, n in enumerate(nodes_to_check):
+            if i >= pwd_idx:
+                break
+            tag = (n.get("tag") or "").lower()
+            ntype = (n.get("type") or "").lower()
+            if tag in ("input", "textarea") and ntype in ("text", "email", "tel", "number", ""):
+                candidate_ids.append(n)
+        if candidate_ids:
+            target_id_node = candidate_ids[-1]
+            identifier_ref = str(target_id_node.get("ref") or target_id_node.get("id") or "")
+            identifier_label = target_id_node.get("resolved_label") or target_id_node.get("name") or "Username / Email"
+        else:
+            for i, n in enumerate(nodes_to_check):
+                tag = (n.get("tag") or "").lower()
+                ntype = (n.get("type") or "").lower()
+                if tag in ("input", "textarea") and ntype in ("text", "email", "tel", "number", ""):
+                    identifier_ref = str(n.get("ref") or n.get("id") or "")
+                    identifier_label = n.get("resolved_label") or n.get("name") or "Username / Email"
+                    break
+
+    password_ref = str(password_nodes[0].get("ref") or password_nodes[0].get("id") or "") if password_nodes else None
+    confirm_pwd_ref = str(password_nodes[1].get("ref") or password_nodes[1].get("id") or "") if len(password_nodes) >= 2 else None
+
+    return {
+        "type": "signup" if is_signup else "login",
+        "modal": is_modal,
+        "identifier_ref": identifier_ref,
+        "identifier_label": identifier_label,
+        "password_ref": password_ref,
+        "confirm_password_ref": confirm_pwd_ref,
+        "submit_ref": submit_ref,
+    }
+
+
+def extract_required_form_fields(
+    dom_nodes: List[Union[DomNode, Dict[str, Any]]]
+) -> List[InputField]:
+    """
+    Universally discovers required form inputs from dom_nodes.
+    Stateless: recomputed from the live DOM on every hop.
+    """
+    reqs, _ = extract_target_form_fields(dom_nodes)
+    return reqs
 
 
 def extract_tokens_from_goal(
@@ -412,6 +825,7 @@ async def plan_form_fill(
     profile_hints: Optional[List[str]] = None,
     prior_errors: Optional[Dict[str, str]] = None,
     language: Optional[str] = None,
+    wrong_controls: Optional[List[Any]] = None,
 ) -> FormPlan:
     """
     Produces a complete FormPlan for the specified form.
@@ -424,28 +838,22 @@ async def plan_form_fill(
 
     profile_keys = profile_hints or []
     valid_refs: Dict[str, Dict[str, Any]] = {}
-    submit_candidates: List[str] = []
     consent_refs: Set[str] = set()
 
-    SUBMIT_KEYWORDS = (
-        "submit",
-        "register",
-        "sign up",
-        "signup",
-        "complete",
-        "send",
-        "استعلام",
-        "إرسال",
-        "ارسال",
-        "عرض",
-        "تسجيل",
-        "بحث",
-        "دخول",
-        "تأكيد",
-        "تاكيد",
-    )
+    # Scope candidates to target form
+    has_form_id_match = bool(form_id and any(str(n.get("form_id") or "") == str(form_id) for n in raw_nodes))
+    last_input_idx = -1
+    for idx, n in enumerate(raw_nodes):
+        tag = (n.get("tag") or "").lower()
+        ntype = (n.get("type") or "").lower()
+        role = (n.get("role") or "").lower()
+        if (tag in ("input", "select", "textarea") or role in ("textbox", "combobox")) and ntype not in ("submit", "hidden", "button", "reset"):
+            if not has_form_id_match or str(n.get("form_id") or "") == str(form_id):
+                last_input_idx = idx
 
-    for n in raw_nodes:
+    submit_candidate_nodes: List[Dict[str, Any]] = []
+
+    for idx, n in enumerate(raw_nodes):
         ref = n.get("ref") or n.get("id")
         if not ref:
             continue
@@ -453,32 +861,50 @@ async def plan_form_fill(
         tag = (n.get("tag") or "").lower()
         node_type = (n.get("type") or "").lower()
         role = (n.get("role") or "").lower()
-        lbl = (n.get("resolved_label") or n.get("aria_label") or n.get("inner_text") or "").lower()
 
         is_control = (
             tag in ("input", "select", "textarea")
             or role in ("textbox", "combobox", "searchbox", "spinbutton", "slider", "checkbox", "radio", "listbox")
         )
 
-        is_submit_btn = (
-            node_type == "submit"
-            or (tag in ("button", "input") and (node_type in ("button", "submit") or any(k in lbl for k in SUBMIT_KEYWORDS)))
-            or (role in ("button", "submit") and any(k in lbl for k in SUBMIT_KEYWORDS))
-            or (tag == "button" and not is_control)
+        is_potential_submit = (
+            not is_control
+            and (tag == "button" or node_type in ("button", "submit") or role in ("button", "submit"))
         )
 
-        if not (is_control or is_submit_btn or n.get("required")):
+        if is_potential_submit:
+            # Check exclusions and backwards-nav wrong controls
+            if not _is_excluded_submit_candidate(n) and not _is_control_wrong(n, wrong_controls):
+                # Scope check
+                if has_form_id_match:
+                    if str(n.get("form_id") or "") == str(form_id):
+                        submit_candidate_nodes.append(n)
+                else:
+                    # No form tag: must be after the last target input in DOM order before next heading
+                    if last_input_idx >= 0 and idx > last_input_idx:
+                        # Check if any heading occurs between last_input_idx and idx
+                        has_heading_between = any(
+                            (raw_nodes[h_idx].get("tag") or "").lower() in ("h1", "h2", "h3", "h4", "h5", "h6")
+                            or (raw_nodes[h_idx].get("role") or "").lower() == "heading"
+                            for h_idx in range(last_input_idx + 1, idx)
+                        )
+                        if not has_heading_between:
+                            submit_candidate_nodes.append(n)
+                    elif last_input_idx < 0:
+                        submit_candidate_nodes.append(n)
+
+        if not (is_control or is_potential_submit or n.get("required")):
             continue
 
         valid_refs[ref] = n
 
-        # Identify submit buttons
-        if is_submit_btn:
-            submit_candidates.append(ref)
-
         # Identify terms/consent checkboxes
         if _is_consent_checkbox(n):
             consent_refs.add(ref)
+
+    # Sort submit candidates by heuristic score
+    submit_candidate_nodes.sort(key=lambda node: _score_submit_candidate(node), reverse=True)
+    submit_candidates = [str(n.get("ref") or n.get("id")) for n in submit_candidate_nodes]
 
     # Prepare sanitized inventory for LLM
     form_inventory = []
@@ -540,8 +966,10 @@ FORM PLAN JSON:"""
         parsed = json.loads(cleaned)
 
         raw_fields = parsed.get("fields", [])
-        if parsed.get("submit_ref") and parsed.get("submit_ref") in valid_refs:
-            submit_ref = parsed.get("submit_ref")
+        candidate_set = set(submit_candidates)
+        llm_sub = parsed.get("submit_ref")
+        if llm_sub and str(llm_sub) in candidate_set:
+            submit_ref = str(llm_sub)
 
         for r in parsed.get("missing_required", []):
             if r in valid_refs:

@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>نيابات المرور - الاستعلام عن مخالفات المركبات</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #f8fafc;
+      color: #1e293b;
+      padding: 0;
+      margin: 0;
+    }
+    header {
+      background: #ffffff;
+      border-bottom: 2px solid #0284c7;
+      padding: 16px 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    nav a {
+      margin-left: 20px;
+      text-decoration: none;
+      color: #475569;
+      font-weight: 500;
+    }
+    nav a:hover {
+      color: #0284c7;
+    }
+    main {
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 0 20px;
+    }
+    .hero-card {
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 32px;
+      text-align: center;
+    }
+    .cta-btn {
+      background: #0284c7;
+      color: #ffffff;
+      border: none;
+      padding: 14px 28px;
+      font-size: 18px;
+      font-weight: bold;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-top: 24px;
+    }
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .modal-overlay.hidden {
+      display: none;
+    }
+    .modal-content {
+      background: #ffffff;
+      width: 100%;
+      max-width: 440px;
+      border-radius: 8px;
+      padding: 24px;
+      position: relative;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+    }
+    .close-btn {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      background: none;
+      border: none;
+      font-size: 20px;
+      cursor: pointer;
+      color: #64748b;
+    }
+    .form-group {
+      margin-bottom: 16px;
+      text-align: right;
+    }
+    label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    input {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      font-size: 15px;
+    }
+    input[aria-invalid="true"] {
+      border-color: #dc2626;
+      background: #fef2f2;
+    }
+    .error-msg {
+      color: #dc2626;
+      font-size: 13px;
+      margin-top: 4px;
+    }
+    .submit-btn {
+      width: 100%;
+      background: #0284c7;
+      color: #ffffff;
+      padding: 12px;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 12px;
+    }
+    .signup-link-container {
+      margin-top: 16px;
+      text-align: center;
+    }
+    #service-form-section {
+      display: none;
+      background: #ffffff;
+      padding: 24px;
+      border-radius: 8px;
+      border: 1px solid #cbd5e1;
+      margin-top: 24px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div style="font-weight: bold; font-size: 18px; color: #0284c7;">بوابة الخدمات الحكومية</div>
+    <nav>
+      <a href="#home">الرئيسية</a>
+      <a href="#news">الأخبار</a>
+      <a href="#about">عن الوزارة</a>
+    </nav>
+  </header>
+
+  <main>
+    <div class="hero-card" id="hero-section">
+      <h1>الاستعلام عن مخالفات رخص المركبات</h1>
+      <p style="color: #64748b; margin-top: 12px;">خدمة فورية تمكّنك من معرفة مخالفات المرور المستحقة على مركبتك وسدادها إلكترونياً.</p>
+      <button id="start-service-btn" class="cta-btn" onclick="toggleLoginOverlay()">ابدأ الخدمة</button>
+    </div>
+
+    <!-- Login Modal Dialog -->
+    <div id="login-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="login-title">
+      <div class="modal-content">
+        <button id="modal-close" class="close-btn" aria-label="إغلاق" onclick="toggleLoginOverlay()">×</button>
+        <h2 id="login-title" style="margin-bottom: 20px; font-size: 20px;">تسجيل الدخول</h2>
+
+        <form id="login-form" onsubmit="return handleLogin(event)">
+          <div class="form-group">
+            <label for="login-id">الرقم القومي أو البريد الإلكتروني</label>
+            <input type="text" id="login-id" name="login_id" required>
+          </div>
+
+          <div class="form-group">
+            <label for="login-pass">كلمة المرور</label>
+            <input type="password" id="login-pass" name="password" required>
+            <div id="login-err" class="error-msg" role="alert" style="display: none;">اسم المستخدم أو كلمة المرور غير صحيحة</div>
+          </div>
+
+          <button type="submit" id="login-submit" class="submit-btn">تسجيل الدخول</button>
+
+          <div class="signup-link-container">
+            <a href="portal-service-signup.html" id="signup-link">إنشاء حساب جديد</a>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Revealed Service Form (Post-Login) -->
+    <div id="service-form-section">
+      <h2>بيانات استعلام رخصة المركبة</h2>
+      <p style="color: #64748b; margin-bottom: 16px;">تم تسجيل دخولك بنجاح. يرجى إدخال أرقام وحروف اللوحة للاستعلام.</p>
+      <form id="authenticated-service-form" onsubmit="event.preventDefault(); alert('تم الاستعلام');">
+        <div class="form-group">
+          <label for="plate-no">رقم اللوحة</label>
+          <input type="text" id="plate-no" name="plate_no" required>
+        </div>
+        <button type="submit" id="inquire-submit" class="submit-btn">عرض المخالفات</button>
+      </form>
+    </div>
+  </main>
+
+  <script>
+    function toggleLoginOverlay() {
+      const modal = document.getElementById('login-modal');
+      modal.classList.toggle('hidden');
+    }
+
+    function handleLogin(e) {
+      e.preventDefault();
+      const id = document.getElementById('login-id').value.trim();
+      const pass = document.getElementById('login-pass').value.trim();
+      const err = document.getElementById('login-err');
+      const passInput = document.getElementById('login-pass');
+
+      // Valid placeholder credentials
+      if ((id === '00000000000000' || id === 'user@example.com') && pass === 'password123') {
+        passInput.removeAttribute('aria-invalid');
+        err.style.display = 'none';
+        document.getElementById('login-modal').classList.add('hidden');
+        document.getElementById('hero-section').style.display = 'none';
+        document.getElementById('service-form-section').style.display = 'block';
+      } else {
+        passInput.setAttribute('aria-invalid', 'true');
+        err.style.display = 'block';
+      }
+      return false;
+    }
+  </script>
+</body>
+</html>

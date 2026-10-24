@@ -32,6 +32,7 @@ from app.agent.intent_synonyms import (
 )
 from app.agent.jev_client import get_jev_client
 from app.agent.sanitize import strip_pii_from_dom
+from app.agent.form_filler import _is_control_wrong
 from app.i18n import resolve_reply_language, t
 from app.models.action import ActionType
 from app.models.dom import DomNode
@@ -204,10 +205,44 @@ def _build_tried_summary(nav_state: Dict[str, Any], fallback_goal: str) -> str:
     return f"'{fallback_goal}'"
 
 
+CTA_GENERIC_KEYWORDS: Set[str] = {
+    # Arabic
+    "ابدأ الخدمة", "ابدا الخدمة", "ابدأ", "ابدا", "تقديم الطلب", "قدّم الآن", "قدم الآن", "قدم الان",
+    "الدخول للخدمة", "الدخول للخدمه", "استخدم الخدمة", "استخدم الخدمه",
+    # English
+    "start", "start service", "apply", "apply now", "get started", "request",
+}
+
+
+def _matches_whole_keyword(text: str, keywords: Set[str]) -> bool:
+    if not text or not isinstance(text, str):
+        return False
+    lower_text = text.strip().lower()
+    norm_text = _normalize_text(text)
+    norm_tokens = set(norm_text.split())
+    for kw in keywords:
+        kw_clean = kw.strip()
+        if not kw_clean:
+            continue
+        if re.search(r"^[a-zA-Z0-9_\- ]+$", kw_clean):
+            if re.search(rf"\b{re.escape(kw_clean.lower())}\b", lower_text):
+                return True
+        else:
+            norm_kw = _normalize_text(kw_clean)
+            if " " in norm_kw:
+                if re.search(rf"(?:^|\s){re.escape(norm_kw)}(?:\s|$)", norm_text):
+                    return True
+            else:
+                if norm_kw in norm_tokens:
+                    return True
+    return False
+
+
 def _score_dom_candidate(
     node: Dict[str, Any],
     goal: str,
     milestone_desc: str,
+    dom_context: Optional[Dict[str, Any]] = None,
 ) -> float:
     """
     Ranks a visible or latent DOM node against the active milestone and goal.
@@ -243,6 +278,16 @@ def _score_dom_candidate(
     if canon_key in ("all_services", "sitemap"):
         if any(w in _normalize_text(goal) for w in ("خدم", "بحث", "استعلام", "استفسار", "دفع", "تجديد", "سداد", "service", "search", "inquir", "pay", "renew", "apply")):
             base_score = max(base_score, 0.55)
+
+    # 2b. Target service page Call-To-Action (CTA) boost (WS12 E5)
+    # Requires BOTH:
+    # (a) page heading, title or breadcrumb matches the goal
+    # (b) no relevant form is currently visible
+    if dom_context and dom_context.get("page_matches_goal") and not dom_context.get("form_visible"):
+        landmark = str(node.get("landmark", "")).lower()
+        if landmark not in ("nav", "navigation", "header", "banner", "footer", "contentinfo"):
+            if _matches_whole_keyword(clean_lbl, CTA_GENERIC_KEYWORDS):
+                base_score = max(base_score, 0.90)
 
     # 3. Breadcrumb matching: boost candidates whose ancestor trail matches the goal
     breadcrumb = node.get("breadcrumb") or []
@@ -349,6 +394,7 @@ async def plan_milestone_step(
     history: Optional[List[Dict[str, Any]]] = None,
     language: Optional[str] = None,
     goal_state: Optional[GoalState] = None,
+    wrong_controls: Optional[List[Any]] = None,
 ) -> AgenticPlan:
     """
     Resolves the active milestone into concrete, DOM-validated PlanSteps on the current page.
@@ -454,10 +500,50 @@ async def plan_milestone_step(
             entry["sensitive"] = True
         concise_dom.append(entry)
 
+    # Target service page context signals (E5)
+    headings = [
+        str(n.get("resolved_label") or n.get("aria_label") or n.get("inner_text") or "")
+        for n in safe_dom
+        if str(n.get("tag", "")).lower() in ("h1", "h2") or str(n.get("role", "")).lower() == "heading"
+    ]
+    title_text = str((page_text or "").split("\n")[0]) if page_text else ""
+    breadcrumbs_list = []
+    for n in safe_dom:
+        bc = n.get("breadcrumb")
+        if isinstance(bc, list):
+            breadcrumbs_list.extend([str(b) for b in bc if b])
+    page_context_texts = headings + ([title_text] if title_text else []) + breadcrumbs_list
+
+    page_matches_goal = False
+    for pct in page_context_texts:
+        if pct and score_text_similarity(goal, pct) >= 0.35:
+            page_matches_goal = True
+            break
+        norm_pct = _normalize_text(pct)
+        norm_goal = _normalize_text(goal)
+        goal_stems = [w for w in norm_goal.split() if len(w) >= 4]
+        if goal_stems and any(st in norm_pct for st in goal_stems):
+            page_matches_goal = True
+            break
+
+    form_inputs = [
+        n for n in safe_dom
+        if str(n.get("tag", "")).lower() in ("input", "select", "textarea")
+        and str(n.get("type", "")).lower() not in ("hidden", "submit", "button")
+        and str(n.get("role", "")).lower() not in ("search", "searchbox")
+        and str(n.get("name", "")).lower() not in ("q", "query", "search")
+    ]
+    form_visible = len(form_inputs) >= 1
+
+    dom_ctx = {
+        "page_matches_goal": page_matches_goal,
+        "form_visible": form_visible,
+    }
+
     # Hybrid Candidate Scoring across visible and latent nodes
     scored_candidates: List[Tuple[Dict[str, Any], float]] = []
     for node in safe_dom:
-        s = _score_dom_candidate(node, goal, milestone.description or "")
+        s = _score_dom_candidate(node, goal, milestone.description or "", dom_context=dom_ctx)
         scored_candidates.append((node, s))
     scored_candidates.sort(key=lambda x: x[1], reverse=True)
 
@@ -716,6 +802,11 @@ JSON RESPONSE:"""
                 excluded_ids.add(item)
         if last_executed_step:
             excluded_ids.add(last_executed_step.split(":")[-1])
+
+        wrong_controls = list(wrong_controls or ((goal_state.dom_state or {}).get("wrong_controls", []) if goal_state and isinstance(goal_state.dom_state, dict) else []))
+        for node in safe_dom:
+            if _is_control_wrong(node, wrong_controls):
+                excluded_ids.add(str(node.get("id")))
 
         for node, sc in scored_candidates:
             nid = str(node.get("id"))

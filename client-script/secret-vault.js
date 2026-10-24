@@ -14,7 +14,7 @@
   const VAULT_KEY_STORAGE_KEY = "atlas_vault_key";
   const VAULT_PREFIX = "atlas_vault:";
   const PROFILE_PREFIX = "atlas_profile:";
-  const TOKEN_REGEX = /^\{(?:vault:[a-zA-Z0-9_]+|password|cc_number|cc_cvv|cc_expiry|cc_name|ssn|otp|pin|secret|national_id|profile\.[a-z0-9_]+)(?:_\d+)?\}$/;
+  const TOKEN_REGEX = /^\{(?:vault:[a-zA-Z0-9_]+|login_id|password|cc_number|cc_cvv|cc_expiry|cc_name|ssn|otp|pin|secret|national_id|profile\.[a-z0-9_]+)(?:_\d+)?\}$/;
 
   // In-memory key cache during active runtime session
   let cachedKey = null;

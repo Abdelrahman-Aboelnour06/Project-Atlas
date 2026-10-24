@@ -10,7 +10,7 @@
 
 const HIGHLIGHT_CLASS = 'atlas-glow-highlight'
 const HIGHLIGHT_DURATION_MS = 2000
-const TOKEN_REGEX = /^\{(?:vault:[a-zA-Z0-9_]+|password|cc_number|cc_cvv|cc_expiry|cc_name|ssn|otp|pin|secret|national_id|profile\.[a-z0-9_]+)(?:_\d+)?\}$/
+const TOKEN_REGEX = /^\{(?:vault:[a-zA-Z0-9_]+|login_id|password|cc_number|cc_cvv|cc_expiry|cc_name|ssn|otp|pin|secret|national_id|profile\.[a-z0-9_]+)(?:_\d+)?\}$/
 
 const cssEscape = (typeof CSS !== 'undefined' && typeof CSS.escape === 'function')
     ? (s) => CSS.escape(s)

@@ -891,6 +891,19 @@
         lastActionResult = null;
       }
 
+      // Check vault hints for current origin (WS12 E4)
+      if (window.AtlasSecretVault?.listEntries) {
+        try {
+          const origin = (typeof window !== "undefined" && window.location?.origin) || "";
+          if (origin) {
+            const entries = await window.AtlasSecretVault.listEntries(origin);
+            if (Array.isArray(entries) && entries.length > 0) {
+              requestPayload.vault_hints = entries.map((e) => e.category || e.token);
+            }
+          }
+        } catch (_) {}
+      }
+
       // Sync goalState into background GoalStore before hop
       if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
         try {
@@ -960,6 +973,25 @@
       }
 
       if (!isExecuting || currentAbortController.signal.aborted) return;
+
+      // Handle vault_clear from backend response (WS12 E4)
+      if (Array.isArray(data.vault_clear) && data.vault_clear.length > 0 && window.AtlasSecretVault) {
+        try {
+          const origin = (typeof window !== "undefined" && window.location?.origin) || "";
+          if (origin) {
+            const entries = await window.AtlasSecretVault.listEntries(origin);
+            for (const item of data.vault_clear) {
+              for (const entry of entries) {
+                if (entry.category === item || entry.token === item || entry.token === `{${item}}`) {
+                  await window.AtlasSecretVault.deleteEntry(origin, entry.token);
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("Atlas: Error clearing vault items:", e);
+        }
+      }
 
       if (data.goal_state) {
         currentGoalState = data.goal_state;

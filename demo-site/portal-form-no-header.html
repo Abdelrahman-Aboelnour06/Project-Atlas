@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>نيابات المرور - الاستعلام عن مخالفات المركبات</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #f8fafc;
+      color: #1e293b;
+      padding: 20px;
+    }
+    .card {
+      max-width: 600px;
+      margin: 40px auto;
+      background: #ffffff;
+      padding: 24px;
+      border-radius: 8px;
+      border: 1px solid #cbd5e1;
+    }
+    .form-group {
+      margin-bottom: 16px;
+    }
+    label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .req {
+      color: #dc2626;
+      font-weight: bold;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      font-size: 15px;
+    }
+    input[aria-invalid="true"] {
+      border-color: #dc2626;
+      background-color: #fef2f2;
+    }
+    .error-msg {
+      color: #dc2626;
+      font-size: 13px;
+      margin-top: 4px;
+    }
+    .btn-row {
+      display: flex;
+      gap: 12px;
+      margin-top: 20px;
+    }
+    button {
+      padding: 10px 20px;
+      border-radius: 6px;
+      font-size: 15px;
+      cursor: pointer;
+      border: 1px solid transparent;
+    }
+    .btn-back {
+      background: #f1f5f9;
+      color: #475569;
+      border-color: #cbd5e1;
+    }
+    .btn-submit {
+      background: #0284c7;
+      color: #ffffff;
+    }
+    #results-table {
+      display: none;
+      margin-top: 20px;
+      padding: 16px;
+      background: #f0fdf4;
+      border: 1px solid #86efac;
+      border-radius: 6px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="card">
+      <h1>الاستعلام عن مخالفات رخص المركبات</h1>
+      <p style="color: #64748b; margin-bottom: 20px;">يرجى إدخال البيانات المطلوبة للاستعلام عن إجمالي المخالفات المسجلة.</p>
+
+      <form id="violations-form" onsubmit="return handleFormSubmit(event)">
+        <div class="form-group">
+          <label for="national_id">الرقم القومي <span class="req">*</span></label>
+          <input type="text" id="national_id" name="national_id" maxlength="14" required>
+          <div id="national_id_err" class="error-msg" role="alert" style="display:none;">هذا الحقل مطلوب</div>
+        </div>
+
+        <div class="form-group">
+          <label for="plate_numbers">أرقام اللوحة <span class="req">*</span></label>
+          <input type="text" id="plate_numbers" name="plate_numbers" maxlength="4">
+          <div id="plate_numbers_err" class="error-msg" role="alert" style="display:none;">يرجى إدخال أرقام اللوحة</div>
+        </div>
+
+        <div class="form-group">
+          <label for="plate_letters">حروف اللوحة <span class="req">*</span></label>
+          <input type="text" id="plate_letters" name="plate_letters" maxlength="4">
+          <div id="plate_letters_err" class="error-msg" role="alert" style="display:none;">يرجى إدخال حروف اللوحة</div>
+        </div>
+
+        <div class="btn-row">
+          <button type="button" id="btn-back" class="btn-back" onclick="history.back()">رجوع</button>
+          <button type="submit" id="btn-submit" class="btn-submit">استعلام</button>
+        </div>
+      </form>
+
+      <div id="results-table">
+        <h2>نتيجة الاستعلام</h2>
+        <p id="result-text">إجمالي المخالفات المستحقة: 0 جنيه مصري</p>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    function handleFormSubmit(e) {
+      e.preventDefault();
+      const numInput = document.getElementById('plate_numbers');
+      const letInput = document.getElementById('plate_letters');
+      const numErr = document.getElementById('plate_numbers_err');
+      const letErr = document.getElementById('plate_letters_err');
+
+      let valid = true;
+      if (!numInput.value.trim()) {
+        numInput.setAttribute('aria-invalid', 'true');
+        numErr.style.display = 'block';
+        valid = false;
+      } else {
+        numInput.removeAttribute('aria-invalid');
+        numErr.style.display = 'none';
+      }
+
+      if (!letInput.value.trim()) {
+        letInput.setAttribute('aria-invalid', 'true');
+        letErr.style.display = 'block';
+        valid = false;
+      } else {
+        letInput.removeAttribute('aria-invalid');
+        letErr.style.display = 'none';
+      }
+
+      if (valid) {
+        document.getElementById('violations-form').style.display = 'none';
+        document.getElementById('results-table').style.display = 'block';
+      }
+      return false;
+    }
+  </script>
+</body>
+</html>

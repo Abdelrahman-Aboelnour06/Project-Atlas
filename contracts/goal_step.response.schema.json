@@ -620,6 +620,7 @@
             "email",
             "password",
             "otp",
+            "login_id",
             "other"
           ],
           "title": "Kind",
@@ -1201,6 +1202,22 @@
       "default": null,
       "description": "Assisted click prompt configuration",
       "title": "Assisted Click"
+    },
+    "vault_clear": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Vault tokens to clear on origin auth failure",
+      "title": "Vault Clear"
     }
   },
   "required": [
