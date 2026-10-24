@@ -10,7 +10,7 @@
 
 const HIGHLIGHT_CLASS = 'atlas-glow-highlight'
 const HIGHLIGHT_DURATION_MS = 2000
-const TOKEN_REGEX = /^\{(?:vault:[a-zA-Z0-9_]+|password|cc_number|cc_cvv|cc_expiry|cc_name|ssn|otp|pin|secret|national_id|profile\.[a-z0-9_]+)(?:_\d+)?\}$/
+const TOKEN_REGEX = /^\{(?:vault:[a-zA-Z0-9_]+|login_id|password|cc_number|cc_cvv|cc_expiry|cc_name|ssn|otp|pin|secret|national_id|profile\.[a-z0-9_]+)(?:_\d+)?\}$/
 
 const cssEscape = (typeof CSS !== 'undefined' && typeof CSS.escape === 'function')
     ? (s) => CSS.escape(s)
@@ -1193,7 +1193,10 @@ const execute = async (actionResponse, options = {}) => {
     const isDestructive = DESTRUCTIVE_PATTERN.test(elLabel);
 
     // Guardrails: credential/sensitive fields and destructive mutations ALWAYS require confirmation
-    const requiresConfirmation = isCredentialField(el) || isDestructive;
+    // WS12 E-F6: skip credential banner when vault_login is true AND value matches TOKEN_REGEX
+    const isVaultLoginToken = actionResponse?.vault_login === true && typeof value === 'string' && TOKEN_REGEX.test(value.trim());
+    const isCredentialGuard = isCredentialField(el) && !isVaultLoginToken;
+    const requiresConfirmation = isCredentialGuard || isDestructive;
     const shouldConfirm = requiresConfirmation || (MUTATE_ACTIONS.has(action) && !options.skipConfirmation);
 
     if (shouldConfirm) {
@@ -1373,6 +1376,7 @@ const executeStep = async (step) => {
         value: step.value,
         click_count: step.click_count,
         same_tab: Boolean(step.same_tab),
+        vault_login: Boolean(step.vault_login),
         message: step.description || `Performed ${step.action}`,
     }, { skipConfirmation: true, same_tab: Boolean(step.same_tab) });
 };

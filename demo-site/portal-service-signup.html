@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>نيابات المرور - الاستعلام عن مخالفات المركبات</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #f8fafc;
+      color: #1e293b;
+      padding: 0;
+      margin: 0;
+    }
+    header {
+      background: #ffffff;
+      border-bottom: 2px solid #0284c7;
+      padding: 16px 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    nav a {
+      margin-left: 20px;
+      text-decoration: none;
+      color: #475569;
+      font-weight: 500;
+    }
+    nav a:hover {
+      color: #0284c7;
+    }
+    main {
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 0 20px;
+    }
+    .hero-card {
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 32px;
+      text-align: center;
+    }
+    .cta-btn {
+      background: #0284c7;
+      color: #ffffff;
+      border: none;
+      padding: 14px 28px;
+      font-size: 18px;
+      font-weight: bold;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-top: 24px;
+    }
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .modal-overlay.hidden {
+      display: none;
+    }
+    .modal-content {
+      background: #ffffff;
+      width: 100%;
+      max-width: 440px;
+      border-radius: 8px;
+      padding: 24px;
+      position: relative;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+    }
+    .close-btn {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      background: none;
+      border: none;
+      font-size: 20px;
+      cursor: pointer;
+      color: #64748b;
+    }
+    .form-group {
+      margin-bottom: 16px;
+      text-align: right;
+    }
+    label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    input {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      font-size: 15px;
+    }
+    .submit-btn {
+      width: 100%;
+      background: #0284c7;
+      color: #ffffff;
+      padding: 12px;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 12px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div style="font-weight: bold; font-size: 18px; color: #0284c7;">بوابة الخدمات الحكومية</div>
+    <nav>
+      <a href="#home">الرئيسية</a>
+      <a href="#news">الأخبار</a>
+      <a href="#about">عن الوزارة</a>
+    </nav>
+  </header>
+
+  <main>
+    <div class="hero-card" id="hero-section">
+      <h1>الاستعلام عن مخالفات رخص المركبات</h1>
+      <p style="color: #64748b; margin-top: 12px;">خدمة فورية تمكّنك من معرفة مخالفات المرور المستحقة على مركبتك وسدادها إلكترونياً.</p>
+      <button id="start-service-btn" class="cta-btn" onclick="toggleSignupOverlay()">ابدأ الخدمة</button>
+    </div>
+
+    <!-- Sign-up Modal Dialog (Active Overlay Variant) -->
+    <div id="signup-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="signup-title">
+      <div class="modal-content">
+        <button id="modal-close" class="close-btn" aria-label="إغلاق" onclick="toggleSignupOverlay()">×</button>
+        <h2 id="signup-title" style="margin-bottom: 20px; font-size: 20px;">إنشاء حساب جديد</h2>
+
+        <form id="signup-form" onsubmit="event.preventDefault(); alert('تم إنشاء الحساب بنجاح');">
+          <div class="form-group">
+            <label for="fullname">الاسم بالكامل</label>
+            <input type="text" id="fullname" name="fullname" required>
+          </div>
+
+          <div class="form-group">
+            <label for="signup-id">الرقم القومي</label>
+            <input type="text" id="signup-id" name="national_id" maxlength="14" required>
+          </div>
+
+          <div class="form-group">
+            <label for="pass">كلمة المرور</label>
+            <input type="password" id="pass" name="password" required>
+          </div>
+
+          <div class="form-group">
+            <label for="confirm-pass">تأكيد كلمة المرور</label>
+            <input type="password" id="confirm-pass" name="confirm_password" required>
+          </div>
+
+          <button type="submit" id="signup-submit" class="submit-btn">إنشاء حساب</button>
+        </form>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    function toggleSignupOverlay() {
+      const modal = document.getElementById('signup-modal');
+      modal.classList.toggle('hidden');
+    }
+  </script>
+</body>
+</html>

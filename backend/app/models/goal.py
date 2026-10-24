@@ -12,7 +12,7 @@ Defines core Pydantic v2 contracts for goal-directed multi-step navigation:
 - GoalStepResponse: Return payload from POST /v1/chat/goal_step
 """
 
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Union
 from pydantic import BaseModel, Field, PrivateAttr, field_validator, model_validator
 
 from app.models.action import ActionType
@@ -36,6 +36,10 @@ class PlanStep(BaseModel):
     reason: Optional[PlanStepReason] = Field(default=None, description="Exploration rationale: reveal_menu, navigate, search, backtrack, act")
     expect: Optional[str] = Field(default=None, description="Expected observable outcome or element appearance after step execution")
     same_tab: Optional[bool] = Field(default=None, description="Prefer navigating within the same tab")
+    vault_login: Optional[bool] = Field(
+        default=None,
+        description="Optional flag indicating step fills/submits a confirmed vault login, bypassing client credential banner.",
+    )
 
 
 
@@ -145,6 +149,7 @@ InputFieldKind = Literal[
     "email",
     "password",
     "otp",
+    "login_id",
     "other",
 ]
 
@@ -291,6 +296,10 @@ class GoalStepRequest(BaseModel):
         description="Client declared capabilities",
     )
     tab_context: Optional[TabContext] = Field(default=None, description="Multi-tab session context")
+    vault_hints: Optional[List[Union[Dict[str, Any], str]]] = Field(
+        default=None,
+        description="Vault token hints for current origin",
+    )
 
     @field_validator("dom_map", mode="before")
     @classmethod
@@ -316,3 +325,4 @@ class GoalStepResponse(BaseModel):
     switch_tab_id: Optional[int] = Field(default=None, description="Directive to switch active tab")
     requires_origin_confirmation: bool = Field(default=False, description="Gate for cross-origin confirmation")
     assisted_click: Optional[Dict[str, Any]] = Field(default=None, description="Assisted click prompt configuration")
+    vault_clear: Optional[List[str]] = Field(default=None, description="Vault tokens to clear on origin auth failure")

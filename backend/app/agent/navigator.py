@@ -29,9 +29,12 @@ from app.agent.intent_synonyms import (
     extract_search_keywords,
     score_text_similarity,
     _normalize_text,
+    _tokenize_text,
+    matches_any_keyword,
 )
 from app.agent.jev_client import get_jev_client
 from app.agent.sanitize import strip_pii_from_dom
+from app.agent.form_filler import _is_control_wrong
 from app.i18n import resolve_reply_language, t
 from app.models.action import ActionType
 from app.models.dom import DomNode
@@ -204,10 +207,23 @@ def _build_tried_summary(nav_state: Dict[str, Any], fallback_goal: str) -> str:
     return f"'{fallback_goal}'"
 
 
+CTA_GENERIC_KEYWORDS: Set[str] = {
+    # Arabic
+    "ابدأ الخدمة", "ابدا الخدمة", "ابدأ", "ابدا", "تقديم الطلب", "قدّم الآن", "قدم الآن", "قدم الان",
+    "الدخول للخدمة", "الدخول للخدمه", "استخدم الخدمة", "استخدم الخدمه",
+    # English
+    "start", "start service", "apply", "apply now", "get started", "request",
+}
+
+
+_matches_whole_keyword = matches_any_keyword
+
+
 def _score_dom_candidate(
     node: Dict[str, Any],
     goal: str,
     milestone_desc: str,
+    dom_context: Optional[Dict[str, Any]] = None,
 ) -> float:
     """
     Ranks a visible or latent DOM node against the active milestone and goal.
@@ -243,6 +259,23 @@ def _score_dom_candidate(
     if canon_key in ("all_services", "sitemap"):
         if any(w in _normalize_text(goal) for w in ("خدم", "بحث", "استعلام", "استفسار", "دفع", "تجديد", "سداد", "service", "search", "inquir", "pay", "renew", "apply")):
             base_score = max(base_score, 0.55)
+
+    # 2b. Target service page Call-To-Action (CTA) boost (WS12 E5 / E-F4)
+    # Requires BOTH:
+    # (a) section_label, breadcrumb, or page matches the goal
+    # (b) no relevant form is currently visible
+    sec_lbl = str(node.get("section_label") or "")
+    bc = node.get("breadcrumb") or []
+    sec_matches = bool(sec_lbl and score_text_similarity(goal, sec_lbl) >= 0.35)
+    bc_matches = bool(isinstance(bc, list) and any(b and score_text_similarity(goal, str(b)) >= 0.35 for b in bc))
+    page_matches = bool(dom_context and dom_context.get("page_matches_goal"))
+    form_visible = bool(dom_context and dom_context.get("form_visible"))
+
+    if (sec_matches or bc_matches or page_matches) and not form_visible:
+        landmark = str(node.get("landmark", "")).lower()
+        if landmark not in ("nav", "navigation", "header", "banner", "footer", "contentinfo"):
+            if matches_any_keyword(clean_lbl, CTA_GENERIC_KEYWORDS):
+                base_score = max(base_score, 0.90)
 
     # 3. Breadcrumb matching: boost candidates whose ancestor trail matches the goal
     breadcrumb = node.get("breadcrumb") or []
@@ -349,6 +382,7 @@ async def plan_milestone_step(
     history: Optional[List[Dict[str, Any]]] = None,
     language: Optional[str] = None,
     goal_state: Optional[GoalState] = None,
+    wrong_controls: Optional[List[Any]] = None,
 ) -> AgenticPlan:
     """
     Resolves the active milestone into concrete, DOM-validated PlanSteps on the current page.
@@ -454,10 +488,50 @@ async def plan_milestone_step(
             entry["sensitive"] = True
         concise_dom.append(entry)
 
+    # Target service page context signals (E5)
+    headings = [
+        str(n.get("resolved_label") or n.get("aria_label") or n.get("inner_text") or "")
+        for n in safe_dom
+        if str(n.get("tag", "")).lower() in ("h1", "h2") or str(n.get("role", "")).lower() == "heading"
+    ]
+    title_text = str((page_text or "").split("\n")[0]) if page_text else ""
+    breadcrumbs_list = []
+    for n in safe_dom:
+        bc = n.get("breadcrumb")
+        if isinstance(bc, list):
+            breadcrumbs_list.extend([str(b) for b in bc if b])
+    section_labels_list = [str(n.get("section_label")) for n in safe_dom if n.get("section_label")]
+    page_context_texts = headings + ([title_text] if title_text else []) + breadcrumbs_list + section_labels_list
+
+    page_matches_goal = False
+    goal_tokens = [_normalize_text(t) for t in _tokenize_text(goal) if len(t) >= 3]
+    for pct in page_context_texts:
+        if pct and score_text_similarity(goal, pct) >= 0.35:
+            page_matches_goal = True
+            break
+        norm_pct = _normalize_text(pct)
+        if goal_tokens and any(st in norm_pct for st in goal_tokens):
+            page_matches_goal = True
+            break
+
+    form_inputs = [
+        n for n in safe_dom
+        if str(n.get("tag", "")).lower() in ("input", "select", "textarea")
+        and str(n.get("type", "")).lower() not in ("hidden", "submit", "button")
+        and str(n.get("role", "")).lower() not in ("search", "searchbox")
+        and str(n.get("name", "")).lower() not in ("q", "query", "search")
+    ]
+    form_visible = len(form_inputs) >= 1
+
+    dom_ctx = {
+        "page_matches_goal": page_matches_goal,
+        "form_visible": form_visible,
+    }
+
     # Hybrid Candidate Scoring across visible and latent nodes
     scored_candidates: List[Tuple[Dict[str, Any], float]] = []
     for node in safe_dom:
-        s = _score_dom_candidate(node, goal, milestone.description or "")
+        s = _score_dom_candidate(node, goal, milestone.description or "", dom_context=dom_ctx)
         scored_candidates.append((node, s))
     scored_candidates.sort(key=lambda x: x[1], reverse=True)
 
@@ -716,6 +790,11 @@ JSON RESPONSE:"""
                 excluded_ids.add(item)
         if last_executed_step:
             excluded_ids.add(last_executed_step.split(":")[-1])
+
+        wrong_controls = list(wrong_controls or ((goal_state.dom_state or {}).get("wrong_controls", []) if goal_state and isinstance(goal_state.dom_state, dict) else []))
+        for node in safe_dom:
+            if _is_control_wrong(node, wrong_controls):
+                excluded_ids.add(str(node.get("id")))
 
         for node, sc in scored_candidates:
             nid = str(node.get("id"))

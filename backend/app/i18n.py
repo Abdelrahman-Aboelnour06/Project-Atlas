@@ -106,6 +106,15 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "form_validation_error_reask": "Please check and re-enter a valid {field}.",
         "form_validation_failed_max_attempts": "Failed to validate {field} after multiple attempts. Stopping goal execution.",
         "form_confirm_submit": "Ready to submit the form. Do you want to proceed?",
+        "auth_login_saved_confirm": "I'll log you in using the saved credentials for this site. Proceed?",
+        "auth_credential_prompt": "Login credentials are saved encrypted on this device only and are never sent to Atlas servers.",
+        "auth_label_password": "Password",
+        "auth_label_identifier_fallback": "Username / Email",
+        "auth_no_account_option": "I don't have an account",
+        "auth_signup_handoff_prompt": "Please create an account on the page yourself, then click 'Done, continue'.",
+        "auth_signup_still_open": "The sign-up page is still open. Please finish creating your account on the page, then click 'Done, continue'.",
+        "auth_done_continue_option": "Done, continue",
+        "auth_login_manual_handoff": "Please log in on the page yourself, then click 'Done, continue'.",
 
         # Navigator
         "nav_cancelled_action": "No problem, I've cancelled that action for you.",
@@ -125,6 +134,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         # Router & Loop (WS5)
         "router_goal_ack": "I'm on it! Starting to work towards your goal: '{goal}'",
         "loop_repeated_action_limit": "Goal execution stopped: the same action on element '{element}' was repeated 3 times without progress.",
+        "loop_url_revisit_limit": "Goal execution stopped: the same page was revisited 3 times without progress.",
     },
     "ar-EG": {
         # Search actions
@@ -215,6 +225,15 @@ STRINGS: Dict[str, Dict[str, str]] = {
         "form_validation_error_reask": "يرجى التأكد من صحة {field} وإعادة إدخاله.",
         "form_validation_failed_max_attempts": "تعذر التحقق من صحة {field} بعد عدة محاولات. تم إيقاف تنفيذ الهدف.",
         "form_confirm_submit": "جاهز لإرسال النموذج. تحب تكمل؟",
+        "auth_login_saved_confirm": "هسجّل دخولك بالحساب المحفوظ للموقع ده. أكمل؟",
+        "auth_credential_prompt": "بيانات تسجيل الدخول بتتحفظ مشفرة على جهازك ده بس ومش بتتبعت لسيرفرات أطلس.",
+        "auth_label_password": "كلمة المرور",
+        "auth_label_identifier_fallback": "اسم المستخدم أو البريد الإلكتروني",
+        "auth_no_account_option": "معنديش حساب",
+        "auth_signup_handoff_prompt": "اعمل حساب بنفسك في الصفحة، وبعدين اضغط «خلصت، كمل»",
+        "auth_signup_still_open": "صفحة إنشاء الحساب لسه مفتوحة. كمّل تسجيل حسابك، وبعدين اضغط «خلصت، كمل»",
+        "auth_done_continue_option": "خلصت، كمل",
+        "auth_login_manual_handoff": "سجّل دخولك بنفسك في الصفحة، وبعدين اضغط «خلصت، كمل»",
 
         # Navigator
         "nav_cancelled_action": "ولا يهمك، لغيت العملية دي علشانك.",
@@ -234,6 +253,7 @@ STRINGS: Dict[str, Dict[str, str]] = {
         # Router & Loop (WS5)
         "router_goal_ack": "تمام، جاري العمل على تحقيق هدفك: '{goal}'",
         "loop_repeated_action_limit": "تم إيقاف تنفيذ الهدف: تكرر نفس الإجراء على العنصر '{element}' 3 مرات دون تقدم.",
+        "loop_url_revisit_limit": "تم إيقاف تنفيذ الهدف: تمت زيارة نفس الصفحة 3 مرات دون تقدم.",
     },
 }
 
