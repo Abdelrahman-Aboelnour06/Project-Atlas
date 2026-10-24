@@ -86,7 +86,91 @@ const dispatchMouseSequence = (el, detail = 1) => {
     el.dispatchEvent(new MouseEvent('mousedown', eventInit));
     el.dispatchEvent(new PointerEvent('pointerup', eventInit));
     el.dispatchEvent(new MouseEvent('mouseup', eventInit));
-    el.dispatchEvent(new MouseEvent('click', eventInit));
+};
+
+const DIRECT_INTERACTIVE_ROLES = new Set([
+    'button',
+    'link',
+    'tab',
+    'menuitem',
+    'checkbox',
+    'radio',
+    'switch',
+    'option',
+    'treeitem',
+    'menuitemcheckbox',
+    'menuitemradio',
+    'combobox',
+    'textbox',
+    'searchbox',
+]);
+
+const INTERACTIVE_DESCENDANT_SELECTOR = 'a[href], button, input, select, textarea, summary, [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="checkbox"], [role="radio"], [role="switch"], [role="option"], [role="treeitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="combobox"], [role="textbox"], [role="searchbox"], [onclick]';
+
+const isDirectlyInteractive = (el) => {
+    if (!el || el.nodeType !== 1) return false;
+    const tag = (el.tagName || '').toLowerCase();
+    if (['a', 'button', 'input', 'select', 'textarea', 'summary'].includes(tag)) {
+        return true;
+    }
+    const role = (el.getAttribute?.('role') || '').toLowerCase();
+    if (DIRECT_INTERACTIVE_ROLES.has(role)) {
+        return true;
+    }
+    if (Boolean(el.isContentEditable) || el.hasAttribute?.('contenteditable')) {
+        return true;
+    }
+    if (el.hasAttribute?.('onclick') || typeof el.onclick === 'function') {
+        return true;
+    }
+    return false;
+};
+
+const isUsableInteractiveDescendant = (cand) => {
+    if (!cand || cand.nodeType !== 1) return false;
+    const tag = (cand.tagName || '').toLowerCase();
+    if (tag === 'input') {
+        const inputType = (cand.type || cand.getAttribute?.('type') || '').toLowerCase();
+        if (inputType === 'hidden') return false;
+    }
+    if (cand.disabled || cand.getAttribute?.('aria-disabled') === 'true') {
+        return false;
+    }
+    if (typeof cand.closest === 'function' && cand.closest('[aria-hidden="true"]')) {
+        return false;
+    }
+    if (typeof cand.getClientRects === 'function' && cand.getClientRects().length === 0) {
+        return false;
+    }
+    return true;
+};
+
+const resolveClickTarget = (el) => {
+    if (!el || el.nodeType !== 1) return el;
+    if (isDirectlyInteractive(el)) {
+        return el;
+    }
+    if (typeof el.querySelectorAll === 'function') {
+        const rawCandidates = el.querySelectorAll(INTERACTIVE_DESCENDANT_SELECTOR);
+        const candidates = [];
+        for (let i = 0; i < rawCandidates.length; i++) {
+            if (isUsableInteractiveDescendant(rawCandidates[i])) {
+                candidates.push(rawCandidates[i]);
+            }
+        }
+        if (candidates.length === 1) {
+            const cand = candidates[0];
+            const wrapperVisibleText = (el.innerText || el.textContent || '').trim().replace(/\s+/g, ' ');
+            let candText = (cand.innerText || cand.textContent || '').trim().replace(/\s+/g, ' ');
+            if (!candText) {
+                candText = (cand.getAttribute?.('aria-label') || '').trim().replace(/\s+/g, ' ');
+            }
+            if (candText.length > 0 && candText.length >= wrapperVisibleText.length / 2) {
+                return cand;
+            }
+        }
+    }
+    return el;
 };
 
 let lastActionElement = null;
@@ -107,13 +191,16 @@ const checkAndArmTargetBlank = (link) => {
 };
 
 const doClick = (el, options = {}) => {
-    lastActionElement = el;
-    scrollToElement(el);
-    glow(el);
-    el.focus();
+    const target = resolveClickTarget(el);
+    lastActionElement = target;
+    scrollToElement(target);
+    glow(target);
+    if (typeof target.focus === 'function') {
+        target.focus();
+    }
 
     const sameTab = Boolean(options.sameTab);
-    const link = el.tagName === 'A' ? el : (el.closest?.('a[href]') || el.querySelector?.('a[href]'));
+    const link = target.tagName === 'A' ? target : target.closest?.('a[href]');
     let originalTarget = null;
     let hadTarget = false;
     if (link) {
@@ -128,113 +215,21 @@ const doClick = (el, options = {}) => {
     }
 
     try {
-        dispatchMouseSequence(el, 1);
-        el.click();
-
-        if (link && link !== el && link.href) {
-            link.click();
-            return;
-        }
-
-        // SPA child dispatch: try clicking a role=link/button child if present
-        const clickableChild = el.querySelector?.('[role="link"], [role="button"], a[href]');
-        if (clickableChild && clickableChild !== el) {
-            clickableChild.click();
-        }
-    } finally {
-        if (link && sameTab) {
-            if (hadTarget && originalTarget !== null) {
-                link.setAttribute('target', originalTarget);
-                link.target = originalTarget;
-            } else {
-                link.removeAttribute?.('target');
-                link.target = '';
-            }
-        }
-    }
-};
-
-const doOpen = async (el, options = {}) => {
-    lastActionElement = el;
-    scrollToElement(el);
-    glow(el);
-    el.focus();
-
-    const sameTab = Boolean(options.sameTab);
-    const link = el.tagName === 'A' ? el : (el.closest?.('a[href]') || el.querySelector?.('a[href]'));
-    let originalTarget = null;
-    let hadTarget = false;
-    if (link) {
-        if (sameTab) {
-            hadTarget = link.hasAttribute ? link.hasAttribute('target') : (link.getAttribute('target') !== null);
-            originalTarget = link.getAttribute('target');
-            link.setAttribute('target', '_self');
-            link.target = '_self';
+        dispatchMouseSequence(target, 1);
+        if (typeof target.click === 'function') {
+            target.click();
         } else {
-            checkAndArmTargetBlank(link);
-        }
-    }
-
-    try {
-        // 1. First click in sequence (detail: 1)
-        dispatchMouseSequence(el, 1);
-        el.click();
-
-        await new Promise((r) => setTimeout(r, 60));
-
-        // 2. Second click in sequence (detail: 2) + dblclick
-        const rect = el.getBoundingClientRect();
-        const clientX = rect.left + rect.width / 2;
-        const clientY = rect.top + rect.height / 2;
-        const dblInit = {
-            bubbles: true,
-            cancelable: true,
-            view: window,
-            detail: 2,
-            clientX,
-            clientY,
-        };
-        el.dispatchEvent(new PointerEvent('pointerdown', dblInit));
-        el.dispatchEvent(new MouseEvent('mousedown', dblInit));
-        el.dispatchEvent(new PointerEvent('pointerup', dblInit));
-        el.dispatchEvent(new MouseEvent('mouseup', dblInit));
-        el.dispatchEvent(new MouseEvent('click', dblInit));
-        el.dispatchEvent(new MouseEvent('dblclick', dblInit));
-
-        // 3. Enter keypress on the element AND on document (apps like Google Drive listen globally)
-        const enterInit = {
-            key: 'Enter',
-            code: 'Enter',
-            keyCode: 13,
-            which: 13,
-            bubbles: true,
-            cancelable: true,
-            view: window,
-        };
-        el.dispatchEvent(new KeyboardEvent('keydown', enterInit));
-        el.dispatchEvent(new KeyboardEvent('keypress', enterInit));
-        el.dispatchEvent(new KeyboardEvent('keyup', enterInit));
-        // Also dispatch on document for apps with global keyboard listeners
-        document.dispatchEvent(new KeyboardEvent('keydown', enterInit));
-        document.dispatchEvent(new KeyboardEvent('keyup', enterInit));
-
-        // 4. If anchor with href — navigate directly (most reliable for links)
-        if (link && link.href) {
-            link.click();
-            return;
-        }
-
-        // 5. React/SPA child dispatch: for rows in apps like Google Drive where the real
-        //    event listener lives on a specific child element (aria name cell, icon div, etc.)
-        //    rather than the row container itself.
-        await new Promise((r) => setTimeout(r, 40));
-        const clickableChild = el.querySelector('[role="link"], [role="button"], a[href]') ||
-            el.querySelector('[data-id], [data-itemid], [data-entryid]');
-        if (clickableChild && clickableChild !== el) {
-            clickableChild.focus();
-            clickableChild.click();
-            clickableChild.dispatchEvent(new MouseEvent('dblclick', {
-                bubbles: true, cancelable: true, view: window, detail: 2, clientX, clientY,
+            const rect = target.getBoundingClientRect();
+            const clientX = rect.left + rect.width / 2;
+            const clientY = rect.top + rect.height / 2;
+            target.dispatchEvent(new MouseEvent('click', {
+                bubbles: true,
+                cancelable: true,
+                view: window,
+                detail: 1,
+                clientX,
+                clientY,
+                buttons: 1,
             }));
         }
     } finally {
@@ -250,19 +245,117 @@ const doOpen = async (el, options = {}) => {
     }
 };
 
+const doOpen = async (el, options = {}) => {
+    const target = resolveClickTarget(el);
+    lastActionElement = target;
+    scrollToElement(target);
+    glow(target);
+    if (typeof target.focus === 'function') {
+        target.focus();
+    }
+
+    const sameTab = Boolean(options.sameTab);
+    const link = target.tagName === 'A' ? target : target.closest?.('a[href]');
+    const isAnchorWithHref = Boolean(link && (link.hasAttribute ? link.hasAttribute('href') : Boolean(link.getAttribute?.('href') || link.href)));
+
+    // Change 3: For an <a href> target with action "open", do ONE activation: a double click on a link must not navigate twice.
+    if (isAnchorWithHref) {
+        doClick(target, options);
+        return;
+    }
+
+    let originalTarget = null;
+    let hadTarget = false;
+    if (link) {
+        if (sameTab) {
+            hadTarget = link.hasAttribute ? link.hasAttribute('target') : (link.getAttribute('target') !== null);
+            originalTarget = link.getAttribute('target');
+            link.setAttribute('target', '_self');
+            link.target = '_self';
+        } else {
+            checkAndArmTargetBlank(link);
+        }
+    }
+
+    try {
+        // 1. First click in sequence (detail: 1)
+        dispatchMouseSequence(target, 1);
+        if (typeof target.click === 'function') {
+            target.click();
+        } else {
+            const rect = target.getBoundingClientRect();
+            const clientX = rect.left + rect.width / 2;
+            const clientY = rect.top + rect.height / 2;
+            target.dispatchEvent(new MouseEvent('click', {
+                bubbles: true,
+                cancelable: true,
+                view: window,
+                detail: 1,
+                clientX,
+                clientY,
+                buttons: 1,
+            }));
+        }
+
+        await new Promise((r) => setTimeout(r, 60));
+
+        // 2. Second click in sequence (detail: 2) + dblclick
+        const rect = target.getBoundingClientRect();
+        const clientX = rect.left + rect.width / 2;
+        const clientY = rect.top + rect.height / 2;
+        const dblInit = {
+            bubbles: true,
+            cancelable: true,
+            view: window,
+            detail: 2,
+            clientX,
+            clientY,
+            buttons: 1,
+        };
+        target.dispatchEvent(new PointerEvent('pointerdown', dblInit));
+        target.dispatchEvent(new MouseEvent('mousedown', dblInit));
+        target.dispatchEvent(new PointerEvent('pointerup', dblInit));
+        target.dispatchEvent(new MouseEvent('mouseup', dblInit));
+        target.dispatchEvent(new MouseEvent('click', dblInit));
+        target.dispatchEvent(new MouseEvent('dblclick', dblInit));
+    } finally {
+        if (link && sameTab) {
+            if (hadTarget && originalTarget !== null) {
+                link.setAttribute('target', originalTarget);
+                link.target = originalTarget;
+            } else {
+                link.removeAttribute?.('target');
+                link.target = '';
+            }
+        }
+    }
+};
+
 const doTripleClick = async (el) => {
-    scrollToElement(el);
-    glow(el);
-    el.focus();
+    const target = resolveClickTarget(el);
+    scrollToElement(target);
+    glow(target);
+    if (typeof target.focus === 'function') {
+        target.focus();
+    }
 
     // 1. First click in sequence (detail: 1)
-    dispatchMouseSequence(el, 1);
-    el.click();
+    dispatchMouseSequence(target, 1);
+    if (typeof target.click === 'function') {
+        target.click();
+    } else {
+        const rect = target.getBoundingClientRect();
+        const clientX = rect.left + rect.width / 2;
+        const clientY = rect.top + rect.height / 2;
+        target.dispatchEvent(new MouseEvent('click', {
+            bubbles: true, cancelable: true, view: window, detail: 1, clientX, clientY, buttons: 1,
+        }));
+    }
 
     await new Promise((r) => setTimeout(r, 60));
 
     // 2. Second click in sequence (detail: 2) + dblclick
-    const rect = el.getBoundingClientRect();
+    const rect = target.getBoundingClientRect();
     const clientX = rect.left + rect.width / 2;
     const clientY = rect.top + rect.height / 2;
     const dblInit = {
@@ -272,13 +365,14 @@ const doTripleClick = async (el) => {
         detail: 2,
         clientX,
         clientY,
+        buttons: 1,
     };
-    el.dispatchEvent(new PointerEvent('pointerdown', dblInit));
-    el.dispatchEvent(new MouseEvent('mousedown', dblInit));
-    el.dispatchEvent(new PointerEvent('pointerup', dblInit));
-    el.dispatchEvent(new MouseEvent('mouseup', dblInit));
-    el.dispatchEvent(new MouseEvent('click', dblInit));
-    el.dispatchEvent(new MouseEvent('dblclick', dblInit));
+    target.dispatchEvent(new PointerEvent('pointerdown', dblInit));
+    target.dispatchEvent(new MouseEvent('mousedown', dblInit));
+    target.dispatchEvent(new PointerEvent('pointerup', dblInit));
+    target.dispatchEvent(new MouseEvent('mouseup', dblInit));
+    target.dispatchEvent(new MouseEvent('click', dblInit));
+    target.dispatchEvent(new MouseEvent('dblclick', dblInit));
 
     await new Promise((r) => setTimeout(r, 60));
 
@@ -290,19 +384,20 @@ const doTripleClick = async (el) => {
         detail: 3,
         clientX,
         clientY,
+        buttons: 1,
     };
-    el.dispatchEvent(new PointerEvent('pointerdown', triInit));
-    el.dispatchEvent(new MouseEvent('mousedown', triInit));
-    el.dispatchEvent(new PointerEvent('pointerup', triInit));
-    el.dispatchEvent(new MouseEvent('mouseup', triInit));
-    el.dispatchEvent(new MouseEvent('click', triInit));
+    target.dispatchEvent(new PointerEvent('pointerdown', triInit));
+    target.dispatchEvent(new MouseEvent('mousedown', triInit));
+    target.dispatchEvent(new PointerEvent('pointerup', triInit));
+    target.dispatchEvent(new MouseEvent('mouseup', triInit));
+    target.dispatchEvent(new MouseEvent('click', triInit));
 
     // Native browser triple-click behavior: select text contents if selectable
     if (typeof window !== 'undefined' && window.getSelection && document.createRange) {
         try {
             const selection = window.getSelection();
             const range = document.createRange();
-            range.selectNodeContents(el);
+            range.selectNodeContents(target);
             selection.removeAllRanges();
             selection.addRange(range);
         } catch (_) {}
@@ -324,25 +419,24 @@ const doMultiClick = async (el, count = 1, options = {}) => {
     }
 
     // For arbitrary N clicks > 3
-    scrollToElement(el);
-    glow(el);
-    el.focus();
+    const target = resolveClickTarget(el);
+    scrollToElement(target);
+    glow(target);
+    if (typeof target.focus === 'function') {
+        target.focus();
+    }
     for (let i = 1; i <= count; i++) {
         const detail = i <= 3 ? i : 1;
-        dispatchMouseSequence(el, detail);
-        el.click();
+        dispatchMouseSequence(target, detail);
+        const rect = target.getBoundingClientRect();
+        const clientX = rect.left + rect.width / 2;
+        const clientY = rect.top + rect.height / 2;
+        const init = {
+            bubbles: true, cancelable: true, view: window, detail, clientX, clientY, buttons: 1,
+        };
+        target.dispatchEvent(new MouseEvent('click', init));
         if (i === 2) {
-            const rect = el.getBoundingClientRect();
-            const clientX = rect.left + rect.width / 2;
-            const clientY = rect.top + rect.height / 2;
-            el.dispatchEvent(new MouseEvent('dblclick', {
-                bubbles: true,
-                cancelable: true,
-                view: window,
-                detail: 2,
-                clientX,
-                clientY,
-            }));
+            target.dispatchEvent(new MouseEvent('dblclick', init));
         }
         if (i < count) {
             await new Promise((r) => setTimeout(r, 60));
@@ -1444,6 +1538,9 @@ const executorApi = {
     setLastActionElement,
     installPopupBlockerHook,
     installNativeAuthHook,
+    resolveClickTarget,
+    isDirectlyInteractive,
+    isUsableInteractiveDescendant,
 };
 if (typeof window !== 'undefined') {
     window.AtlasExecutor = executorApi;

@@ -46,7 +46,7 @@
 
   // ── Page text extraction (for chat questions about site content) ──────────────
   const getPageText = () => {
-    if (!document.body) return "";
+    if (!document.body || typeof NodeFilter === "undefined" || typeof document.createTreeWalker !== "function") return "";
     const walker = document.createTreeWalker(
       document.body,
       NodeFilter.SHOW_TEXT,
@@ -430,8 +430,18 @@
   // ── Milestone 3: Yield to Human Agency (H21) ─────────────────────────────────
   let isPausedForHuman = false;
 
+  const isFieldlessHandoff = () => {
+    if (!currentGoalState) return false;
+    const status = currentGoalState.status;
+    if (status !== "awaiting_user_input") return false;
+    const awaitingReq = currentGoalState.awaiting || currentGoalState.awaiting_user_input;
+    const hasFields = awaitingReq && Array.isArray(awaitingReq.fields) && awaitingReq.fields.length > 0;
+    return !hasFields;
+  };
+
   const onHumanInteraction = (e) => {
     if (!e || !e.isTrusted || !isExecuting || isPausedForHuman) return;
+    if (isFieldlessHandoff()) return;
 
     // Filter Atlas internal UI events across closed Shadow DOM boundaries via composedPath() (L10)
     const path = typeof e.composedPath === "function" ? e.composedPath() : [];
@@ -771,6 +781,8 @@
       }
 
       formCard.remove();
+      const shadow = window.AtlasSidebar?.getShadowRoot?.();
+      shadow?.querySelectorAll?.(".atlas-chat-actions")?.forEach((el) => el.remove());
       // Masked confirmation without logging or speaking raw values
       window.AtlasSidebar?.addChatMessage?.("user", "•••••••• (Submitted)");
       onSubmitCallback(userInputs);
@@ -1105,6 +1117,7 @@
             pendingUserResponse = isAffirmative ? "yes" : "no";
             isExecuting = true;
             window.AtlasSidebar?.setExecuting?.(true);
+            window.AtlasSidebar?.setStatus?.("Resuming goal...", "info");
             executeGoalHop(currentGoalState);
           },
         });
@@ -1117,12 +1130,45 @@
         isHopInProgress = false;
         window.AtlasSidebar?.setExecuting?.(false);
         const awaitingReq = data.goal_state?.awaiting || data.awaiting || data.awaiting_user_input || data.goal_state?.awaiting_user_input;
+        if (currentGoalState) {
+          currentGoalState.status = "awaiting_user_input";
+          currentGoalState.awaiting = awaitingReq;
+        }
         const promptText = awaitingReq?.prompt || data.reply || "Please provide the required details:";
         window.AtlasSidebar?.setStatus?.("Awaiting input", "info");
-        window.AtlasSidebar?.addChatMessage?.("agent", promptText);
+
+        const hasFields = awaitingReq && Array.isArray(awaitingReq.fields) && awaitingReq.fields.length > 0;
+        const rawOptions = awaitingReq && Array.isArray(awaitingReq.options) ? awaitingReq.options : [];
+        let chipActions = null;
+
+        const activeLang = window.AtlasSidebar?.getLanguage?.() || currentGoalState?.language || "en-US";
+        const isAr = activeLang.startsWith("ar");
+
+        if (rawOptions.length > 0) {
+          chipActions = rawOptions.map((opt) => ({
+            label: typeof opt === "string" ? opt : (opt.label || opt.value),
+            value: typeof opt === "string" ? opt : (opt.value || opt.label),
+          }));
+        } else if (!hasFields) {
+          chipActions = [{
+            label: isAr ? "خلصت، كمل" : "Done, continue",
+            value: isAr ? "خلصت" : "done",
+          }];
+        }
+
+        const chatOptions = chipActions ? {
+          actions: chipActions,
+          onAction: (choice) => {
+            const shadow = window.AtlasSidebar?.getShadowRoot?.();
+            shadow?.querySelector?.(".atlas-user-input-form-card")?.remove();
+            handleChatInput(choice);
+          },
+        } : null;
+
+        window.AtlasSidebar?.addChatMessage?.("agent", promptText, chatOptions);
         speakIfVoiceMode(promptText);
 
-        if (awaitingReq && Array.isArray(awaitingReq.fields) && awaitingReq.fields.length > 0) {
+        if (hasFields) {
           renderAwaitingUserInputForm(awaitingReq, (userInputs) => {
             pendingUserInputs = userInputs;
             isExecuting = true;
@@ -2339,6 +2385,7 @@ const handleElementClick = async (atlasId) => {
       setExecuting: (val) => { isExecuting = Boolean(val); },
       isExecuting: () => isExecuting,
       isHopInProgress: () => isHopInProgress,
+      isFieldlessHandoff: () => isFieldlessHandoff(),
       getCurrentGoalState: () => currentGoalState,
       setCurrentGoalState: (s) => { currentGoalState = s; },
       handleChatInput,
@@ -2376,6 +2423,7 @@ const handleElementClick = async (atlasId) => {
       setExecuting: (val) => { isExecuting = Boolean(val); },
       isExecuting: () => isExecuting,
       isHopInProgress: () => isHopInProgress,
+      isFieldlessHandoff: () => isFieldlessHandoff(),
       getCurrentGoalState: () => currentGoalState,
       setCurrentGoalState: (s) => { currentGoalState = s; },
       handleChatInput,

@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Portal Click Counters & Toggle Fixture</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      padding: 24px;
+      margin: 0;
+      background: #f8fafc;
+      color: #0f172a;
+    }
+    .fixture-section {
+      background: #ffffff;
+      padding: 16px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      margin-bottom: 16px;
+    }
+    .portal-tile {
+      display: inline-block;
+      padding: 16px;
+      margin: 8px;
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+    }
+    /* Fixed overlay matching Pattern A modal detection heuristics */
+    #service-popup-modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(15, 23, 42, 0.65);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    #service-popup-modal.is-open {
+      display: flex;
+    }
+    .modal-card {
+      background: #ffffff;
+      padding: 24px;
+      border-radius: 8px;
+      min-width: 320px;
+      max-width: 500px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+    }
+  </style>
+</head>
+<body>
+  <h1>Interactive Elements & Click Event Counters</h1>
+
+  <div class="fixture-section">
+    <h2>D1 Controls</h2>
+    <div>
+      <button id="btn-plain">Plain Button</button>
+      <span id="btn-plain-counter">Clicks: 0</span>
+    </div>
+    <div style="margin-top: 10px;">
+      <a id="link-direct" href="#anchor-target">Direct Link</a>
+      <span id="link-direct-counter">Clicks: 0</span>
+    </div>
+    <div style="margin-top: 10px;">
+      <a id="link-nested" href="#nested-target">
+        <span id="span-nested" data-atlas-id="span_nested_el">Nested Span In Link</span>
+      </a>
+      <span id="span-nested-counter">Span Clicks: 0</span>
+      <span id="link-nested-counter">Link Clicks: 0</span>
+    </div>
+    <div style="margin-top: 10px;">
+      <div id="div-btn-with-link" role="button" tabindex="0">
+        Div Button Container
+        <a id="child-link-of-div" href="#child-link-dest">Child Link Inside Div</a>
+      </div>
+      <span id="div-btn-counter">Div Clicks: 0</span>
+      <span id="child-link-counter">Child Link Clicks: 0</span>
+    </div>
+    <div style="margin-top: 10px;">
+      <label>
+        <input id="chk-toggle" type="checkbox" aria-label="Test Checkbox"> Test Checkbox
+      </label>
+      <span id="chk-click-counter">Clicks: 0</span>
+      <span id="chk-change-counter">Changes: 0</span>
+    </div>
+  </div>
+
+  <div class="fixture-section">
+    <h2>Rule 1: Wrapper Resolution</h2>
+    <!-- Tile with single link -->
+    <div id="tile-with-link" class="portal-tile">
+      <a id="tile-child-link" href="#tile-dest">Tile Child Link</a>
+    </div>
+    <span id="tile-link-counter">Clicks: 0</span>
+
+    <!-- Tile with single button -->
+    <div id="tile-with-button" class="portal-tile">
+      <button id="tile-child-button">Tile Child Button</button>
+    </div>
+    <span id="tile-button-counter">Clicks: 0</span>
+  </div>
+
+  <div class="fixture-section">
+    <h2>D-F1: Wrapper Target Resolution & Widget Protection</h2>
+    <!-- 1. Hidden input + link -->
+    <div id="wrap-csrf-tile" class="portal-tile">
+      <input type="hidden" name="csrf" value="secret123">
+      <a id="link-csrf-tile" href="#t1">مركباتى</a>
+    </div>
+    <span id="link-csrf-counter">Clicks: 0</span>
+
+    <!-- 2. Disabled button + link -->
+    <div id="wrap-disabled-tile" class="portal-tile">
+      <a id="link-disabled-tile" href="#t5">Go</a>
+      <button id="btn-disabled-tile" disabled>x</button>
+    </div>
+    <span id="link-disabled-counter">Clicks: 0</span>
+
+    <!-- 3. Tile with cursor:pointer + link -->
+    <div id="wrap-pointer-tile" class="portal-tile" style="cursor:pointer">
+      <a id="link-pointer-tile" href="#t4">خدمة</a>
+    </div>
+    <span id="link-pointer-counter">Clicks: 0</span>
+
+    <!-- 4. Treeitem with expand button -->
+    <ul role="tree" style="list-style:none; padding:0; margin:8px 0;">
+      <li id="item-treeitem" role="treeitem" tabindex="0" class="portal-tile" style="display:block;">
+        <button id="btn-tree-expand" aria-label="expand">▸</button>
+        <span id="span-tree-text">Folder</span>
+      </li>
+    </ul>
+    <span id="treeitem-counter">Clicks: 0</span>
+    <span id="tree-expand-counter">Expand Clicks: 0</span>
+
+    <!-- 5. Switch widget with help button -->
+    <div id="switch-widget" role="switch" aria-checked="false" tabindex="0" class="portal-tile" style="display:inline-flex; align-items:center; gap:8px;">
+      <span class="knob">🔘</span>
+      <span>Toggle Setting</span>
+      <button id="btn-switch-help">?</button>
+    </div>
+    <span id="switch-counter">Clicks: 0</span>
+    <span id="switch-help-counter">Help Clicks: 0</span>
+  </div>
+
+  <div class="fixture-section">
+    <h2>Popup Toggle & History Back</h2>
+    <button id="btn-toggle-popup" aria-expanded="false">Toggle Service Modal</button>
+    <span id="toggle-click-counter">Clicks: 0</span>
+
+    <button id="btn-history-back" style="margin-left: 16px;">Go Back</button>
+
+    <div style="margin-top: 12px;">
+      <button id="btn-dblclick">Double Click Target</button>
+      <span id="btn-dblclick-counter">Clicks: 0</span>
+      <span id="btn-dblclick-event-counter">DblClicks: 0</span>
+
+      <a id="link-dblclick" href="#dblclick-dest" style="margin-left: 16px;">Double Click Link Target</a>
+      <span id="link-dblclick-counter">Clicks: 0</span>
+    </div>
+  </div>
+
+  <!-- Modal overlay (Pattern A: fixed covering >= 60% viewport with centered card) -->
+  <div id="service-popup-modal" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <h3 id="modal-title">Service Details</h3>
+      <p>This is the service modal content.</p>
+      <input id="modal-input-name" placeholder="Enter service reference">
+      <button id="modal-btn-close">Close Modal</button>
+    </div>
+  </div>
+
+  <script>
+    window.__atlasCounters = {
+      plainBtnClicks: 0,
+      plainBtnActivations: 0,
+      linkDirectClicks: 0,
+      linkDirectActivations: 0,
+      spanNestedClicks: 0,
+      linkNestedClicks: 0,
+      divBtnClicks: 0,
+      divBtnActivations: 0,
+      childLinkClicks: 0,
+      chkClicks: 0,
+      chkChanges: 0,
+      tileLinkClicks: 0,
+      tileButtonClicks: 0,
+      toggleBtnClicks: 0,
+      btnDblClicks: 0,
+      btnDblClickEvents: 0,
+      linkDblClicks: 0,
+      linkDblActivations: 0,
+      linkCsrfClicks: 0,
+      linkDisabledClicks: 0,
+      linkPointerClicks: 0,
+      treeitemClicks: 0,
+      treeExpandClicks: 0,
+      switchClicks: 0,
+      switchHelpClicks: 0,
+    };
+
+    // Plain button
+    const plainBtn = document.getElementById('btn-plain');
+    plainBtn.addEventListener('click', (e) => {
+      window.__atlasCounters.plainBtnClicks++;
+      window.__atlasCounters.plainBtnActivations++;
+      document.getElementById('btn-plain-counter').textContent = 'Clicks: ' + window.__atlasCounters.plainBtnClicks;
+    });
+
+    // Direct link
+    const directLink = document.getElementById('link-direct');
+    directLink.addEventListener('click', (e) => {
+      window.__atlasCounters.linkDirectClicks++;
+      window.__atlasCounters.linkDirectActivations++;
+      document.getElementById('link-direct-counter').textContent = 'Clicks: ' + window.__atlasCounters.linkDirectClicks;
+    });
+
+    // Nested span in link
+    const nestedSpan = document.getElementById('span-nested');
+    const nestedLink = document.getElementById('link-nested');
+    nestedSpan.addEventListener('click', (e) => {
+      window.__atlasCounters.spanNestedClicks++;
+      document.getElementById('span-nested-counter').textContent = 'Span Clicks: ' + window.__atlasCounters.spanNestedClicks;
+    });
+    nestedLink.addEventListener('click', (e) => {
+      window.__atlasCounters.linkNestedClicks++;
+      document.getElementById('link-nested-counter').textContent = 'Link Clicks: ' + window.__atlasCounters.linkNestedClicks;
+    });
+
+    // Div with role=button containing child link
+    const divBtn = document.getElementById('div-btn-with-link');
+    const childLink = document.getElementById('child-link-of-div');
+    divBtn.addEventListener('click', (e) => {
+      window.__atlasCounters.divBtnClicks++;
+      window.__atlasCounters.divBtnActivations++;
+      document.getElementById('div-btn-counter').textContent = 'Div Clicks: ' + window.__atlasCounters.divBtnClicks;
+    });
+    childLink.addEventListener('click', (e) => {
+      window.__atlasCounters.childLinkClicks++;
+      document.getElementById('child-link-counter').textContent = 'Child Link Clicks: ' + window.__atlasCounters.childLinkClicks;
+    });
+
+    // Checkbox
+    const chk = document.getElementById('chk-toggle');
+    chk.addEventListener('click', (e) => {
+      window.__atlasCounters.chkClicks++;
+      document.getElementById('chk-click-counter').textContent = 'Clicks: ' + window.__atlasCounters.chkClicks;
+    });
+    chk.addEventListener('change', (e) => {
+      window.__atlasCounters.chkChanges++;
+      document.getElementById('chk-change-counter').textContent = 'Changes: ' + window.__atlasCounters.chkChanges;
+    });
+
+    // Tile link
+    const tileLink = document.getElementById('tile-child-link');
+    tileLink.addEventListener('click', (e) => {
+      window.__atlasCounters.tileLinkClicks++;
+      document.getElementById('tile-link-counter').textContent = 'Clicks: ' + window.__atlasCounters.tileLinkClicks;
+    });
+
+    // Tile button
+    const tileBtn = document.getElementById('tile-child-button');
+    tileBtn.addEventListener('click', (e) => {
+      window.__atlasCounters.tileButtonClicks++;
+      document.getElementById('tile-button-counter').textContent = 'Clicks: ' + window.__atlasCounters.tileButtonClicks;
+    });
+
+    // Toggle popup modal
+    const toggleBtn = document.getElementById('btn-toggle-popup');
+    const modal = document.getElementById('service-popup-modal');
+    toggleBtn.addEventListener('click', (e) => {
+      window.__atlasCounters.toggleBtnClicks++;
+      document.getElementById('toggle-click-counter').textContent = 'Clicks: ' + window.__atlasCounters.toggleBtnClicks;
+      const isOpen = modal.classList.toggle('is-open');
+      toggleBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    });
+
+    const closeBtn = document.getElementById('modal-btn-close');
+    closeBtn.addEventListener('click', () => {
+      modal.classList.remove('is-open');
+      toggleBtn.setAttribute('aria-expanded', 'false');
+    });
+
+    // History back
+    const backBtn = document.getElementById('btn-history-back');
+    backBtn.addEventListener('click', () => {
+      history.back();
+    });
+
+    // Double click button
+    const dblBtn = document.getElementById('btn-dblclick');
+    dblBtn.addEventListener('click', () => {
+      window.__atlasCounters.btnDblClicks++;
+      document.getElementById('btn-dblclick-counter').textContent = 'Clicks: ' + window.__atlasCounters.btnDblClicks;
+    });
+    dblBtn.addEventListener('dblclick', () => {
+      window.__atlasCounters.btnDblClickEvents++;
+      document.getElementById('btn-dblclick-event-counter').textContent = 'DblClicks: ' + window.__atlasCounters.btnDblClickEvents;
+    });
+
+    // Double click link
+    const dblLink = document.getElementById('link-dblclick');
+    dblLink.addEventListener('click', () => {
+      window.__atlasCounters.linkDblClicks++;
+      window.__atlasCounters.linkDblActivations++;
+      document.getElementById('link-dblclick-counter').textContent = 'Clicks: ' + window.__atlasCounters.linkDblClicks;
+    });
+
+    // D-F1: 1. CSRF tile
+    document.getElementById('link-csrf-tile').addEventListener('click', () => {
+      window.__atlasCounters.linkCsrfClicks++;
+      document.getElementById('link-csrf-counter').textContent = 'Clicks: ' + window.__atlasCounters.linkCsrfClicks;
+    });
+
+    // D-F1: 2. Disabled button tile
+    document.getElementById('link-disabled-tile').addEventListener('click', () => {
+      window.__atlasCounters.linkDisabledClicks++;
+      document.getElementById('link-disabled-counter').textContent = 'Clicks: ' + window.__atlasCounters.linkDisabledClicks;
+    });
+
+    // D-F1: 3. Pointer tile
+    document.getElementById('link-pointer-tile').addEventListener('click', () => {
+      window.__atlasCounters.linkPointerClicks++;
+      document.getElementById('link-pointer-counter').textContent = 'Clicks: ' + window.__atlasCounters.linkPointerClicks;
+    });
+
+    // D-F1: 4. Treeitem
+    const treeitem = document.getElementById('item-treeitem');
+    treeitem.addEventListener('click', () => {
+      window.__atlasCounters.treeitemClicks++;
+      document.getElementById('treeitem-counter').textContent = 'Clicks: ' + window.__atlasCounters.treeitemClicks;
+    });
+    document.getElementById('btn-tree-expand').addEventListener('click', (e) => {
+      e.stopPropagation();
+      window.__atlasCounters.treeExpandClicks++;
+      document.getElementById('tree-expand-counter').textContent = 'Expand Clicks: ' + window.__atlasCounters.treeExpandClicks;
+    });
+
+    // D-F1: 5. Switch
+    const switchEl = document.getElementById('switch-widget');
+    switchEl.addEventListener('click', () => {
+      window.__atlasCounters.switchClicks++;
+      const current = switchEl.getAttribute('aria-checked') === 'true';
+      switchEl.setAttribute('aria-checked', current ? 'false' : 'true');
+      document.getElementById('switch-counter').textContent = 'Clicks: ' + window.__atlasCounters.switchClicks;
+    });
+    document.getElementById('btn-switch-help').addEventListener('click', (e) => {
+      e.stopPropagation();
+      window.__atlasCounters.switchHelpClicks++;
+      document.getElementById('switch-help-counter').textContent = 'Help Clicks: ' + window.__atlasCounters.switchHelpClicks;
+    });
+  </script>
+</body>
+</html>

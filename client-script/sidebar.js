@@ -1280,7 +1280,7 @@
         .map((act, idx) => {
           const rawLabel = typeof act === "string" ? act : (act.label || "");
           const label = escapeHtml(rawLabel);
-          const isConfirm = /yes|proceed|place|confirm|ok|نعم|تأكيد|موافق|استمرار|متابعة/i.test(rawLabel);
+          const isConfirm = /yes|proceed|place|confirm|ok|done|continue|نعم|تأكيد|موافق|استمرار|متابعة|خلصت|كمل/i.test(rawLabel);
           const isCancel = /no|cancel|stop|لا|إلغاء|الغاء|توقف/i.test(rawLabel);
           const extraClass = isConfirm ? "atlas-chip-confirm" : (isCancel ? "atlas-chip-cancel" : "");
           return `<button class="atlas-chip-btn ${extraClass}" data-chip-idx="${idx}">${label}</button>`;
@@ -1583,6 +1583,11 @@
     "Awaiting manual click (popup blocked)": "في انتظار النقر اليدوي (تم حظر النافذة المنبثقة)",
     "Awaiting browser credential...": "في انتظار بيانات اعتماد المتصفح...",
     "Browser credential verified": "تم التحقق من بيانات الاعتماد.",
+    "Awaiting confirmation": "في انتظار التأكيد...",
+    "Resuming goal...": "جارٍ استئناف الهدف...",
+    "Awaiting input": "في انتظار البيانات...",
+    "Completing action...": "جارٍ إكمال الإجراء...",
+    "Executing...": "جارٍ التنفيذ...",
   };
 
   const setStatus = (text, kind = "info", options = {}) => {
