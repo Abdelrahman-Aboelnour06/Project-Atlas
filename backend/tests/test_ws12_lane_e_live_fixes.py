@@ -22,6 +22,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.agent.intent_synonyms import (
+    matches_any_keyword,
+    matches_keyword_sequence,
+)
 from app.agent.form_filler import (
     _is_excluded_submit_candidate,
     _is_language_switch_control,
@@ -682,3 +686,438 @@ class TestE5TargetServiceGenericCTABoost:
 
         # Must pick the specific service link, NOT the generic 'ابدأ' button!
         assert picked_id == "link-violations", f"Expected 'link-violations', got '{picked_id}'"
+
+
+class TestEFReviewerFixes:
+    """WS12 Lane E Critical & High Reviewer Fixes (E-F1 through E-F13)."""
+
+    def test_ef1_arabic_and_latin_keyword_matching_unit_tests(self):
+        """
+        E-F1: Arabic keyword matching shared helper.
+        Tests all 6 required reviewer cases + Latin word boundary isolation.
+        """
+        # Case 1: exclude "رجوع للخلف" -> True
+        assert matches_any_keyword("رجوع للخلف", {"رجوع"}) is True
+
+        # Case 2: exclude "العودة للرئيسية" -> True
+        assert matches_any_keyword("العودة للرئيسية", {"عودة", "العودة", "الرئيسية"}) is True
+
+        # Case 3: submit semantics "استعلام عن المخالفات" -> True
+        assert matches_any_keyword("استعلام عن المخالفات", {"استعلام"}) is True
+
+        # Case 4: _is_field_required("الاسم (مطلوب)") -> True
+        assert _is_field_required({"resolved_label": "الاسم (مطلوب)"}) is True
+
+        # Case 5: CTA "ابدأ الخدمة الآن" -> True
+        assert matches_any_keyword("ابدأ الخدمة الآن", {"ابدأ الخدمة", "ابدا الخدمة"}) is True
+
+        # Case 6: classify_auth_wall(modal with heading "تسجيل الدخول إلى البوابة", an identifier input, button "متابعة") -> login
+        modal_nodes = [
+            {"id": "h-auth", "tag": "h2", "resolved_label": "تسجيل الدخول إلى البوابة", "in_modal": True},
+            {"id": "inp-id", "tag": "input", "type": "text", "resolved_label": "الرقم القومي", "in_modal": True},
+            {"id": "btn-sub", "tag": "button", "type": "submit", "resolved_label": "متابعة", "in_modal": True},
+        ]
+        res = classify_auth_wall(modal_nodes)
+        assert res is not None
+        assert res["type"] == "login"
+        assert res["identifier_ref"] == "inp-id"
+
+        # Latin word boundary negative tests
+        assert matches_any_keyword("Send feedback", {"back"}) is False
+        assert matches_any_keyword("Search", {"ar"}) is False
+        assert matches_any_keyword("Go back", {"back"}) is True
+
+    def test_ef2_ppo_page_with_login_header_link_not_auth_wall(self, client):
+        """
+        E-F2 (a): The PPO form page plus a header link "تسجيل الدخول" is NOT an auth wall,
+        and the goal completes without being blocked.
+        """
+        ppo_dom = load_fixture("portal_form_marked_required.json")
+        # Add a login link in header
+        modified_dom = list(ppo_dom) + [
+            {"id": "link-login", "tag": "a", "resolved_label": "تسجيل الدخول", "href": "/login", "landmark": "header"}
+        ]
+        auth_wall = classify_auth_wall(modified_dom)
+        assert auth_wall is None, "Page without modal and without password inputs must NOT be classified as an auth wall"
+
+        # Verify goal step execution proceeds with form filling, not auth handoff
+        payload = {
+            "goal": "الاستعلام عن مخالفات المرور",
+            "dom_map": modified_dom,
+            "current_url": "https://ppo.gov.eg/traffic",
+            "page_text": "النيابة العامة - الاستعلام عن مخالفات المرور\nالرقم القومي\nتسجيل الدخول",
+            "language": "ar-EG",
+            "api_key": DEMO_KEY,
+            "contract_version": 3,
+        }
+        res = client.post("/v1/chat/goal_step", json=payload)
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "awaiting_user_input"
+        awaiting = data["goal_state"]["awaiting"]
+        # Asks for form fields (national id, plate fields), NOT credential login card!
+        assert awaiting["kind"] == "missing_field"
+
+    def test_ef2_login_modal_with_long_heading_and_signup_popup_without_password(self):
+        """
+        E-F2 (b & c):
+        - Login modal with long heading classifies correctly.
+        - Signup popup with national ID + phone and 'إنشاء حساب' button but no password classifies as signup.
+        """
+        # b: Login modal with long heading
+        login_nodes = [
+            {"id": "h-login", "tag": "h1", "resolved_label": "تسجيل الدخول الموحد إلى البوابة الإلكترونية الحكومية", "in_modal": True},
+            {"id": "id-inp", "tag": "input", "type": "text", "resolved_label": "اسم المستخدم", "in_modal": True},
+            {"id": "pwd-inp", "tag": "input", "type": "password", "resolved_label": "كلمة المرور", "in_modal": True},
+            {"id": "btn-sub", "tag": "button", "type": "submit", "resolved_label": "دخول", "in_modal": True},
+        ]
+        res_b = classify_auth_wall(login_nodes)
+        assert res_b is not None
+        assert res_b["type"] == "login"
+        assert res_b["identifier_ref"] == "id-inp"
+        assert res_b["password_ref"] == "pwd-inp"
+
+        # c: Signup popup with national ID + phone and button 'إنشاء حساب' without password
+        signup_nodes = [
+            {"id": "h-srv", "tag": "h2", "resolved_label": "تسجيل مواطن جديد", "in_modal": True},
+            {"id": "nid-inp", "tag": "input", "type": "text", "resolved_label": "الرقم القومي", "in_modal": True},
+            {"id": "ph-inp", "tag": "input", "type": "tel", "resolved_label": "رقم المحمول", "in_modal": True},
+            {"id": "btn-signup", "tag": "button", "type": "submit", "resolved_label": "إنشاء حساب", "in_modal": True},
+        ]
+        res_c = classify_auth_wall(signup_nodes)
+        assert res_c is not None
+        assert res_c["type"] == "signup"
+        assert res_c["submit_ref"] == "btn-signup"
+
+    def test_ef3_results_in_modal_dialog_complete_goal_without_closing(self, client):
+        """
+        E-F3: Results displayed in an aria-modal / role=dialog popup must complete the goal,
+        and the close '×' button receives 0 clicks.
+        """
+        # DOM with a results dialog that is open post-submit
+        results_modal_dom = [
+            {"id": "res-dlg", "tag": "div", "role": "dialog", "aria_modal": "true", "in_modal": True, "resolved_label": "نتائج الاستعلام"},
+            {"id": "btn-close", "tag": "button", "resolved_label": "×", "aria_label": "إغلاق", "in_modal": True},
+            {"id": "res-table", "tag": "table", "in_modal": True},
+            {"id": "lbl-total", "tag": "span", "resolved_label": "إجمالي المخالفات: 550 جنيه", "in_modal": True},
+        ]
+        # Active milestone is final milestone
+        goal_state = GoalState(
+            goal="الاستعلام عن مخالفات المرور",
+            status="in_progress",
+            active_milestone_id="m1",
+            milestones=[Milestone(id="m1", description="الاستعلام عن مخالفات المرور", is_final=True, status="active")],
+            plan_steps=[PlanStep(action="click", element_id="btn-submit", description="استعلام", reason="act")],
+            dom_state={"last_step_was_submit": True, "pending_form_id": "traffic-form", "ids": ["res-dlg", "btn-close", "res-table", "lbl-total"]},
+        )
+        payload = {
+            "goal": "الاستعلام عن مخالفات المرور",
+            "dom_map": results_modal_dom,
+            "current_url": "https://ppo.gov.eg/traffic",
+            "page_text": "نتائج الاستعلام\nإجمالي المخالفات: 550 جنيه",
+            "language": "ar-EG",
+            "api_key": DEMO_KEY,
+            "goal_state": goal_state.model_dump(),
+            "contract_version": 3,
+            "last_action_result": {
+                "ok": True,
+                "change_summary": {"text_changed": True, "added_visible_count": 3}
+            }
+        }
+        res = client.post("/v1/chat/goal_step", json=payload)
+        assert res.status_code == 200
+        data = res.json()
+        # Goal must complete!
+        assert data["status"] == "goal_complete"
+        # Zero clicks on the close button
+        steps = data.get("steps") or []
+        assert all(s.get("element_id") != "btn-close" for s in steps)
+
+    def test_ef4_cta_boost_picks_start_service_over_news(self, client):
+        """
+        E-F4: Goal 'اريد الاستفسار عن مخالفات المركبات' on portal-service-login.html
+        picks 'ابدأ الخدمة' (section_label='الاستعلام عن مخالفات رخص المركبات'),
+        NOT 'الأخبار' nav link, even when 'اريد' and 'الاستفسار' are not literal words in heading.
+        """
+        dom = load_fixture("portal_service_initial.json")
+        goal = "اريد الاستفسار عن مخالفات المركبات"
+        payload = {
+            "goal": goal,
+            "dom_map": dom,
+            "current_url": "https://portal.gov.eg/service",
+            "page_text": "الاستعلام عن مخالفات رخص المركبات\nخدمة فورية تمكّنك من معرفة مخالفات المرور",
+            "language": "ar-EG",
+            "api_key": DEMO_KEY,
+            "contract_version": 3,
+        }
+        res = client.post("/v1/chat/goal_step", json=payload)
+        assert res.status_code == 200
+        data = res.json()
+        steps = data.get("steps") or []
+        assert len(steps) >= 1
+        chosen_id = steps[0]["element_id"]
+        chosen_node = next((n for n in dom if n.get("id") == chosen_id), None)
+        assert chosen_node is not None
+        assert chosen_node.get("resolved_label") == "ابدأ الخدمة"
+        news_node = next((n for n in dom if "الأخبار" in (n.get("resolved_label") or "")), None)
+        if news_node:
+            assert chosen_id != news_node.get("id")
+
+    def test_ef5_saved_login_vault_hints_exact_categories_and_second_failure_clear(self, client):
+        """
+        E-F5:
+        - Exact categories 'login_id' and 'password' required for saved login prompt.
+        - Second login failure emits vault_clear: ['login_id', 'password'].
+        """
+        login_modal_dom = load_fixture("portal_service_login_open.json")
+
+        # 1. Partial/loose hint like 'user' or 'email' does NOT trigger saved login confirmation
+        payload_loose = {
+            "goal": "الاستعلام عن مخالفات المرور",
+            "dom_map": login_modal_dom,
+            "current_url": "https://portal.gov.eg/service",
+            "language": "ar-EG",
+            "vault_hints": ["username", "pass"],  # loose substrings, not exact 'login_id' and 'password'
+            "api_key": DEMO_KEY,
+            "contract_version": 3,
+        }
+        res_loose = client.post("/v1/chat/goal_step", json=payload_loose)
+        data_loose = res_loose.json()
+        assert data_loose["status"] == "awaiting_user_input", "Loose hints must not trigger saved login confirmation"
+
+        # 2. Exact 'login_id' and 'password' triggers saved login confirmation
+        payload_exact = {
+            "goal": "الاستعلام عن مخالفات المرور",
+            "dom_map": login_modal_dom,
+            "current_url": "https://portal.gov.eg/service",
+            "language": "ar-EG",
+            "vault_hints": ["login_id", "password"],
+            "api_key": DEMO_KEY,
+            "contract_version": 3,
+        }
+        res_exact = client.post("/v1/chat/goal_step", json=payload_exact)
+        data_exact = res_exact.json()
+        assert data_exact["status"] == "requires_confirmation"
+        assert data_exact["requires_confirmation"] is True
+
+        # 3. 2nd login failure emits vault_clear: ['login_id', 'password']
+        goal_state_fail2 = GoalState(
+            goal="الاستعلام عن مخالفات المرور",
+            status="in_progress",
+            active_milestone_id="m1",
+            milestones=[Milestone(id="m1", description="تسجيل الدخول", status="active")],
+            plan_steps=[PlanStep(action="click", element_id="login-submit", description="تسجيل الدخول", reason="act")],
+            dom_state={"last_step_was_login_submit": True, "auth_attempts": 1},
+        )
+        login_err_dom = load_fixture("portal_service_login_error.json")
+        payload_fail2 = {
+            "goal": "الاستعلام عن مخالفات المرور",
+            "dom_map": login_err_dom,
+            "current_url": "https://portal.gov.eg/service",
+            "page_text": "اسم المستخدم أو كلمة المرور غير صحيحة",
+            "language": "ar-EG",
+            "api_key": DEMO_KEY,
+            "goal_state": goal_state_fail2.model_dump(),
+            "contract_version": 3,
+        }
+        res_fail2 = client.post("/v1/chat/goal_step", json=payload_fail2)
+        data_fail2 = res_fail2.json()
+        assert data_fail2["status"] == "awaiting_user_input"
+        assert data_fail2.get("vault_clear") == ["login_id", "password"]
+
+    def test_ef6_vault_login_property_on_plan_step(self):
+        """
+        E-F6: PlanStep schema supports optional boolean vault_login.
+        """
+        step = PlanStep(
+            action="fill",
+            element_id="inp-pwd",
+            value="{password}",
+            vault_login=True,
+        )
+        assert step.vault_login is True
+        d = step.model_dump()
+        assert d["vault_login"] is True
+
+    def test_ef7_planned_backtracks_do_not_halt_and_confirmation_preserves_label(self, client):
+        """
+        E-F7:
+        - Three planned backtracks (reason='backtrack') to home URL do NOT stop goal with loop_url_revisit_limit.
+        - Confirmation branch does NOT overwrite last_act_control if already set.
+        """
+        home_url = "https://portal.gov.eg/home"
+        dom = [{"id": "link-a", "tag": "a", "resolved_label": "خدمة أ", "href": "/a"}]
+
+        # Hop with planned backtrack step to home
+        gs = GoalState(
+            goal="الاستعلام عن مخالفات المرور",
+            status="in_progress",
+            active_milestone_id="m1",
+            milestones=[Milestone(id="m1", description="البحث عن الخدمة", status="active")],
+            plan_steps=[PlanStep(action="click", element_id="btn-back", description="رجوع", reason="backtrack")],
+            dom_state={"url_history": [home_url, "https://portal.gov.eg/a"], "url_visits": {home_url: 1, "https://portal.gov.eg/a": 1}},
+        )
+        payload = {
+            "goal": "الاستعلام عن مخالفات المرور",
+            "dom_map": dom,
+            "current_url": home_url,
+            "page_text": "الصفحة الرئيسية",
+            "language": "ar-EG",
+            "api_key": DEMO_KEY,
+            "goal_state": gs.model_dump(),
+            "contract_version": 3,
+        }
+        res = client.post("/v1/chat/goal_step", json=payload)
+        data = res.json()
+        # Must NOT fail with loop_url_revisit_limit!
+        assert data["status"] != "goal_failed"
+
+        # Check confirmation branch preserves last_act_control label
+        gs_confirm = GoalState(
+            goal="الاستعلام عن مخالفات المرور",
+            status="requires_confirmation",
+            requires_confirmation=True,
+            active_milestone_id="m1",
+            milestones=[Milestone(id="m1", description="الاستعلام", is_final=True, status="active")],
+            pending_step=PlanStep(action="click", element_id="btn-submit", description="Submit form (استعلام)", reason="act"),
+            dom_state={"last_act_control": {"element_id": "btn-submit", "label": "استعلام", "normalized_label": "استعلام"}},
+        )
+        payload_confirm = {
+            "goal": "الاستعلام عن مخالفات المرور",
+            "dom_map": dom,
+            "current_url": "https://portal.gov.eg/form",
+            "page_text": "نموذج الاستعلام",
+            "language": "ar-EG",
+            "api_key": DEMO_KEY,
+            "user_response": "أيوة",
+            "goal_state": gs_confirm.model_dump(),
+            "contract_version": 3,
+        }
+        res_conf = client.post("/v1/chat/goal_step", json=payload_confirm)
+        data_conf = res_conf.json()
+        act_ctrl = data_conf["goal_state"]["dom_state"].get("last_act_control")
+        assert act_ctrl is not None
+        assert act_ctrl["label"] == "استعلام", "Real button label must be preserved, not overwritten with description"
+
+    def test_ef8_validation_recovery_scoped_to_pending_form(self, client):
+        """
+        E-F8: Validation recovery scopes to pending_form_id, and an empty required newsletter outside
+        does NOT trigger re-ask.
+        """
+        dom = [
+            # Pending form fields
+            {"id": "inp-id", "tag": "input", "form_id": "violations-form", "current_value": "12345678901234", "resolved_label": "الرقم القومي"},
+            {"id": "inp-plate", "tag": "input", "form_id": "violations-form", "current_value": "", "invalid": True, "error_text": "حقل مطلوب", "resolved_label": "رقم اللوحة"},
+            # External empty required field (e.g. footer newsletter)
+            {"id": "inp-news", "tag": "input", "form_id": "footer-newsletter", "current_value": "", "invalid": True, "required": True, "resolved_label": "النشرة البريدية"},
+        ]
+        gs = GoalState(
+            goal="الاستعلام عن مخالفات المرور",
+            status="in_progress",
+            active_milestone_id="m1",
+            milestones=[Milestone(id="m1", description="الاستعلام", is_final=True, status="active")],
+            plan_steps=[PlanStep(action="click", element_id="btn-sub", description="استعلام", reason="act")],
+            dom_state={"last_step_was_submit": True, "pending_form_id": "violations-form"},
+        )
+        payload = {
+            "goal": "الاستعلام عن مخالفات المرور",
+            "dom_map": dom,
+            "current_url": "https://portal.gov.eg/form",
+            "page_text": "رقم اللوحة حقل مطلوب",
+            "language": "ar-EG",
+            "api_key": DEMO_KEY,
+            "goal_state": gs.model_dump(),
+            "contract_version": 3,
+        }
+        res = client.post("/v1/chat/goal_step", json=payload)
+        data = res.json()
+        assert data["status"] == "awaiting_user_input"
+        awaiting = data["goal_state"]["awaiting"]
+        fields = awaiting["fields"]
+        # Only inp-plate from violations-form must be re-asked, NOT inp-news from footer-newsletter!
+        assert len(fields) == 1
+        assert fields[0]["ref"] == "inp-plate"
+
+    def test_ef10_visible_change_accepts_client_change_summary(self, client):
+        """
+        E-F10: After submit, visible change is detected via client change summary
+        (added_visible_count > 0 or text_changed: true) even when page_text is unchanged.
+        """
+        dom = [
+            {"id": "btn-sub", "tag": "button", "type": "submit", "resolved_label": "عرض المخالفات"},
+        ]
+        pre_rendered_text = "عرض المخالفات\nإجمالي المخالفات: 550 جنيه"
+        gs = GoalState(
+            goal="الاستعلام عن مخالفات المرور",
+            status="in_progress",
+            active_milestone_id="m1",
+            milestones=[Milestone(id="m1", description="الاستعلام عن مخالفات المرور", is_final=True, status="active")],
+            plan_steps=[PlanStep(action="click", element_id="btn-sub", description="Submit form (عرض المخالفات)", reason="act")],
+            dom_state={"last_step_was_submit": True, "page_text": pre_rendered_text, "ids": ["btn-sub"]},
+        )
+        payload = {
+            "goal": "الاستعلام عن مخالفات المرور",
+            "dom_map": dom,
+            "current_url": "https://portal.gov.eg/service",
+            "page_text": pre_rendered_text,  # Pre-rendered class-hidden text: exactly same as before submit
+            "language": "ar-EG",
+            "api_key": DEMO_KEY,
+            "goal_state": gs.model_dump(),
+            "contract_version": 3,
+            "last_action_result": {
+                "ok": True,
+                "change_summary": {"text_changed": False, "added_visible_count": 2}
+            }
+        }
+        res = client.post("/v1/chat/goal_step", json=payload)
+        data = res.json()
+        assert data["status"] == "goal_complete"
+
+    def test_ef12_no_account_option_exact_match(self, client):
+        """
+        E-F12: Option 'معنديش حساب' matches exactly after normalization.
+        Replies containing 'حساب' like 'عملت حساب' do NOT trigger the signup handoff.
+        """
+        login_modal_dom = load_fixture("portal_service_login_open.json")
+
+        # 1. Exact match triggers signup handoff
+        payload_no_acc = {
+            "goal": "الاستعلام عن مخالفات المرور",
+            "dom_map": login_modal_dom,
+            "current_url": "https://portal.gov.eg/service",
+            "language": "ar-EG",
+            "user_response": "معنديش حساب",
+            "api_key": DEMO_KEY,
+            "contract_version": 3,
+        }
+        res1 = client.post("/v1/chat/goal_step", json=payload_no_acc)
+        data1 = res1.json()
+        assert data1["status"] == "awaiting_user_input"
+        assert data1["reply"] == t("auth_signup_handoff_prompt", "ar-EG")
+
+        # 2. 'عملت حساب' must NOT trigger signup handoff
+        payload_created_acc = {
+            "goal": "الاستعلام عن مخالفات المرور",
+            "dom_map": login_modal_dom,
+            "current_url": "https://portal.gov.eg/service",
+            "language": "ar-EG",
+            "user_response": "عملت حساب",
+            "api_key": DEMO_KEY,
+            "contract_version": 3,
+        }
+        res2 = client.post("/v1/chat/goal_step", json=payload_created_acc)
+        data2 = res2.json()
+        assert data2["reply"] != t("auth_signup_handoff_prompt", "ar-EG")
+
+    def test_ef13_submit_with_aria_controls_is_not_excluded(self):
+        """
+        E-F13: A submit button with aria-controls='results' is NOT excluded by _is_excluded_submit_candidate.
+        """
+        node = {
+            "tag": "button",
+            "type": "submit",
+            "resolved_label": "استعلام",
+            "aria_controls": "results-region",
+        }
+        assert _is_excluded_submit_candidate(node) is False
+        assert _score_submit_candidate(node) == 100

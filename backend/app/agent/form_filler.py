@@ -15,7 +15,11 @@ import secrets
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 from app.agent import llm_client
-from app.agent.intent_synonyms import _normalize_text
+from app.agent.intent_synonyms import (
+    _normalize_text,
+    matches_any_keyword,
+    matches_keyword_sequence,
+)
 from app.i18n import resolve_reply_language, t
 from app.models.dom import DomNode
 from app.models.goal import FieldPlan, FormPlan, InputField, InputFieldKind
@@ -262,39 +266,7 @@ LANGUAGE_NAMES_EXACT: Set[str] = {
 }
 
 
-def _matches_any_keyword_whole_word(text: str, keywords: Set[str]) -> bool:
-    """
-    Checks if text contains any of the keywords as a whole word (Latin \\bkw\\b)
-    or as a whole Arabic token / normalized phrase.
-    Prevents false substring matches (e.g. 'feedback' matching 'back', 'disclose' matching 'close').
-    """
-    if not text or not isinstance(text, str):
-        return False
-
-    clean_text = text.strip()
-    lower_text = clean_text.lower()
-    norm_text = _normalize_text(clean_text)
-    norm_tokens = set(norm_text.split())
-
-    for kw in keywords:
-        kw_clean = kw.strip()
-        if not kw_clean:
-            continue
-        if re.search(r"^[a-zA-Z0-9_\- ]+$", kw_clean):
-            pattern = rf"\b{re.escape(kw_clean.lower())}\b"
-            if re.search(pattern, lower_text):
-                return True
-        else:
-            norm_kw = _normalize_text(kw_clean)
-            if " " in norm_kw:
-                pattern = rf"(?:^|\s){re.escape(norm_kw)}(?:\s|$)"
-                if re.search(pattern, norm_text):
-                    return True
-            else:
-                if norm_kw in norm_tokens:
-                    return True
-
-    return False
+_matches_any_keyword_whole_word = matches_any_keyword
 
 
 def _is_language_switch_control(node: Dict[str, Any], label: str) -> bool:
@@ -329,7 +301,7 @@ def _is_icon_only_without_label(node: Dict[str, Any]) -> bool:
 
 EXCLUDED_SUBMIT_KEYWORDS: Set[str] = {
     # Back / previous
-    "back", "previous", "رجوع", "السابق", "عودة",
+    "back", "previous", "رجوع", "السابق", "عودة", "العودة",
     # Cancel / reset / clear
     "cancel", "reset", "clear", "إلغاء", "الغاء", "مسح", "إعادة تعيين", "اعادة تعيين",
     # Close
@@ -370,14 +342,12 @@ def _is_excluded_submit_candidate(node: Dict[str, Any]) -> bool:
     if _is_icon_only_without_label(node):
         return True
 
-    # 4. Menu / disclosure toggles
+    # 4. Menu / disclosure toggles (E-F13: aria-controls dropped on its own, aria-expanded/aria-haspopup kept)
     menu_obj = node.get("menu")
     if isinstance(menu_obj, dict):
         if menu_obj.get("expanded") is not None or menu_obj.get("haspopup"):
             return True
     if node.get("aria_expanded") is not None or node.get("aria_haspopup"):
-        return True
-    if node.get("aria_controls"):
         return True
     role = (node.get("role") or "").lower()
     if role in ("menuitem", "tab"):
@@ -386,7 +356,7 @@ def _is_excluded_submit_candidate(node: Dict[str, Any]) -> bool:
         return True
 
     # 5. Whole-word / whole-token keyword exclusion
-    if _matches_any_keyword_whole_word(lbl, EXCLUDED_SUBMIT_KEYWORDS):
+    if matches_any_keyword(lbl, EXCLUDED_SUBMIT_KEYWORDS):
         return True
 
     return False
@@ -631,22 +601,22 @@ def classify_auth_wall(
     page_text: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
     """
-    Detects if the current DOM has an auth wall (login or sign-up modal/page).
-    Returns None if not an auth wall, or dict:
-    {
-        "type": "login" | "signup",
-        "modal": bool,
-        "identifier_ref": str or None,
-        "identifier_label": str or None,
-        "password_ref": str or None,
-        "confirm_password_ref": str or None,
-        "submit_ref": str or None,
-    }
+    Detects if the current DOM has an auth wall (login or sign-up modal/page) adhering to WS12 E-F2.
+    Rules:
+    - Page without a modal: an auth wall needs a visible password input. Text alone never counts,
+      and page_text is not used.
+    - Modal:
+      * login when it has a password input;
+      * sign-up when it has 2 or more password inputs, or when the modal's OWN heading/buttons match sign-up words;
+      * login by text only when the modal's own heading/buttons match login words AND it has an identifier input.
+    - Identifier, password and submit must come from the same form_id, or the same modal.
+    - If type is login but no password or no identifier field was found, returns None for missing field.
     """
     raw_nodes = _convert_dom_nodes_to_dicts(dom_nodes)
     is_modal = any(bool(n.get("in_modal")) for n in raw_nodes)
     if is_modal:
-        nodes_to_check = [n for n in raw_nodes if bool(n.get("in_modal"))]
+        modal_nodes = [n for n in raw_nodes if bool(n.get("in_modal"))]
+        nodes_to_check = modal_nodes
     else:
         nodes_to_check = raw_nodes
 
@@ -655,46 +625,83 @@ def classify_auth_wall(
         if (n.get("tag") or "").lower() == "input" and (n.get("type") or "").lower() == "password"
     ]
 
-    has_auth_text = False
-    combined_headings_btns = " ".join([
-        str(n.get("resolved_label") or n.get("aria_label") or n.get("inner_text") or "")
-        for n in nodes_to_check
-        if (n.get("tag") or "").lower() in ("h1", "h2", "h3", "h4", "button", "a") or (n.get("role") or "").lower() in ("heading", "button", "dialog")
-    ])
-    if _matches_any_keyword_whole_word(combined_headings_btns, AUTH_KEYWORDS):
-        has_auth_text = True
-    elif page_text and _matches_any_keyword_whole_word(page_text[:1000], AUTH_KEYWORDS):
-        has_auth_text = True
+    # Non-modal page: MUST have a visible password input. Text alone never counts, page_text not used (E-F2).
+    if not is_modal:
+        if not password_nodes:
+            return None
+        # Form scoping: prefer nodes sharing the form_id of the first password field
+        target_form_id = password_nodes[0].get("form_id")
+        if target_form_id:
+            form_nodes = [n for n in nodes_to_check if n.get("form_id") == target_form_id]
+        else:
+            form_nodes = nodes_to_check
+        is_signup = len(password_nodes) >= 2
+        auth_type = "signup" if is_signup else "login"
+    else:
+        # Modal page (E-F2):
+        # Examine modal's OWN headings and buttons (excluding navigation links)
+        modal_headings_and_btns = [
+            n for n in nodes_to_check
+            if ((n.get("tag") or "").lower() in ("h1", "h2", "h3", "h4", "h5", "h6", "button")
+            or (n.get("role") or "").lower() in ("heading", "button")
+            or (n.get("type") or "").lower() == "submit")
+            and (n.get("tag") or "").lower() != "a"
+        ]
+        combined_modal_text = " ".join([
+            str(n.get("resolved_label") or n.get("aria_label") or n.get("inner_text") or "")
+            for n in modal_headings_and_btns
+        ])
 
-    if not password_nodes and not has_auth_text:
-        return None
+        candidate_identifiers = [
+            n for n in nodes_to_check
+            if (n.get("tag") or "").lower() in ("input", "textarea")
+            and (n.get("type") or "").lower() in ("text", "email", "tel", "number", "")
+            and (n.get("type") or "").lower() not in ("hidden", "submit", "button", "checkbox", "radio")
+        ]
 
-    # Check for sign-up indications
-    is_signup = False
-    if len(password_nodes) >= 2:
-        is_signup = True
-    elif _matches_any_keyword_whole_word(combined_headings_btns, SIGNUP_SPECIFIC_KEYWORDS):
-        is_signup = True
+        if len(password_nodes) >= 2 or matches_any_keyword(combined_modal_text, SIGNUP_SPECIFIC_KEYWORDS):
+            auth_type = "signup"
+        elif password_nodes:
+            auth_type = "login"
+        elif matches_any_keyword(combined_modal_text, AUTH_KEYWORDS) and candidate_identifiers:
+            auth_type = "login"
+        else:
+            return None
+
+        # Modal context: nodes inside the modal
+        if password_nodes and password_nodes[0].get("form_id"):
+            m_form_id = password_nodes[0].get("form_id")
+            matching_form_nodes = [n for n in nodes_to_check if n.get("form_id") == m_form_id]
+            form_nodes = matching_form_nodes if matching_form_nodes else nodes_to_check
+        else:
+            form_nodes = nodes_to_check
 
     # Identify submit button in auth form
     submit_ref = None
-    for n in nodes_to_check:
+    submit_label = None
+    for n in form_nodes:
         ref = str(n.get("ref") or n.get("id") or "")
         tag = (n.get("tag") or "").lower()
         ntype = (n.get("type") or "").lower()
         lbl = (n.get("resolved_label") or n.get("aria_label") or n.get("inner_text") or "").strip()
         if (tag == "button" or ntype in ("submit", "button")) and not _is_excluded_submit_candidate(n):
-            if _matches_any_keyword_whole_word(lbl, AUTH_KEYWORDS) or ntype == "submit":
+            if (
+                matches_any_keyword(lbl, AUTH_KEYWORDS)
+                or matches_any_keyword(lbl, SIGNUP_SPECIFIC_KEYWORDS)
+                or matches_any_keyword(lbl, SUBMIT_SEMANTICS_KEYWORDS)
+                or ntype == "submit"
+            ):
                 submit_ref = ref
+                submit_label = lbl or "Submit"
                 break
 
     # Identify identifier field (non-password text, email or tel input before password in DOM order)
     identifier_ref = None
     identifier_label = None
     if password_nodes:
-        pwd_idx = nodes_to_check.index(password_nodes[0])
+        pwd_idx = form_nodes.index(password_nodes[0]) if password_nodes[0] in form_nodes else len(form_nodes)
         candidate_ids = []
-        for i, n in enumerate(nodes_to_check):
+        for i, n in enumerate(form_nodes):
             if i >= pwd_idx:
                 break
             tag = (n.get("tag") or "").lower()
@@ -704,27 +711,37 @@ def classify_auth_wall(
         if candidate_ids:
             target_id_node = candidate_ids[-1]
             identifier_ref = str(target_id_node.get("ref") or target_id_node.get("id") or "")
-            identifier_label = target_id_node.get("resolved_label") or target_id_node.get("name") or "Username / Email"
+            identifier_label = target_id_node.get("resolved_label") or target_id_node.get("name") or target_id_node.get("placeholder") or None
         else:
-            for i, n in enumerate(nodes_to_check):
+            for n in form_nodes:
                 tag = (n.get("tag") or "").lower()
                 ntype = (n.get("type") or "").lower()
                 if tag in ("input", "textarea") and ntype in ("text", "email", "tel", "number", ""):
                     identifier_ref = str(n.get("ref") or n.get("id") or "")
-                    identifier_label = n.get("resolved_label") or n.get("name") or "Username / Email"
+                    identifier_label = n.get("resolved_label") or n.get("name") or n.get("placeholder") or None
                     break
+    else:
+        # No password node (e.g. text login modal or signup without password)
+        for n in form_nodes:
+            tag = (n.get("tag") or "").lower()
+            ntype = (n.get("type") or "").lower()
+            if tag in ("input", "textarea") and ntype in ("text", "email", "tel", "number", "") and ntype not in ("hidden", "submit", "button"):
+                identifier_ref = str(n.get("ref") or n.get("id") or "")
+                identifier_label = n.get("resolved_label") or n.get("name") or n.get("placeholder") or None
+                break
 
     password_ref = str(password_nodes[0].get("ref") or password_nodes[0].get("id") or "") if password_nodes else None
     confirm_pwd_ref = str(password_nodes[1].get("ref") or password_nodes[1].get("id") or "") if len(password_nodes) >= 2 else None
 
     return {
-        "type": "signup" if is_signup else "login",
+        "type": auth_type,
         "modal": is_modal,
         "identifier_ref": identifier_ref,
         "identifier_label": identifier_label,
         "password_ref": password_ref,
         "confirm_password_ref": confirm_pwd_ref,
         "submit_ref": submit_ref,
+        "submit_label": submit_label,
     }
 
 

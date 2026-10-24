@@ -1193,7 +1193,10 @@ const execute = async (actionResponse, options = {}) => {
     const isDestructive = DESTRUCTIVE_PATTERN.test(elLabel);
 
     // Guardrails: credential/sensitive fields and destructive mutations ALWAYS require confirmation
-    const requiresConfirmation = isCredentialField(el) || isDestructive;
+    // WS12 E-F6: skip credential banner when vault_login is true AND value matches TOKEN_REGEX
+    const isVaultLoginToken = actionResponse?.vault_login === true && typeof value === 'string' && TOKEN_REGEX.test(value.trim());
+    const isCredentialGuard = isCredentialField(el) && !isVaultLoginToken;
+    const requiresConfirmation = isCredentialGuard || isDestructive;
     const shouldConfirm = requiresConfirmation || (MUTATE_ACTIONS.has(action) && !options.skipConfirmation);
 
     if (shouldConfirm) {

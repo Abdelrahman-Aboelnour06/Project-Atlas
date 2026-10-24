@@ -925,6 +925,19 @@
           "default": null,
           "description": "Prefer navigating within the same tab",
           "title": "Same Tab"
+        },
+        "vault_login": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional flag indicating step fills/submits a confirmed vault login, bypassing client credential banner.",
+          "title": "Vault Login"
         }
       },
       "required": [

@@ -36,6 +36,10 @@ class PlanStep(BaseModel):
     reason: Optional[PlanStepReason] = Field(default=None, description="Exploration rationale: reveal_menu, navigate, search, backtrack, act")
     expect: Optional[str] = Field(default=None, description="Expected observable outcome or element appearance after step execution")
     same_tab: Optional[bool] = Field(default=None, description="Prefer navigating within the same tab")
+    vault_login: Optional[bool] = Field(
+        default=None,
+        description="Optional flag indicating step fills/submits a confirmed vault login, bypassing client credential banner.",
+    )
 
 
 

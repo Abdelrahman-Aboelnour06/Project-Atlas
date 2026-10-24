@@ -86,6 +86,96 @@ def _fold_arabic_plurals(token: str) -> str:
     return token
 
 
+def _tokenize_text(text: str) -> List[str]:
+    """
+    Splits text on whitespace and punctuation FIRST, returning clean token list.
+    Punctuation includes ASCII and Unicode delimiters, brackets, quotes, dashes, etc.
+    """
+    if not text or not isinstance(text, str):
+        return []
+    return re.findall(r"[a-zA-Z0-9\u0621-\u064A]+", text)
+
+
+def _token_matches(tok1: str, tok2: str) -> bool:
+    """
+    Universal token equivalence check:
+    - Exact match after normalization
+    - Symmetric Arabic definite article (ال) prefix matching (when len > 4)
+    - Symmetric preposition + article (لل) matching
+    - Stem equality using _strip_arabic_prefixes
+    """
+    if tok1 == tok2:
+        return True
+    if not tok1 or not tok2:
+        return False
+    # Symmetric prefix handling for 'ال'
+    if tok1.startswith("ال") and len(tok1) > 4 and tok1[2:] == tok2:
+        return True
+    if tok2.startswith("ال") and len(tok2) > 4 and tok2[2:] == tok1:
+        return True
+    # Symmetric preposition 'لل' (li + al) handling
+    if tok1.startswith("لل") and len(tok1) > 4:
+        if tok2.startswith("ال") and tok1[2:] == tok2[2:]:
+            return True
+        if tok1[2:] == tok2:
+            return True
+    if tok2.startswith("لل") and len(tok2) > 4:
+        if tok1.startswith("ال") and tok2[2:] == tok1[2:]:
+            return True
+        if tok2[2:] == tok1:
+            return True
+    # Fallback to _strip_arabic_prefixes
+    stem1 = _strip_arabic_prefixes(tok1)
+    stem2 = _strip_arabic_prefixes(tok2)
+    if stem1 and stem2 and stem1 == stem2 and len(stem1) >= 3:
+        return True
+    return False
+
+
+def matches_keyword_sequence(text: str, keyword: str) -> bool:
+    """
+    Matches a keyword in text (WS12 E-F1):
+    - Latin keywords use \\b word boundaries to prevent substring collisions (e.g. 'feedback' vs 'back').
+    - Arabic/mixed keywords: split on whitespace/punctuation first, normalize each token,
+      then match as a contiguous sequence of normalized tokens.
+    """
+    if not text or not keyword or not isinstance(text, str) or not isinstance(keyword, str):
+        return False
+    kw_clean = keyword.strip()
+    if not kw_clean:
+        return False
+
+    # Latin keyword (ASCII alphanumeric, underscore, hyphen, space)
+    if re.search(r"^[a-zA-Z0-9_\- ]+$", kw_clean):
+        return bool(re.search(rf"\b{re.escape(kw_clean.lower())}\b", text.lower()))
+
+    # Arabic / Unicode sequence matching
+    text_tokens = [_normalize_text(t) for t in _tokenize_text(text)]
+    text_tokens = [t for t in text_tokens if t]
+
+    kw_tokens = [_normalize_text(t) for t in _tokenize_text(kw_clean)]
+    kw_tokens = [t for t in kw_tokens if t]
+
+    if not kw_tokens or not text_tokens:
+        return False
+
+    kw_len = len(kw_tokens)
+    for i in range(len(text_tokens) - kw_len + 1):
+        if all(_token_matches(text_tokens[i + j], kw_tokens[j]) for j in range(kw_len)):
+            return True
+    return False
+
+
+def matches_any_keyword(text: str, keywords: Any) -> bool:
+    """Checks if text contains any of the provided keywords as a whole word or sequence."""
+    if not text or not keywords:
+        return False
+    for kw in keywords:
+        if matches_keyword_sequence(text, str(kw)):
+            return True
+    return False
+
+
 def _stem_word(word: str) -> str:
     """
     Universal lightweight Arabic and English stemming.

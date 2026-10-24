@@ -29,6 +29,8 @@ from app.agent.intent_synonyms import (
     extract_search_keywords,
     score_text_similarity,
     _normalize_text,
+    _tokenize_text,
+    matches_any_keyword,
 )
 from app.agent.jev_client import get_jev_client
 from app.agent.sanitize import strip_pii_from_dom
@@ -214,28 +216,7 @@ CTA_GENERIC_KEYWORDS: Set[str] = {
 }
 
 
-def _matches_whole_keyword(text: str, keywords: Set[str]) -> bool:
-    if not text or not isinstance(text, str):
-        return False
-    lower_text = text.strip().lower()
-    norm_text = _normalize_text(text)
-    norm_tokens = set(norm_text.split())
-    for kw in keywords:
-        kw_clean = kw.strip()
-        if not kw_clean:
-            continue
-        if re.search(r"^[a-zA-Z0-9_\- ]+$", kw_clean):
-            if re.search(rf"\b{re.escape(kw_clean.lower())}\b", lower_text):
-                return True
-        else:
-            norm_kw = _normalize_text(kw_clean)
-            if " " in norm_kw:
-                if re.search(rf"(?:^|\s){re.escape(norm_kw)}(?:\s|$)", norm_text):
-                    return True
-            else:
-                if norm_kw in norm_tokens:
-                    return True
-    return False
+_matches_whole_keyword = matches_any_keyword
 
 
 def _score_dom_candidate(
@@ -279,14 +260,21 @@ def _score_dom_candidate(
         if any(w in _normalize_text(goal) for w in ("خدم", "بحث", "استعلام", "استفسار", "دفع", "تجديد", "سداد", "service", "search", "inquir", "pay", "renew", "apply")):
             base_score = max(base_score, 0.55)
 
-    # 2b. Target service page Call-To-Action (CTA) boost (WS12 E5)
+    # 2b. Target service page Call-To-Action (CTA) boost (WS12 E5 / E-F4)
     # Requires BOTH:
-    # (a) page heading, title or breadcrumb matches the goal
+    # (a) section_label, breadcrumb, or page matches the goal
     # (b) no relevant form is currently visible
-    if dom_context and dom_context.get("page_matches_goal") and not dom_context.get("form_visible"):
+    sec_lbl = str(node.get("section_label") or "")
+    bc = node.get("breadcrumb") or []
+    sec_matches = bool(sec_lbl and score_text_similarity(goal, sec_lbl) >= 0.35)
+    bc_matches = bool(isinstance(bc, list) and any(b and score_text_similarity(goal, str(b)) >= 0.35 for b in bc))
+    page_matches = bool(dom_context and dom_context.get("page_matches_goal"))
+    form_visible = bool(dom_context and dom_context.get("form_visible"))
+
+    if (sec_matches or bc_matches or page_matches) and not form_visible:
         landmark = str(node.get("landmark", "")).lower()
         if landmark not in ("nav", "navigation", "header", "banner", "footer", "contentinfo"):
-            if _matches_whole_keyword(clean_lbl, CTA_GENERIC_KEYWORDS):
+            if matches_any_keyword(clean_lbl, CTA_GENERIC_KEYWORDS):
                 base_score = max(base_score, 0.90)
 
     # 3. Breadcrumb matching: boost candidates whose ancestor trail matches the goal
@@ -512,17 +500,17 @@ async def plan_milestone_step(
         bc = n.get("breadcrumb")
         if isinstance(bc, list):
             breadcrumbs_list.extend([str(b) for b in bc if b])
-    page_context_texts = headings + ([title_text] if title_text else []) + breadcrumbs_list
+    section_labels_list = [str(n.get("section_label")) for n in safe_dom if n.get("section_label")]
+    page_context_texts = headings + ([title_text] if title_text else []) + breadcrumbs_list + section_labels_list
 
     page_matches_goal = False
+    goal_tokens = [_normalize_text(t) for t in _tokenize_text(goal) if len(t) >= 3]
     for pct in page_context_texts:
         if pct and score_text_similarity(goal, pct) >= 0.35:
             page_matches_goal = True
             break
         norm_pct = _normalize_text(pct)
-        norm_goal = _normalize_text(goal)
-        goal_stems = [w for w in norm_goal.split() if len(w) >= 4]
-        if goal_stems and any(st in norm_pct for st in goal_stems):
+        if goal_tokens and any(st in norm_pct for st in goal_tokens):
             page_matches_goal = True
             break
 

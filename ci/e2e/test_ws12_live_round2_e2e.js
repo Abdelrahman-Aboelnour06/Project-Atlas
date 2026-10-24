@@ -388,13 +388,13 @@ async function runSuite() {
     const domC = await page.evaluate(() => window.AtlasSerializer.serialize());
     const ctaNode = domC.find((n) => (n.resolved_label || '').includes('ابدأ الخدمة'));
     const newsLinkNode = domC.find((n) => (n.resolved_label || '').includes('الأخبار'));
-    const goalC = 'الاستعلام عن مخالفات رخص المركبات';
+    const goalC = 'اريد الاستفسار عن مخالفات المركبات';
 
     const resC1 = await postGoalStep(backendPort, {
       goal: goalC,
       current_url: `${fixtureBase}/portal-service-login.html`,
       dom_map: domC,
-      page_text: 'الاستعلام عن مخالفات رخص المركبات\nخدمة فورية تمكّنك من معرفة مخالفات المرور المستحقة على مركبتك وسدادها إلكترونياً.',
+      page_text: await page.evaluate(() => document.body.innerText),
       language: 'ar-EG',
       api_key: DEMO_KEY,
       contract_version: 3,
@@ -421,7 +421,7 @@ async function runSuite() {
       goal_state: resC1.data.goal_state,
       current_url: `${fixtureBase}/portal-service-login.html`,
       dom_map: domCModal,
-      page_text: 'تسجيل الدخول إلى بوابة الخدمات',
+      page_text: await page.evaluate(() => document.body.innerText),
       language: 'ar-EG',
       vault_hints: [],
       api_key: DEMO_KEY,
@@ -498,7 +498,7 @@ async function runSuite() {
       },
       dom_map: domE,
       current_url: `${fixtureBase}/portal-service-login.html`,
-      page_text: 'اسم المستخدم أو كلمة المرور غير صحيحة',
+      page_text: await page.evaluate(() => document.body.innerText),
       language: 'ar-EG',
       api_key: DEMO_KEY,
       contract_version: 3,
@@ -516,7 +516,7 @@ async function runSuite() {
       goal_state: stateE2,
       dom_map: domE,
       current_url: `${fixtureBase}/portal-service-login.html`,
-      page_text: 'اسم المستخدم أو كلمة المرور غير صحيحة',
+      page_text: await page.evaluate(() => document.body.innerText),
       language: 'ar-EG',
       api_key: DEMO_KEY,
       contract_version: 3,
@@ -537,7 +537,7 @@ async function runSuite() {
       goal: goalC,
       current_url: `${fixtureBase}/portal-service-signup.html`,
       dom_map: domF,
-      page_text: 'إنشاء حساب جديد',
+      page_text: await page.evaluate(() => document.body.innerText),
       language: 'ar-EG',
       api_key: DEMO_KEY,
       contract_version: 3,
@@ -546,12 +546,18 @@ async function runSuite() {
     record('Flow F.1: Sign-up wall yields fieldless handoff', resF1.status === 200 && resF1.data.status === 'awaiting_user_input');
     record('Flow F.2: Sign-up handoff has empty options (enables default continue chip in Lane D)', resF1.data.goal_state.awaiting.options.length === 0);
 
+    // User completes registration in browser (closing the signup modal)
+    await page.evaluate(() => toggleSignupOverlay());
+    await page.waitForTimeout(200);
+    const domFResumed = await page.evaluate(() => window.AtlasSerializer.serialize());
+
     // User resumes with "تم"
     const resF2 = await postGoalStep(backendPort, {
       goal: goalC,
       goal_state: resF1.data.goal_state,
       current_url: `${fixtureBase}/portal-service-signup.html`,
-      dom_map: domF,
+      dom_map: domFResumed,
+      page_text: await page.evaluate(() => document.body.innerText),
       user_response: 'تم',
       language: 'ar-EG',
       api_key: DEMO_KEY,

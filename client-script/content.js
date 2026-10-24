@@ -758,7 +758,7 @@
               return;
             }
             try {
-              const category = ["password", "otp", "pin", "ssn", "cc_number"].includes(kind) ? kind : "secret";
+              const category = ["login_id", "password", "otp", "pin", "ssn", "cc_number"].includes(kind) ? kind : "secret";
               const token = await window.AtlasSecretVault.store(origin, category, field.ref, rawVal);
               userInputs[field.ref] = token;
             } catch (err) {
