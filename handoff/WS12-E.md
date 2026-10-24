@@ -23,8 +23,18 @@ Tests run:
 - Full Backend Pytest: `LLM_PROVIDER=mock pytest backend/tests -q` -> 1181 passed in 85.69s (0 failures).
 - CI Gatekeeper Execution: `CI=true LLM_PROVIDER=mock python ci/verify_all_tests_run.py` -> 106 test files discovered (58 backend, 34 client, 1 demo, 13 E2E). 1181 backend passed (>= 782 floor), 1327 JS passed (>= 814 floor), 12/13 E2E suites passed (only Windows-specific `harness.js` timeout excepted).
 
+Final fixes (branch claude/ws12-lane-e-final, on top of 513a4d5), found with the real extension:
+- After a login, the hop carrying the user's card answer returned goal_complete without filling it (the login click counted as a form submit and the after-submit check promoted in_progress). Login steps (vault_login) are never a form submit or a final action, and a hop with user_inputs never completes.
+- A submit that reveals the next step of a multi-step form (new required empty inputs) is no longer reported as the result.
+- A field Atlas filled that the site emptied and marked invalid counts as errored even when the message is not linked to it (unless every filled field was reset).
+- Every resume word ("تم", "كمل", "خلصت", "done", "continue") hands a still-open sign-up popup back; before, "تم"/"كمل" closed it. The cedaa6e test that expected resume with the popup still open now expects the handoff, and resume once it is gone.
+- Submit tie in a single-password form: a login-worded button wins over a "create account" submit.
+- Slow login: up to 3 wait hops (about 5 s) before vault_clear.
+- Completion summary prefers a total line with a number, or a total cell joined with its value cell.
+- Tests: backend/tests/test_ws12_lane_e_final.py (13 tests; 10 fail on 513a4d5). Gatekeeper in CI mode: 1194 backend, 1327 JS, 13/13 E2E.
+
 Next steps:
-1. Merge `fix/live2-e-backend` via team lead pull request.
+1. Merge via pull request.
 2. Live run verification on real portals with Groq LLM provider.
 
 Requests for other workstreams:

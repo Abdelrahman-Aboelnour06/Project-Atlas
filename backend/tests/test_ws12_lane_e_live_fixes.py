@@ -580,7 +580,8 @@ class TestE4LoginWallAndSignUpWall:
         """
         Directive 5:
         - Sign-up overlay yields fieldless handoff with empty options.
-        - User resume words ('done', 'خلصت', 'كمل', 'تم') resume in_progress.
+        - User resume words ('done', 'خلصت', 'كمل', 'تم') resume once the popup is gone.
+          While the sign-up popup is still open they get the handoff back (R2-4).
         """
         signup_dom = load_fixture("portal_service_signup.json")
 
@@ -616,7 +617,21 @@ class TestE4LoginWallAndSignUpWall:
         res2 = client.post("/v1/chat/goal_step", json=payload2)
         assert res2.status_code == 200
         d2 = res2.json()
-        assert d2["status"] != "awaiting_user_input"
+        # Popup still open: the sign-up stays with the user, Atlas does not act on it
+        assert d2["status"] == "awaiting_user_input"
+        assert t("auth_signup_still_open", "ar-EG") in d2["reply"]
+        assert d2["goal_state"]["awaiting"]["fields"] == []
+        assert not d2.get("steps")
+
+        # Popup gone: the same resume word continues the goal
+        payload3 = dict(payload2)
+        payload3["goal_state"] = d2["goal_state"]
+        payload3["dom_map"] = load_fixture("portal_form_marked_required.json")
+        res3 = client.post("/v1/chat/goal_step", json=payload3)
+        assert res3.status_code == 200
+        d3 = res3.json()
+        assert t("auth_signup_still_open", "ar-EG") not in d3.get("reply", "")
+        assert t("auth_signup_handoff_prompt", "ar-EG") not in d3.get("reply", "")
 
 
 # ── Test Suite 5: E5 (N6) Target Service Generic CTA Boost ───────────────────

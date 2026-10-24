@@ -9,7 +9,7 @@ the configured LLM provider (NVIDIA NIM or Ollama).
 import asyncio
 import logging
 import re
-from typing import Any, Dict, List, Literal, Optional, Set
+from typing import Any, Dict, List, Literal, Optional, Set, Tuple
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,6 +35,8 @@ from app.agent.form_filler import (
     _score_submit_candidate,
     _is_control_wrong,
     _determine_field_kind,
+    _is_field_required,
+    is_field_value_empty,
     TOKEN_REGEX,
 )
 from app.agent.intent_synonyms import (
@@ -597,6 +599,35 @@ def _url_changed(u1: Optional[str], u2: Optional[str]) -> bool:
     if not u1 or not u2:
         return False
     return u1.split("#")[0].rstrip("/") != u2.split("#")[0].rstrip("/")
+
+
+_NON_DATA_INPUT_TYPES = ("hidden", "submit", "button", "reset", "image", "checkbox", "radio", "file")
+
+
+def _new_required_empty_inputs(dom_nodes: List[Any], prior_ids: Optional[List[str]]) -> List[Dict[str, Any]]:
+    """
+    Required, empty, enabled data inputs that were not on the page before the last action.
+    After a submit, these mean the next step of a multi-step form appeared, not the result.
+    Without a prior snapshot nothing counts as new.
+    """
+    prior = {str(i) for i in (prior_ids or [])}
+    if not prior:
+        return []
+    found: List[Dict[str, Any]] = []
+    for n in (dom_nodes or []):
+        nd = n if isinstance(n, dict) else (n.model_dump() if hasattr(n, "model_dump") else {})
+        tag = (nd.get("tag") or "").lower()
+        ntype = (nd.get("type") or "").lower()
+        if tag not in ("input", "select", "textarea") or ntype in _NON_DATA_INPUT_TYPES:
+            continue
+        if nd.get("disabled") or nd.get("blocked_by_modal"):
+            continue
+        ref = str(nd.get("ref") or nd.get("id") or "")
+        if not ref or ref in prior:
+            continue
+        if is_field_value_empty(nd) and _is_field_required(nd):
+            found.append(nd)
+    return found
 
 
 def _find_modal_close_control(modal_nodes: List[Any]) -> Optional[Any]:
@@ -1294,7 +1325,9 @@ async def goal_step_endpoint(
           - When pending_form_id is a real form id, a field must carry that form_id.
           - A field counts as errored only when:
             (1) Atlas filled it and it now has error_text; or
-            (2) it is invalid and not empty.
+            (2) it is invalid and not empty; or
+            (3) Atlas filled it, the site emptied it and marked it invalid, while another field
+                Atlas filled still keeps its value (a full reset after success clears them all).
         """
         p_form_id = (d_state or {}).get("pending_form_id")
         has_real_fid = False
@@ -1318,7 +1351,7 @@ async def goal_step_endpoint(
 
         tracked = (f_raw is not None) or bool(f_refs)
 
-        err_fields = []
+        scoped_inputs = []
         for n in (dom_nodes or []):
             nd = n if isinstance(n, dict) else (n.model_dump() if hasattr(n, "model_dump") else {})
             n_fid = nd.get("form_id")
@@ -1332,31 +1365,41 @@ async def goal_step_endpoint(
             t_name = (nd.get("tag") or "").lower()
             r_name = (nd.get("role") or "").lower()
             if t_name in ("input", "select", "textarea") or r_name in ("textbox", "combobox", "spinbutton"):
-                f_ref = str(nd.get("ref") or nd.get("id") or "")
-                err_raw = str(nd.get("error_text") or "").strip()
-                val = nd.get("current_value") if nd.get("current_value") is not None else nd.get("value")
-                non_empty = bool(val is not None and str(val).strip())
+                scoped_inputs.append(nd)
 
-                is_empty_browser_msg = err_raw.lower().rstrip(".") in (
-                    "please fill out this field",
-                    "please fill in this field",
-                    "يرجى ملء هذا الحقل",
-                    "يُرجى ملء هذا الحقل",
-                )
-                if non_empty and is_empty_browser_msg:
-                    has_err = False
-                    inv_non_empty = False
-                else:
-                    has_err = bool(err_raw)
-                    inv_non_empty = bool(nd.get("invalid") and non_empty)
+        filled_still_valued = tracked and any(
+            str(nd.get("ref") or nd.get("id") or "") in f_refs and not is_field_value_empty(nd)
+            for nd in scoped_inputs
+        )
 
-                if tracked:
-                    was_f = f_ref in f_refs
-                    if (was_f and has_err) or inv_non_empty:
-                        err_fields.append(nd)
-                else:
-                    if has_err or inv_non_empty:
-                        err_fields.append(nd)
+        err_fields = []
+        for nd in scoped_inputs:
+            f_ref = str(nd.get("ref") or nd.get("id") or "")
+            err_raw = str(nd.get("error_text") or "").strip()
+            val = nd.get("current_value") if nd.get("current_value") is not None else nd.get("value")
+            non_empty = bool(val is not None and str(val).strip())
+
+            is_empty_browser_msg = err_raw.lower().rstrip(".") in (
+                "please fill out this field",
+                "please fill in this field",
+                "يرجى ملء هذا الحقل",
+                "يُرجى ملء هذا الحقل",
+            )
+            if non_empty and is_empty_browser_msg:
+                has_err = False
+                inv_non_empty = False
+            else:
+                has_err = bool(err_raw)
+                inv_non_empty = bool(nd.get("invalid") and non_empty)
+
+            if tracked:
+                was_f = f_ref in f_refs
+                cleared_by_site = bool(was_f and not non_empty and nd.get("invalid") and filled_still_valued)
+                if (was_f and has_err) or inv_non_empty or cleared_by_site:
+                    err_fields.append(nd)
+            else:
+                if has_err or inv_non_empty:
+                    err_fields.append(nd)
 
         return err_fields
 
@@ -1389,10 +1432,15 @@ async def goal_step_endpoint(
 
         form_fills_pending_submit = False
         submit_executed = False
+        # Login steps (vault_login) have their own outcome check; they never count as a form submit.
+        last_step_is_login = bool(last_step is not None and getattr(last_step, "vault_login", False))
+        # The user just answered a card: those values are not on the page yet, so this hop cannot complete.
+        user_just_answered = bool(payload.user_inputs)
         if goal_state.form_plan:
             submit_ref_val = getattr(goal_state.form_plan, "submit_ref", None)
             submit_executed = bool(
                 last_step is not None
+                and not last_step_is_login
                 and last_step.action == "click"
                 and (
                     (submit_ref_val and str(last_step.element_id) == str(submit_ref_val))
@@ -1502,53 +1550,57 @@ async def goal_step_endpoint(
                         tried_labels.append(last_step.description)
 
         # WS12 Lane E R2-2: After-submit completion check
-        if submit_executed and verifier_res.status != "goal_failed":
+        submitted_errored = (
+            _get_submitted_form_errored_fields(payload.dom_map, goal_state.dom_state, goal_state.plan_steps)
+            if submit_executed and not user_just_answered
+            else []
+        )
+        if submitted_errored:
+            # A validation error after our own submit is recoverable, whatever the verifier says:
+            # fall through to E2 recovery, which re-asks only the errored fields.
+            verifier_res.status = "in_progress"
+        elif submit_executed and not user_just_answered and verifier_res.status != "goal_failed":
             # Universal guard: if an auth wall is present, action cannot complete final goal (WS12 E-F3)
             raw_nodes_for_check = [n for n in (payload.dom_map or [])]
             is_final_milestone = not active_milestone or getattr(active_milestone, "is_final", False)
             if is_final_milestone and classify_auth_wall(raw_nodes_for_check):
                 verifier_res.status = "in_progress"
+            elif _new_required_empty_inputs(payload.dom_map, prior_dom_ids):
+                # The submit revealed the next step of a multi-step form, not the result.
+                verifier_res.status = "in_progress"
             else:
-                # WS12 Lane E R2-2: If the submitted form has errored fields (rule in R2-3), do not complete. Fall through to E2 recovery.
-                submitted_errored = _get_submitted_form_errored_fields(
-                    payload.dom_map,
-                    goal_state.dom_state,
-                    goal_state.plan_steps,
+                # After submit, completion requires visible change (URL change, new region/table, text diff, or client change summary) (Fix 2 & E-F10)
+                lar = payload.last_action_result or {}
+                change_sum = lar.get("change_summary") or lar
+                client_positive_change = bool(
+                    change_sum.get("text_changed")
+                    or (change_sum.get("added_visible_count") or 0) > 0
+                    or (lar.get("added_visible_count") or 0) > 0
+                    or lar.get("text_changed")
                 )
-                if submitted_errored:
-                    verifier_res.status = "in_progress"
-                else:
-                    # After submit, completion requires visible change (URL change, new region/table, text diff, or client change summary) (Fix 2 & E-F10)
-                    lar = payload.last_action_result or {}
-                    change_sum = lar.get("change_summary") or lar
-                    client_positive_change = bool(
-                        change_sum.get("text_changed")
-                        or (change_sum.get("added_visible_count") or 0) > 0
-                        or (lar.get("added_visible_count") or 0) > 0
-                        or lar.get("text_changed")
-                    )
 
-                    has_visible_change = (
-                        bool(prior_url and payload.current_url and prior_url.rstrip("/") != payload.current_url.rstrip("/"))
-                        or any(
-                            str(getattr(n, "role", None) or (n.get("role") if isinstance(n, dict) else "")).lower() == "region"
-                            or str(getattr(n, "tag", None) or (n.get("tag") if isinstance(n, dict) else "")).lower() == "table"
-                            for n in (payload.dom_map or [])
-                            if str(getattr(n, "id", None) or getattr(n, "ref", None) or (n.get("id") if isinstance(n, dict) else n.get("ref"))) not in prior_dom_ids
-                        )
-                        or (curr_text and prior_text and curr_text != prior_text)
-                        or client_positive_change
+                has_visible_change = (
+                    bool(prior_url and payload.current_url and prior_url.rstrip("/") != payload.current_url.rstrip("/"))
+                    or any(
+                        str(getattr(n, "role", None) or (n.get("role") if isinstance(n, dict) else "")).lower() == "region"
+                        or str(getattr(n, "tag", None) or (n.get("tag") if isinstance(n, dict) else "")).lower() == "table"
+                        for n in (payload.dom_map or [])
+                        if str(getattr(n, "id", None) or getattr(n, "ref", None) or (n.get("id") if isinstance(n, dict) else n.get("ref"))) not in prior_dom_ids
                     )
-                    if has_visible_change:
-                        verifier_res.status = "goal_complete"
-                    else:
-                        verifier_res.status = "in_progress"
+                    or (curr_text and prior_text and curr_text != prior_text)
+                    or client_positive_change
+                )
+                if has_visible_change:
+                    verifier_res.status = "goal_complete"
+                else:
+                    verifier_res.status = "in_progress"
         # Only demote goal_complete / milestone_complete, NEVER goal_failed (Fix 3)
         elif verifier_res.status in ("goal_complete", "milestone_complete"):
             # Universal guard: if an auth wall is present, action cannot complete final goal (WS12 E-F3)
             raw_nodes_for_check = [n for n in (payload.dom_map or [])]
             is_final_milestone = not active_milestone or getattr(active_milestone, "is_final", False)
-            if is_final_milestone and classify_auth_wall(raw_nodes_for_check):
+            if user_just_answered or last_step_is_login or (is_final_milestone and classify_auth_wall(raw_nodes_for_check)):
+                # A login is never the goal's final action; its outcome is checked below.
                 verifier_res.status = "in_progress"
             else:
                 # Rule: only a step with reason "act" (a submit or the final action) can lead to goal_complete.
@@ -1575,26 +1627,40 @@ async def goal_step_endpoint(
                 if not new_chunks:
                     new_chunks = chunks
 
+                total_words = ("إجمالي", "اجمالي", "total", "الرصيد", "balance")
+                amount_words = ("مبلغ", "amount")
+                result_words = ("نتيجة", "summary")
+
+                def _has_number(text: str) -> bool:
+                    return bool(re.search(r"[0-9\u0660-\u0669]", text))
+
+                def _pick_summary(pool: List[str], words: Tuple[str, ...], needs_number: bool, value_in_next: bool) -> str:
+                    # A result line carries a number; prefer it over headings and intro text that share its words.
+                    # value_in_next: a total label in one table cell with its value in the next cell.
+                    for i, c in enumerate(pool):
+                        if not any(k in c.lower() for k in words):
+                            continue
+                        if not needs_number or _has_number(c):
+                            return c
+                        if value_in_next and i + 1 < len(pool) and _has_number(pool[i + 1]) and len(pool[i + 1]) <= 40:
+                            return f"{c} {pool[i + 1]}"
+                    return ""
+
+                summary_passes = (
+                    (new_chunks, total_words, True, True),
+                    (new_chunks, amount_words, True, False),
+                    (chunks, total_words, True, True),
+                    (chunks, amount_words, True, False),
+                    (new_chunks, total_words + amount_words, False, False),
+                    (new_chunks, result_words, False, False),
+                    (chunks, total_words + amount_words, False, False),
+                    (chunks, result_words, False, False),
+                )
                 result_summary = ""
-                for c in new_chunks:
-                    if any(k in c.lower() for k in ("إجمالي", "اجمالي", "total", "مبلغ", "الرصيد", "balance", "amount")):
-                        result_summary = c
+                for pool, words, needs_number, value_in_next in summary_passes:
+                    result_summary = _pick_summary(pool, words, needs_number, value_in_next)
+                    if result_summary:
                         break
-                if not result_summary:
-                    for c in new_chunks:
-                        if any(k in c.lower() for k in ("نتيجة", "summary")):
-                            result_summary = c
-                            break
-                if not result_summary:
-                    for c in chunks:
-                        if any(k in c.lower() for k in ("إجمالي", "اجمالي", "total", "مبلغ", "الرصيد", "balance", "amount")):
-                            result_summary = c
-                            break
-                if not result_summary:
-                    for c in chunks:
-                        if any(k in c.lower() for k in ("نتيجة", "summary")):
-                            result_summary = c
-                            break
                 if not result_summary and new_chunks:
                     result_summary = " ".join(new_chunks[:2])
                 elif not result_summary and chunks:
@@ -1836,7 +1902,8 @@ async def goal_step_endpoint(
 
         # WS12 Lane E R2-6: Slow login check.
         # Count as failure only when password field is now empty, or modal/form shows error_text.
-        # Otherwise keep last_step_was_login_submit for ONE more hop and check again.
+        # Otherwise keep last_step_was_login_submit and check again. Each hop waits for a quiet page
+        # (about 1-2 s), so 3 extra hops cover a login that takes about 5 s.
         is_login_failure = bool(is_pwd_empty or has_field_error or has_text_error)
         auth_failed = False
         if auth_wall_present:
@@ -1844,7 +1911,7 @@ async def goal_step_endpoint(
                 auth_failed = True
             else:
                 login_wait_count = (goal_state.dom_state or {}).get("login_wait_hops", 0)
-                if login_wait_count < 1:
+                if login_wait_count < 3:
                     if goal_state.dom_state is None:
                         goal_state.dom_state = {}
                     goal_state.dom_state["last_step_was_login_submit"] = True
@@ -2090,11 +2157,8 @@ async def goal_step_endpoint(
 
     clean_user_resp = (payload.user_response or "").strip().lower()
     norm_user_resp = _normalize_text(clean_user_resp)
-    is_done_resume = (
-        norm_user_resp in ("done", "خلصت", "done continue", "خلصت كمل")
-        or clean_user_resp in ("done", "خلصت", "done, continue", "done continue", "خلصت، كمل", "خلصت كمل")
-    )
-    user_resumed = is_done_resume or norm_user_resp in ("كمل", "تم") or clean_user_resp in ("كمل", "تم")
+    resume_phrases = ("done", "done, continue", "done continue", "continue", "خلصت", "خلصت، كمل", "خلصت كمل", "كمل", "تم")
+    user_resumed = clean_user_resp in resume_phrases or norm_user_resp in {_normalize_text(p) for p in resume_phrases}
 
     if active_auth_wall:
         # Check if user clicked "no account" option (WS12 E-F12: match option label exactly after normalizing)
@@ -2126,36 +2190,31 @@ async def goal_step_endpoint(
             )
 
         if active_auth_wall.get("type") == "signup":
-            if is_done_resume:
-                prompt_msg = t("auth_signup_still_open", reply_lang)
-            elif not user_resumed:
-                prompt_msg = t("auth_signup_handoff_prompt", reply_lang)
-            else:
-                prompt_msg = None
-
-            if prompt_msg is not None:
-                goal_state.status = "awaiting_user_input"
-                goal_state.awaiting = UserInputRequest(
-                    kind="credential",
-                    prompt=prompt_msg,
-                    fields=[],
-                    options=[],
-                    resumable=True,
-                )
-                return _apply_capability_and_tab_gating(
-                    GoalStepResponse(
-                        status="awaiting_user_input",
-                        goal_state=goal_state,
-                        reply=prompt_msg,
-                        steps=[],
-                        requires_confirmation=False,
-                        verifier_result=goal_state.verifier_result,
-                        contract_version=payload.contract_version,
-                    ),
-                    multitab_enabled,
-                    effective_capabilities,
-                    tab_ctx,
-                )
+            # Sign-up always stays with the user. If they say they are done while it is still open,
+            # hand it back with a note instead of acting on the sign-up form.
+            prompt_msg = t("auth_signup_still_open" if user_resumed else "auth_signup_handoff_prompt", reply_lang)
+            goal_state.status = "awaiting_user_input"
+            goal_state.awaiting = UserInputRequest(
+                kind="credential",
+                prompt=prompt_msg,
+                fields=[],
+                options=[],
+                resumable=True,
+            )
+            return _apply_capability_and_tab_gating(
+                GoalStepResponse(
+                    status="awaiting_user_input",
+                    goal_state=goal_state,
+                    reply=prompt_msg,
+                    steps=[],
+                    requires_confirmation=False,
+                    verifier_result=goal_state.verifier_result,
+                    contract_version=payload.contract_version,
+                ),
+                multitab_enabled,
+                effective_capabilities,
+                tab_ctx,
+            )
 
         if active_auth_wall.get("type") == "login":
             id_ref = active_auth_wall.get("identifier_ref")

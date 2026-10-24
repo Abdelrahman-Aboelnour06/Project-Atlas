@@ -713,7 +713,14 @@ def classify_auth_wall(
     submit_ref = None
     submit_label = None
     if submit_candidates:
-        best_submit = max(submit_candidates, key=_score_auth_submit_candidate)
+        def _submit_rank(node: Dict[str, Any]) -> Tuple[int, int]:
+            # On a tie, a login-worded button wins: a single-password form whose extra
+            # "create account" button is also a submit is still a login form.
+            lbl = (node.get("resolved_label") or node.get("aria_label") or node.get("inner_text") or node.get("value") or "").strip()
+            is_login_word = matches_any_keyword(lbl, LOGIN_SPECIFIC_KEYWORDS) and not matches_any_keyword(lbl, SIGNUP_SPECIFIC_KEYWORDS)
+            return (_score_auth_submit_candidate(node), 1 if is_login_word else 0)
+
+        best_submit = max(submit_candidates, key=_submit_rank)
         submit_ref = str(best_submit.get("ref") or best_submit.get("id") or "")
         submit_label = (
             best_submit.get("resolved_label")
